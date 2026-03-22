@@ -4,7 +4,7 @@ This project is a safe starter for an Upbit-based crypto auto-trading bot.
 
 It includes:
 
-- A chart-driven strategy using EMA, MACD, RSI, breakout, and volume expansion.
+- A chart-driven strategy using EMA, MACD, RSI, ADX, Bollinger band width, breakout, and volume expansion.
 - ATR-based position sizing, stop loss, take profit, and trailing stop logic.
 - CSV backtesting and replay-based paper trading.
 - A stateful runtime with cooldown, daily loss cap, session filter, and trade journal.

@@ -87,16 +87,16 @@ class FakeBroker:
         ]
         self.candles = {
             "KRW-BTC": build_upbit_candle_payload(
-                [100.0 + (index * 0.45) for index in range(26)] + [112.8],
-                [120.0 + (index % 4) for index in range(26)] + [260.0],
+                [100.0 + (index * 0.55) for index in range(35)] + [121.8],
+                [120.0 + (index % 6) for index in range(35)] + [320.0],
             ),
             "KRW-XRP": build_upbit_candle_payload(
-                [100.0 - (index * 0.12) for index in range(27)],
-                [100.0 for _ in range(27)],
+                [100.0 - (index * 0.12) for index in range(36)],
+                [100.0 for _ in range(36)],
             ),
             "KRW-CAUTION": build_upbit_candle_payload(
-                [100.0 + (index * 0.2) for index in range(27)],
-                [100.0 for _ in range(27)],
+                [100.0 + (index * 0.2) for index in range(36)],
+                [100.0 for _ in range(36)],
             ),
         }
         self.tickers = {
@@ -119,6 +119,7 @@ class ScannerSelectorTests(unittest.TestCase):
     def setUp(self):
         self.config = load_config(str(PROJECT_ROOT / "config.example.json"))
         self.config.runtime.journal_path = ""
+        self.config.runtime.max_trades_per_day = 50
         self.config.selector.include_markets = []
         self.config.selector.exclude_markets = []
         self.config.selector.max_markets = 5
@@ -133,6 +134,8 @@ class ScannerSelectorTests(unittest.TestCase):
         self.config.selector.max_spread_bps = 15.0
         self.config.selector.min_top_bid_ask_ratio = 0.8
         self.config.selector.min_total_bid_ask_ratio = 0.9
+        self.config.strategy.sell_threshold = 0.0
+        self.config.risk.take_profit_atr_multiple = 100.0
         self.broker = FakeBroker()
         self.selector_state = PROJECT_ROOT / "data" / "test-selector-state.json"
         if self.selector_state.exists():

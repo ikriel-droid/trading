@@ -1,3 +1,4 @@
+import math
 from typing import List, Optional, Sequence, Tuple
 
 from .models import Candle
@@ -146,3 +147,96 @@ def atr(candles: Sequence[Candle], period: int) -> List[Optional[float]]:
 
     return result
 
+
+def rolling_stddev(values: Sequence[float], period: int) -> List[Optional[float]]:
+    if period <= 0:
+        raise ValueError("period must be positive")
+
+    result = [None] * len(values)
+    if len(values) < period:
+        return result
+
+    for index in range(period - 1, len(values)):
+        window = values[index - period + 1 : index + 1]
+        mean = sum(window) / float(period)
+        variance = sum((value - mean) ** 2 for value in window) / float(period)
+        result[index] = math.sqrt(variance)
+
+    return result
+
+
+def bollinger_bands(
+    values: Sequence[float],
+    period: int,
+    stddev_multiplier: float,
+) -> Tuple[List[Optional[float]], List[Optional[float]], List[Optional[float]], List[Optional[float]]]:
+    middle = sma(values, period)
+    deviations = rolling_stddev(values, period)
+    upper = [None] * len(values)
+    lower = [None] * len(values)
+    width_fraction = [None] * len(values)
+
+    for index in range(len(values)):
+        if middle[index] is None or deviations[index] is None:
+            continue
+        upper[index] = middle[index] + (deviations[index] * stddev_multiplier)
+        lower[index] = middle[index] - (deviations[index] * stddev_multiplier)
+        if middle[index] and middle[index] != 0:
+            width_fraction[index] = (upper[index] - lower[index]) / middle[index]
+
+    return middle, upper, lower, width_fraction
+
+
+def adx(candles: Sequence[Candle], period: int) -> List[Optional[float]]:
+    if period <= 0:
+        raise ValueError("period must be positive")
+
+    result = [None] * len(candles)
+    if len(candles) < (period * 2):
+        return result
+
+    plus_dm = [0.0] * len(candles)
+    minus_dm = [0.0] * len(candles)
+    true_ranges = [0.0] * len(candles)
+
+    for index in range(1, len(candles)):
+        up_move = candles[index].high - candles[index - 1].high
+        down_move = candles[index - 1].low - candles[index].low
+        plus_dm[index] = up_move if (up_move > down_move and up_move > 0.0) else 0.0
+        minus_dm[index] = down_move if (down_move > up_move and down_move > 0.0) else 0.0
+        true_ranges[index] = max(
+            candles[index].high - candles[index].low,
+            abs(candles[index].high - candles[index - 1].close),
+            abs(candles[index].low - candles[index - 1].close),
+        )
+
+    smoothed_tr = sum(true_ranges[1 : period + 1])
+    smoothed_plus_dm = sum(plus_dm[1 : period + 1])
+    smoothed_minus_dm = sum(minus_dm[1 : period + 1])
+    dx_values: List[float] = []
+
+    for index in range(period, len(candles)):
+        if index > period:
+            smoothed_tr = smoothed_tr - (smoothed_tr / period) + true_ranges[index]
+            smoothed_plus_dm = smoothed_plus_dm - (smoothed_plus_dm / period) + plus_dm[index]
+            smoothed_minus_dm = smoothed_minus_dm - (smoothed_minus_dm / period) + minus_dm[index]
+
+        if smoothed_tr <= 0:
+            dx_values.append(0.0)
+            continue
+
+        plus_di = 100.0 * (smoothed_plus_dm / smoothed_tr)
+        minus_di = 100.0 * (smoothed_minus_dm / smoothed_tr)
+        di_sum = plus_di + minus_di
+        dx = 0.0 if di_sum == 0 else 100.0 * abs(plus_di - minus_di) / di_sum
+        dx_values.append(dx)
+
+        if len(dx_values) == period:
+            result[index] = sum(dx_values) / float(period)
+        elif len(dx_values) > period:
+            previous = result[index - 1]
+            if previous is None:
+                previous = sum(dx_values[-period:]) / float(period)
+            result[index] = ((previous * (period - 1)) + dx) / float(period)
+
+    return result

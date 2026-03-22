@@ -16,6 +16,11 @@ class StrategyConfig:
     macd_fast: int = 8
     macd_slow: int = 21
     macd_signal: int = 5
+    adx_period: int = 14
+    min_adx: float = 18.0
+    bollinger_period: int = 20
+    bollinger_stddev: float = 2.0
+    min_bollinger_width_fraction: float = 0.015
     breakout_lookback: int = 20
     volume_sma_period: int = 20
     volume_spike_multiplier: float = 1.3

@@ -6,7 +6,7 @@ import unittest
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from upbit_auto_trader.indicators import atr, ema, rsi, sma  # noqa: E402
+from upbit_auto_trader.indicators import adx, atr, bollinger_bands, ema, rsi, sma  # noqa: E402
 from upbit_auto_trader.models import Candle  # noqa: E402
 
 
@@ -36,6 +36,30 @@ class IndicatorTests(unittest.TestCase):
         self.assertIsNone(values[12])
         self.assertIsNotNone(values[-1])
         self.assertGreater(values[-1], 0.0)
+
+    def test_bollinger_bands_return_width_fraction(self) -> None:
+        middle, upper, lower, width = bollinger_bands([float(value) for value in range(1, 30)], 20, 2.0)
+        self.assertIsNotNone(middle[-1])
+        self.assertIsNotNone(upper[-1])
+        self.assertIsNotNone(lower[-1])
+        self.assertIsNotNone(width[-1])
+        self.assertGreater(width[-1], 0.0)
+
+    def test_adx_returns_values_for_trending_candles(self) -> None:
+        candles = [
+            Candle(
+                timestamp=str(index),
+                open=100 + index,
+                high=101.5 + index,
+                low=99.5 + index,
+                close=101 + index,
+                volume=1,
+            )
+            for index in range(40)
+        ]
+        values = adx(candles, 14)
+        self.assertIsNotNone(values[-1])
+        self.assertGreater(values[-1], 15.0)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from .config import StrategyConfig
-from .indicators import ema, macd, rsi, sma
+from .indicators import adx, bollinger_bands, ema, macd, rsi, sma
 from .models import Action, Candle, Position, Signal
 
 
@@ -16,6 +16,8 @@ class ProfessionalCryptoStrategy:
             self.config.volume_sma_period,
             self.config.breakout_lookback + 1,
             self.config.macd_slow + self.config.macd_signal,
+            self.config.bollinger_period,
+            self.config.adx_period * 2,
         )
 
     def evaluate(self, candles: List[Candle], position: Optional[Position]) -> Signal:
@@ -35,6 +37,12 @@ class ProfessionalCryptoStrategy:
             self.config.macd_fast,
             self.config.macd_slow,
             self.config.macd_signal,
+        )
+        adx_values = adx(candles, self.config.adx_period)
+        bb_middle, bb_upper, bb_lower, bb_width = bollinger_bands(
+            closes,
+            self.config.bollinger_period,
+            self.config.bollinger_stddev,
         )
         volume_ma = sma(volumes, self.config.volume_sma_period)
 
@@ -95,6 +103,31 @@ class ProfessionalCryptoStrategy:
             score += 10.0
             reasons.append("volume_spike")
 
+        if adx_values[index] is not None:
+            if adx_values[index] >= self.config.min_adx:
+                score += 8.0
+                reasons.append("adx_trend")
+            else:
+                score -= 8.0
+                reasons.append("adx_chop")
+
+        if (
+            bb_width[index] is not None
+            and bb_middle[index] is not None
+            and bb_upper[index] is not None
+            and bb_lower[index] is not None
+        ):
+            if bb_width[index] >= self.config.min_bollinger_width_fraction:
+                if current.close >= bb_middle[index]:
+                    score += 6.0
+                    reasons.append("volatility_expansion_up")
+                else:
+                    score -= 6.0
+                    reasons.append("volatility_expansion_down")
+            else:
+                score -= 4.0
+                reasons.append("volatility_compression")
+
         breakout_window = closes[index - self.config.breakout_lookback : index]
         if len(breakout_window) == self.config.breakout_lookback:
             if current.close > max(breakout_window):
@@ -131,5 +164,12 @@ class ProfessionalCryptoStrategy:
                     reasons=reasons + ["momentum_rollover"],
                 )
 
-        return Signal(action=Action.HOLD, score=score, confidence=confidence, reasons=reasons or ["neutral"])
+            if "adx_chop" in reasons and "volatility_expansion_down" in reasons:
+                return Signal(
+                    action=Action.SELL,
+                    score=score,
+                    confidence=confidence,
+                    reasons=reasons + ["trend_failure"],
+                )
 
+        return Signal(action=Action.HOLD, score=score, confidence=confidence, reasons=reasons or ["neutral"])
