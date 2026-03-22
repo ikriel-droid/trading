@@ -138,6 +138,12 @@ Run a one-shot live reconciliation against the saved state, balances, chance inf
 .venv\Scripts\python.exe -m upbit_auto_trader.main live-reconcile --config config.example.json --state data\live-state.json --market KRW-BTC
 ```
 
+Run a live supervisor that performs an initial reconcile, listens to `myOrder` and `myAsset`, and periodically re-runs reconciliation:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main run-live-supervisor --config config.example.json --state data\live-state.json --market KRW-BTC --reconcile-every 10
+```
+
 Download recent candle data from Upbit into a CSV:
 
 ```powershell
@@ -245,6 +251,8 @@ The selector trades only one active market at a time. It scans while flat, opens
 `order-show`, `open-orders`, `cancel-order`, `cancel-open-orders`, and `cancel-and-new` are direct helpers around Upbit's authenticated order-management endpoints. They are useful for live troubleshooting and manual cleanup while the runtime keeps its own JSON state file.
 
 `live-reconcile` is a one-shot audit command. It loads the saved live state, syncs balances through `accounts`, reconciles the current pending order through `get-order`, and reports current `open-orders` plus `chance` balances in one JSON payload.
+
+`run-live-supervisor` is the longer-running operational form of the same idea. It starts with `live-reconcile`, then keeps consuming the private websocket, and re-runs reconciliation every N events so exchange state and local JSON state stay aligned.
 
 ## Live-trading checklist
 

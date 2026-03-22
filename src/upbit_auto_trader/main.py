@@ -132,6 +132,14 @@ def build_parser() -> argparse.ArgumentParser:
     private_parser.add_argument("--market")
     private_parser.add_argument("--max-events", type=int)
 
+    supervisor_parser = subparsers.add_parser("run-live-supervisor")
+    supervisor_parser.add_argument("--config", required=True)
+    supervisor_parser.add_argument("--state", required=True)
+    supervisor_parser.add_argument("--market")
+    supervisor_parser.add_argument("--max-events", type=int)
+    supervisor_parser.add_argument("--reconcile-every", type=int, default=10)
+    supervisor_parser.add_argument("--skip-initial-reconcile", action="store_true")
+
     loop_parser = subparsers.add_parser("run-loop")
     loop_parser.add_argument("--config", required=True)
     loop_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
@@ -380,14 +388,7 @@ def _run_myorder_listener(
     market: str,
     max_events: Optional[int],
 ) -> int:
-    if not os.path.exists(state_path):
-        raise ValueError("state file not found: {0}".format(state_path))
-
-    live_config = copy.deepcopy(config)
-    live_config.market = market
-    live_config.upbit.market = market
-    runtime = TradingRuntime(config=live_config, mode="live", state_path=state_path, broker=broker)
-    runtime.bootstrap([])
+    runtime = _build_live_runtime(config=config, broker=broker, state_path=state_path, market=market)
 
     client = UpbitWebSocketClient()
     subscription = build_myorder_subscription([market])
@@ -407,6 +408,26 @@ def _run_private_listener(
     market: str,
     max_events: Optional[int],
 ) -> int:
+    runtime = _build_live_runtime(config=config, broker=broker, state_path=state_path, market=market)
+
+    client = UpbitWebSocketClient()
+    subscription = build_private_account_subscription([market])
+    headers = broker.websocket_private_headers()
+
+    for payload in client.iter_private_messages(subscription, headers=headers, max_messages=max_events):
+        result = _dispatch_private_payload(runtime, payload)
+        for event in result["events"]:
+            print(event)
+        _print_json(runtime.summary())
+    return 0
+
+
+def _build_live_runtime(
+    config: AppConfig,
+    broker: UpbitBroker,
+    state_path: str,
+    market: str,
+) -> TradingRuntime:
     if not os.path.exists(state_path):
         raise ValueError("state file not found: {0}".format(state_path))
 
@@ -415,22 +436,55 @@ def _run_private_listener(
     live_config.upbit.market = market
     runtime = TradingRuntime(config=live_config, mode="live", state_path=state_path, broker=broker)
     runtime.bootstrap([])
+    return runtime
 
-    client = UpbitWebSocketClient()
+
+def _dispatch_private_payload(runtime: TradingRuntime, payload: dict) -> dict:
+    payload_type = payload.get("type", "")
+    if payload_type == "myOrder":
+        events = runtime.apply_myorder_event(payload)
+    elif payload_type == "myAsset":
+        events = runtime.apply_myasset_event(payload)
+    else:
+        events = []
+    return {
+        "message_type": payload_type,
+        "events": events,
+        "summary": runtime.summary(),
+    }
+
+
+def _run_live_supervisor(
+    config: AppConfig,
+    broker: UpbitBroker,
+    state_path: str,
+    market: str,
+    max_events: Optional[int],
+    reconcile_every: int,
+    skip_initial_reconcile: bool,
+    client: Optional[UpbitWebSocketClient] = None,
+    message_source: Optional[Iterable[dict]] = None,
+) -> int:
+    runtime = _build_live_runtime(config=config, broker=broker, state_path=state_path, market=market)
+    client = client or UpbitWebSocketClient()
     subscription = build_private_account_subscription([market])
     headers = broker.websocket_private_headers()
 
-    for payload in client.iter_private_messages(subscription, headers=headers, max_messages=max_events):
-        payload_type = payload.get("type", "")
-        if payload_type == "myOrder":
-            events = runtime.apply_myorder_event(payload)
-        elif payload_type == "myAsset":
-            events = runtime.apply_myasset_event(payload)
-        else:
-            events = []
-        for event in events:
-            print(event)
-        _print_json(runtime.summary())
+    if not skip_initial_reconcile:
+        _print_json(runtime.reconcile_live_snapshot())
+
+    processed = 0
+    for payload in client.iter_private_messages(
+        subscription,
+        headers=headers,
+        max_messages=max_events,
+        message_source=message_source,
+    ):
+        result = _dispatch_private_payload(runtime, payload)
+        _print_json(result)
+        processed += 1
+        if reconcile_every > 0 and (processed % reconcile_every) == 0:
+            _print_json(runtime.reconcile_live_snapshot())
     return 0
 
 
@@ -625,6 +679,17 @@ def main(argv: Optional[List[str]] = None) -> int:
                 state_path=args.state,
                 market=_market_arg(args, config),
                 max_events=args.max_events,
+            )
+
+        if args.command == "run-live-supervisor":
+            return _run_live_supervisor(
+                config=config,
+                broker=broker,
+                state_path=args.state,
+                market=_market_arg(args, config),
+                max_events=args.max_events,
+                reconcile_every=args.reconcile_every,
+                skip_initial_reconcile=args.skip_initial_reconcile,
             )
 
         if args.command == "run-loop":
