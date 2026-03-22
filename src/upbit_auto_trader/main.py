@@ -1,0 +1,688 @@
+import argparse
+import copy
+import json
+import os
+import sys
+import time
+from dataclasses import asdict, is_dataclass
+from typing import Any, Iterable, List, Optional
+
+from .backtest import Backtester, format_backtest_report
+from .brokers.upbit import UpbitBroker, UpbitError
+from .config import AppConfig, load_config
+from .datafeed import (
+    load_csv_candles,
+    merge_candles,
+    upbit_candles_to_internal,
+    write_csv_candles,
+)
+from .runtime import TradingRuntime
+from .scanner import MarketScanner
+from .selector import RotatingMarketSelector, StreamingMarketSelector
+from .strategy import ProfessionalCryptoStrategy
+from .websocket_client import (
+    UpbitWebSocketClient,
+    build_myorder_subscription,
+    build_private_account_subscription,
+    build_selector_stream_subscription,
+)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Upbit auto trader starter")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    csv_parser = subparsers.add_parser("backtest")
+    csv_parser.add_argument("--config", required=True)
+    csv_parser.add_argument("--csv", required=True)
+
+    signal_parser = subparsers.add_parser("signal")
+    signal_parser.add_argument("--config", required=True)
+    signal_parser.add_argument("--csv", required=True)
+
+    markets_parser = subparsers.add_parser("markets")
+    markets_parser.add_argument("--config", required=True)
+    markets_parser.add_argument("--details", action="store_true")
+
+    ticker_parser = subparsers.add_parser("ticker")
+    ticker_parser.add_argument("--config", required=True)
+    ticker_parser.add_argument("--market")
+
+    sync_parser = subparsers.add_parser("sync-candles")
+    sync_parser.add_argument("--config", required=True)
+    sync_parser.add_argument("--csv", required=True)
+    sync_parser.add_argument("--market")
+    sync_parser.add_argument("--count", type=int)
+    sync_parser.add_argument("--to")
+
+    scan_parser = subparsers.add_parser("scan-markets")
+    scan_parser.add_argument("--config", required=True)
+    scan_parser.add_argument("--markets")
+    scan_parser.add_argument("--exclude")
+    scan_parser.add_argument("--quote-currency")
+    scan_parser.add_argument("--max-markets", type=int)
+
+    balances_parser = subparsers.add_parser("balances")
+    balances_parser.add_argument("--config", required=True)
+
+    chance_parser = subparsers.add_parser("chance")
+    chance_parser.add_argument("--config", required=True)
+    chance_parser.add_argument("--market")
+
+    order_show_parser = subparsers.add_parser("order-show")
+    order_show_parser.add_argument("--config", required=True)
+    order_show_parser.add_argument("--uuid")
+    order_show_parser.add_argument("--identifier")
+
+    open_orders_parser = subparsers.add_parser("open-orders")
+    open_orders_parser.add_argument("--config", required=True)
+    open_orders_parser.add_argument("--market")
+    open_orders_parser.add_argument("--state")
+    open_orders_parser.add_argument("--states")
+    open_orders_parser.add_argument("--page", type=int)
+    open_orders_parser.add_argument("--limit", type=int)
+    open_orders_parser.add_argument("--order-by")
+
+    preview_parser = subparsers.add_parser("order-preview")
+    preview_parser.add_argument("--config", required=True)
+    preview_parser.add_argument("--market")
+    preview_parser.add_argument("--side", choices=("bid", "ask"), required=True)
+    preview_parser.add_argument("--ord-type", choices=("limit", "price", "market"), required=True)
+    preview_parser.add_argument("--volume")
+    preview_parser.add_argument("--price")
+
+    cancel_parser = subparsers.add_parser("cancel-order")
+    cancel_parser.add_argument("--config", required=True)
+    cancel_parser.add_argument("--uuid")
+    cancel_parser.add_argument("--identifier")
+
+    cancel_open_parser = subparsers.add_parser("cancel-open-orders")
+    cancel_open_parser.add_argument("--config", required=True)
+    cancel_open_parser.add_argument("--cancel-side", default="all")
+    cancel_open_parser.add_argument("--pairs")
+    cancel_open_parser.add_argument("--excluded-pairs")
+    cancel_open_parser.add_argument("--count", type=int)
+    cancel_open_parser.add_argument("--order-by")
+
+    cancel_and_new_parser = subparsers.add_parser("cancel-and-new")
+    cancel_and_new_parser.add_argument("--config", required=True)
+    cancel_and_new_parser.add_argument("--prev-order-uuid")
+    cancel_and_new_parser.add_argument("--prev-order-identifier")
+    cancel_and_new_parser.add_argument("--new-ord-type", required=True)
+    cancel_and_new_parser.add_argument("--new-volume")
+    cancel_and_new_parser.add_argument("--new-price")
+    cancel_and_new_parser.add_argument("--new-time-in-force")
+    cancel_and_new_parser.add_argument("--new-smp-type")
+    cancel_and_new_parser.add_argument("--new-identifier")
+
+    myorder_parser = subparsers.add_parser("listen-myorder")
+    myorder_parser.add_argument("--config", required=True)
+    myorder_parser.add_argument("--state", required=True)
+    myorder_parser.add_argument("--market")
+    myorder_parser.add_argument("--max-events", type=int)
+
+    private_parser = subparsers.add_parser("listen-private")
+    private_parser.add_argument("--config", required=True)
+    private_parser.add_argument("--state", required=True)
+    private_parser.add_argument("--market")
+    private_parser.add_argument("--max-events", type=int)
+
+    loop_parser = subparsers.add_parser("run-loop")
+    loop_parser.add_argument("--config", required=True)
+    loop_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
+    loop_parser.add_argument("--state", required=True)
+    loop_parser.add_argument("--replay-csv")
+    loop_parser.add_argument("--warmup-csv")
+    loop_parser.add_argument("--max-steps", type=int)
+    loop_parser.add_argument("--poll-seconds", type=float)
+
+    selector_parser = subparsers.add_parser("run-selector")
+    selector_parser.add_argument("--config", required=True)
+    selector_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
+    selector_parser.add_argument("--selector-state", required=True)
+    selector_parser.add_argument("--markets")
+    selector_parser.add_argument("--exclude")
+    selector_parser.add_argument("--quote-currency")
+    selector_parser.add_argument("--max-markets", type=int)
+    selector_parser.add_argument("--max-steps", type=int)
+    selector_parser.add_argument("--poll-seconds", type=float)
+
+    stream_parser = subparsers.add_parser("run-selector-stream")
+    stream_parser.add_argument("--config", required=True)
+    stream_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
+    stream_parser.add_argument("--selector-state", required=True)
+    stream_parser.add_argument("--markets")
+    stream_parser.add_argument("--exclude")
+    stream_parser.add_argument("--quote-currency")
+    stream_parser.add_argument("--max-markets", type=int)
+    stream_parser.add_argument("--max-events", type=int)
+
+    state_parser = subparsers.add_parser("state-show")
+    state_parser.add_argument("--config", required=True)
+    state_parser.add_argument("--state", required=True)
+
+    selector_state_parser = subparsers.add_parser("selector-state-show")
+    selector_state_parser.add_argument("--config", required=True)
+    selector_state_parser.add_argument("--state", required=True)
+
+    return parser
+
+
+def _json_default(value: Any) -> Any:
+    if is_dataclass(value):
+        return asdict(value)
+    if hasattr(value, "__dict__"):
+        return value.__dict__
+    raise TypeError("unsupported value: {0}".format(type(value).__name__))
+
+
+def _print_json(payload: Any) -> None:
+    print(json.dumps(payload, indent=2, ensure_ascii=False, default=_json_default))
+
+
+def _market_arg(args: argparse.Namespace, config: AppConfig) -> str:
+    return args.market or config.market
+
+
+def _build_broker(config: AppConfig) -> UpbitBroker:
+    return UpbitBroker(config.upbit)
+
+
+def _parse_markets(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _selector_config_from_args(config: AppConfig, args: argparse.Namespace) -> AppConfig:
+    updated = copy.deepcopy(config)
+    if getattr(args, "quote_currency", None):
+        updated.selector.quote_currency = args.quote_currency
+    if getattr(args, "markets", None):
+        updated.selector.include_markets = _parse_markets(args.markets)
+    if getattr(args, "exclude", None):
+        updated.selector.exclude_markets = _parse_markets(args.exclude)
+    if getattr(args, "max_markets", None):
+        updated.selector.max_markets = args.max_markets
+    return updated
+
+
+def _load_or_fetch_warmup(
+    runtime: TradingRuntime,
+    config: AppConfig,
+    broker: UpbitBroker,
+    warmup_csv: Optional[str],
+) -> List[Any]:
+    if warmup_csv:
+        return load_csv_candles(warmup_csv)
+
+    fetch_count = max(config.upbit.candle_count, runtime.strategy.minimum_history() + 5)
+    payload = broker.get_minute_candles(
+        market=config.market,
+        unit=config.upbit.candle_unit,
+        count=fetch_count,
+    )
+    return upbit_candles_to_internal(payload)
+
+
+def _run_replay_loop(
+    runtime: TradingRuntime,
+    replay_csv: str,
+    warmup_csv: Optional[str],
+    max_steps: Optional[int],
+) -> int:
+    replay_candles = load_csv_candles(replay_csv)
+    if not replay_candles:
+        raise ValueError("replay csv is empty")
+
+    state_exists = os.path.exists(runtime.state_path)
+    if state_exists:
+        runtime.bootstrap([])
+        candles_to_process = replay_candles
+    else:
+        if warmup_csv:
+            runtime.bootstrap(load_csv_candles(warmup_csv))
+            candles_to_process = replay_candles
+        else:
+            minimum_history = runtime.strategy.minimum_history()
+            if len(replay_candles) < minimum_history:
+                raise ValueError(
+                    "replay csv needs at least {0} candles, got {1}".format(
+                        minimum_history,
+                        len(replay_candles),
+                    )
+                )
+            runtime.bootstrap(replay_candles[:minimum_history])
+            candles_to_process = replay_candles[minimum_history:]
+
+    processed = 0
+    last_timestamp = runtime.state.last_processed_timestamp
+    for candle in candles_to_process:
+        if last_timestamp and candle.timestamp <= last_timestamp:
+            continue
+        for event in runtime.process_candle(candle):
+            print(event)
+        processed += 1
+        if max_steps is not None and processed >= max_steps:
+            break
+
+    _print_json(runtime.summary())
+    return 0
+
+
+def _run_broker_loop(
+    runtime: TradingRuntime,
+    broker: UpbitBroker,
+    warmup_csv: Optional[str],
+    poll_seconds: Optional[float],
+    max_steps: Optional[int],
+) -> int:
+    runtime.broker = broker
+    if os.path.exists(runtime.state_path):
+        runtime.bootstrap([])
+    else:
+        runtime.bootstrap(_load_or_fetch_warmup(runtime, runtime.config, broker, warmup_csv))
+
+    poll_interval = poll_seconds if poll_seconds is not None else runtime.config.runtime.poll_seconds
+    fetch_count = max(runtime.config.upbit.candle_count, runtime.strategy.minimum_history() + 5)
+    loops = 0
+
+    while True:
+        payload = broker.get_minute_candles(
+            market=runtime.config.market,
+            unit=runtime.config.upbit.candle_unit,
+            count=fetch_count,
+        )
+        new_candles = upbit_candles_to_internal(payload)
+        last_timestamp = runtime.state.last_processed_timestamp
+        for candle in new_candles:
+            if last_timestamp and candle.timestamp <= last_timestamp:
+                continue
+            for event in runtime.process_candle(candle):
+                print(event)
+            last_timestamp = runtime.state.last_processed_timestamp
+
+        loops += 1
+        if max_steps is not None and loops >= max_steps:
+            break
+        time.sleep(max(poll_interval, 1.0))
+
+    _print_json(runtime.summary())
+    return 0
+
+
+def _run_selector_loop(
+    config: AppConfig,
+    broker: UpbitBroker,
+    mode: str,
+    selector_state_path: str,
+    explicit_markets: List[str],
+    poll_seconds: Optional[float],
+    max_steps: Optional[int],
+) -> int:
+    selector = RotatingMarketSelector(
+        config=config,
+        mode=mode,
+        selector_state_path=selector_state_path,
+        broker=broker,
+    )
+    cycles = 0
+    interval = poll_seconds if poll_seconds is not None else config.runtime.poll_seconds
+
+    while True:
+        result = selector.run_cycle(markets=explicit_markets or None)
+        for event in result["events"]:
+            print(event)
+        _print_json(result)
+
+        cycles += 1
+        if max_steps is not None and cycles >= max_steps:
+            break
+        time.sleep(max(interval, 1.0))
+    return 0
+
+
+def _run_selector_stream(
+    config: AppConfig,
+    broker: UpbitBroker,
+    mode: str,
+    selector_state_path: str,
+    explicit_markets: List[str],
+    max_events: Optional[int],
+) -> int:
+    selector = StreamingMarketSelector(
+        config=config,
+        mode=mode,
+        selector_state_path=selector_state_path,
+        broker=broker,
+    )
+    markets = selector.bootstrap_markets(markets=explicit_markets or None)
+    client = UpbitWebSocketClient()
+    subscription = build_selector_stream_subscription(config.upbit.candle_unit, markets)
+
+    for result in client.iter_messages(subscription, max_messages=max_events):
+        payload = selector.process_stream_message(result)
+        for event in payload["events"]:
+            print(event)
+        _print_json(payload)
+    return 0
+
+
+def _run_myorder_listener(
+    config: AppConfig,
+    broker: UpbitBroker,
+    state_path: str,
+    market: str,
+    max_events: Optional[int],
+) -> int:
+    if not os.path.exists(state_path):
+        raise ValueError("state file not found: {0}".format(state_path))
+
+    live_config = copy.deepcopy(config)
+    live_config.market = market
+    live_config.upbit.market = market
+    runtime = TradingRuntime(config=live_config, mode="live", state_path=state_path, broker=broker)
+    runtime.bootstrap([])
+
+    client = UpbitWebSocketClient()
+    subscription = build_myorder_subscription([market])
+    headers = broker.websocket_private_headers()
+
+    for payload in client.iter_private_messages(subscription, headers=headers, max_messages=max_events):
+        for event in runtime.apply_myorder_event(payload):
+            print(event)
+        _print_json(runtime.summary())
+    return 0
+
+
+def _run_private_listener(
+    config: AppConfig,
+    broker: UpbitBroker,
+    state_path: str,
+    market: str,
+    max_events: Optional[int],
+) -> int:
+    if not os.path.exists(state_path):
+        raise ValueError("state file not found: {0}".format(state_path))
+
+    live_config = copy.deepcopy(config)
+    live_config.market = market
+    live_config.upbit.market = market
+    runtime = TradingRuntime(config=live_config, mode="live", state_path=state_path, broker=broker)
+    runtime.bootstrap([])
+
+    client = UpbitWebSocketClient()
+    subscription = build_private_account_subscription([market])
+    headers = broker.websocket_private_headers()
+
+    for payload in client.iter_private_messages(subscription, headers=headers, max_messages=max_events):
+        payload_type = payload.get("type", "")
+        if payload_type == "myOrder":
+            events = runtime.apply_myorder_event(payload)
+        elif payload_type == "myAsset":
+            events = runtime.apply_myasset_event(payload)
+        else:
+            events = []
+        for event in events:
+            print(event)
+        _print_json(runtime.summary())
+    return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    config = load_config(args.config)
+
+    try:
+        if args.command == "backtest":
+            candles = load_csv_candles(args.csv)
+            result = Backtester(config).run(candles)
+            print(format_backtest_report(result))
+            print("events:")
+            for event in result.events:
+                print(event)
+            return 0
+
+        if args.command == "signal":
+            candles = load_csv_candles(args.csv)
+            signal = ProfessionalCryptoStrategy(config.strategy).evaluate(candles, None)
+            _print_json(
+                {
+                    "market": config.market,
+                    "action": signal.action.value,
+                    "score": signal.score,
+                    "confidence": signal.confidence,
+                    "reasons": signal.reasons,
+                }
+            )
+            return 0
+
+        broker = _build_broker(config)
+
+        if args.command == "scan-markets":
+            scan_config = _selector_config_from_args(config, args)
+            scanner = MarketScanner(scan_config, broker)
+            markets = scanner.discover_markets(scan_config.selector)
+            results = scanner.scan_markets(markets)
+            _print_json(
+                [
+                    {
+                        "market": item.market,
+                        "action": item.action,
+                        "score": item.score,
+                        "confidence": item.confidence,
+                        "reasons": item.reasons,
+                        "timestamp": item.timestamp,
+                        "close": item.close,
+                        "candle_count": item.candle_count,
+                        "market_warning": item.market_warning,
+                        "liquidity_24h": item.liquidity_24h,
+                        "liquidity_ok": item.liquidity_ok,
+                        "recent_bid_ratio": item.recent_bid_ratio,
+                        "recent_trade_notional": item.recent_trade_notional,
+                        "trade_flow_ok": item.trade_flow_ok,
+                        "spread_bps": item.spread_bps,
+                        "top_bid_ask_ratio": item.top_bid_ask_ratio,
+                        "total_bid_ask_ratio": item.total_bid_ask_ratio,
+                        "orderbook_ok": item.orderbook_ok,
+                    }
+                    for item in results
+                ]
+            )
+            return 0
+
+        if args.command == "markets":
+            _print_json(broker.list_markets(is_details=args.details))
+            return 0
+
+        if args.command == "ticker":
+            _print_json(broker.get_ticker([_market_arg(args, config)]))
+            return 0
+
+        if args.command == "sync-candles":
+            market = _market_arg(args, config)
+            count = args.count or config.upbit.candle_count
+            payload = broker.get_minute_candles(
+                market=market,
+                unit=config.upbit.candle_unit,
+                count=count,
+                to=args.to,
+            )
+            incoming = upbit_candles_to_internal(payload)
+            existing = load_csv_candles(args.csv) if os.path.exists(args.csv) else []
+            keep_rows = max(config.runtime.max_history, len(existing) + len(incoming), count)
+            merged = merge_candles(existing, incoming, max_history=keep_rows)
+            write_csv_candles(args.csv, merged)
+            _print_json(
+                {
+                    "market": market,
+                    "rows_written": len(merged),
+                    "first_timestamp": merged[0].timestamp if merged else "",
+                    "last_timestamp": merged[-1].timestamp if merged else "",
+                    "csv": args.csv,
+                }
+            )
+            return 0
+
+        if args.command == "balances":
+            _print_json(broker.get_accounts())
+            return 0
+
+        if args.command == "chance":
+            _print_json(broker.get_order_chance(_market_arg(args, config)))
+            return 0
+
+        if args.command == "order-show":
+            _print_json(broker.get_order(uuid=args.uuid, identifier=args.identifier))
+            return 0
+
+        if args.command == "open-orders":
+            _print_json(
+                broker.list_open_orders(
+                    market=_market_arg(args, config) if args.market else None,
+                    state=args.state,
+                    states=_parse_markets(args.states),
+                    page=args.page,
+                    limit=args.limit,
+                    order_by=args.order_by,
+                )
+            )
+            return 0
+
+        if args.command == "order-preview":
+            _print_json(
+                broker.preview_order_request(
+                    market=_market_arg(args, config),
+                    side=args.side,
+                    ord_type=args.ord_type,
+                    volume=args.volume,
+                    price=args.price,
+                )
+            )
+            return 0
+
+        if args.command == "cancel-order":
+            _print_json(broker.cancel_order(uuid=args.uuid, identifier=args.identifier))
+            return 0
+
+        if args.command == "cancel-open-orders":
+            _print_json(
+                broker.cancel_open_orders(
+                    cancel_side=args.cancel_side,
+                    pairs=args.pairs,
+                    excluded_pairs=args.excluded_pairs,
+                    count=args.count,
+                    order_by=args.order_by,
+                )
+            )
+            return 0
+
+        if args.command == "cancel-and-new":
+            _print_json(
+                broker.cancel_and_new(
+                    new_ord_type=args.new_ord_type,
+                    prev_order_uuid=args.prev_order_uuid,
+                    prev_order_identifier=args.prev_order_identifier,
+                    new_volume=args.new_volume,
+                    new_price=args.new_price,
+                    new_time_in_force=args.new_time_in_force,
+                    new_smp_type=args.new_smp_type,
+                    new_identifier=args.new_identifier,
+                )
+            )
+            return 0
+
+        if args.command == "listen-myorder":
+            return _run_myorder_listener(
+                config=config,
+                broker=broker,
+                state_path=args.state,
+                market=_market_arg(args, config),
+                max_events=args.max_events,
+            )
+
+        if args.command == "listen-private":
+            return _run_private_listener(
+                config=config,
+                broker=broker,
+                state_path=args.state,
+                market=_market_arg(args, config),
+                max_events=args.max_events,
+            )
+
+        if args.command == "run-loop":
+            runtime = TradingRuntime(config=config, mode=args.mode, state_path=args.state)
+            if args.mode == "live" and not config.upbit.live_enabled:
+                print("live mode requires upbit.live_enabled=true", file=sys.stderr)
+                return 2
+
+            if args.replay_csv:
+                return _run_replay_loop(
+                    runtime=runtime,
+                    replay_csv=args.replay_csv,
+                    warmup_csv=args.warmup_csv,
+                    max_steps=args.max_steps,
+                )
+
+            return _run_broker_loop(
+                runtime=runtime,
+                broker=broker,
+                warmup_csv=args.warmup_csv,
+                poll_seconds=args.poll_seconds,
+                max_steps=args.max_steps,
+            )
+
+        if args.command == "run-selector":
+            selector_config = _selector_config_from_args(config, args)
+            if args.mode == "live" and not selector_config.upbit.live_enabled:
+                print("live mode requires upbit.live_enabled=true", file=sys.stderr)
+                return 2
+            return _run_selector_loop(
+                config=selector_config,
+                broker=broker,
+                mode=args.mode,
+                selector_state_path=args.selector_state,
+                explicit_markets=_parse_markets(args.markets),
+                poll_seconds=args.poll_seconds,
+                max_steps=args.max_steps,
+            )
+
+        if args.command == "run-selector-stream":
+            selector_config = _selector_config_from_args(config, args)
+            if args.mode == "live" and not selector_config.upbit.live_enabled:
+                print("live mode requires upbit.live_enabled=true", file=sys.stderr)
+                return 2
+            return _run_selector_stream(
+                config=selector_config,
+                broker=broker,
+                mode=args.mode,
+                selector_state_path=args.selector_state,
+                explicit_markets=_parse_markets(args.markets),
+                max_events=args.max_events,
+            )
+
+        if args.command == "state-show":
+            if not os.path.exists(args.state):
+                print("state file not found: {0}".format(args.state), file=sys.stderr)
+                return 2
+            runtime = TradingRuntime(config=config, mode="paper", state_path=args.state)
+            runtime.bootstrap([])
+            _print_json(runtime.summary())
+            return 0
+
+        if args.command == "selector-state-show":
+            if not os.path.exists(args.state):
+                print("state file not found: {0}".format(args.state), file=sys.stderr)
+                return 2
+            with open(args.state, "r", encoding="utf-8") as handle:
+                _print_json(json.load(handle))
+            return 0
+    except (UpbitError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

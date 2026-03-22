@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "upbit-auto-trader"
+version = "0.1.0"
+description = "Starter project for Upbit crypto auto trading"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["websocket-client>=1.8,<2"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
