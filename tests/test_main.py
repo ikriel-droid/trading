@@ -9,7 +9,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
-from upbit_auto_trader.main import _run_live_supervisor  # noqa: E402
+from upbit_auto_trader.main import _run_live_daemon, _run_live_supervisor  # noqa: E402
 from upbit_auto_trader.models import Balance, Candle  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.websocket_client import UpbitWebSocketClient  # noqa: E402
@@ -20,6 +20,16 @@ class FakeSupervisorBroker:
         self.quote_balance = 700000.0
         self.base_balance = 0.0
         self.open_orders = [{"uuid": "open-1", "market": "KRW-BTC", "state": "wait"}]
+        self.minute_candles = [
+            {
+                "candle_date_time_kst": "2026-03-26T10:00:00",
+                "opening_price": 101.0,
+                "high_price": 102.0,
+                "low_price": 100.0,
+                "trade_price": 102.0,
+                "candle_acc_trade_volume": 1200.0,
+            }
+        ]
 
     def websocket_private_headers(self):
         return {"Authorization": "Bearer test-token"}
@@ -42,6 +52,9 @@ class FakeSupervisorBroker:
 
     def list_open_orders(self, market=None, state=None, states=None, page=None, limit=None, order_by=None):
         return list(self.open_orders)
+
+    def get_minute_candles(self, market, unit, count=200, to=None):
+        return list(self.minute_candles)
 
 
 class MainTests(unittest.TestCase):
@@ -98,6 +111,36 @@ class MainTests(unittest.TestCase):
             self.assertIn('"open_order_count": 1', output)
             self.assertIn('"message_type": "myAsset"', output)
             self.assertIn('"reconciled_at"', output)
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+
+    def test_run_live_daemon_prints_reconcile_loop_and_final(self):
+        config = load_config(str(PROJECT_ROOT / "config.example.json"))
+        config.runtime.journal_path = ""
+        config.upbit.live_enabled = True
+        broker = FakeSupervisorBroker()
+        state_path = PROJECT_ROOT / "data" / "test-live-daemon-state.json"
+        if state_path.exists():
+            state_path.unlink()
+        try:
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = _run_live_daemon(
+                    config=config,
+                    broker=broker,
+                    state_path=str(state_path),
+                    warmup_csv=str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"),
+                    poll_seconds=0.0,
+                    max_loops=1,
+                    reconcile_every_loops=1,
+                )
+
+            output = stdout.getvalue()
+            self.assertEqual(result, 0)
+            self.assertIn('"kind": "reconcile"', output)
+            self.assertIn('"kind": "loop"', output)
+            self.assertIn('"kind": "final"', output)
         finally:
             if state_path.exists():
                 state_path.unlink()

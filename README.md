@@ -144,6 +144,12 @@ Run a live supervisor that performs an initial reconcile, listens to `myOrder` a
 .venv\Scripts\python.exe -m upbit_auto_trader.main run-live-supervisor --config config.example.json --state data\live-state.json --market KRW-BTC --reconcile-every 10
 ```
 
+Run a single-process live daemon that polls minute candles, executes the live runtime, and performs scheduled reconcile snapshots:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main run-live-daemon --config config.example.json --state data\live-state.json --max-loops 3 --reconcile-every-loops 1
+```
+
 Download recent candle data from Upbit into a CSV:
 
 ```powershell
@@ -253,6 +259,8 @@ The selector trades only one active market at a time. It scans while flat, opens
 `live-reconcile` is a one-shot audit command. It loads the saved live state, syncs balances through `accounts`, reconciles the current pending order through `get-order`, and reports current `open-orders` plus `chance` balances in one JSON payload.
 
 `run-live-supervisor` is the longer-running operational form of the same idea. It starts with `live-reconcile`, then keeps consuming the private websocket, and re-runs reconciliation every N events so exchange state and local JSON state stay aligned.
+
+`run-live-daemon` is the polling-based operational command. It is useful when you want one process to handle candle polling, strategy execution, pending-order reconciliation, and periodic balance or open-order snapshots without depending on a second terminal session.
 
 ## Live-trading checklist
 

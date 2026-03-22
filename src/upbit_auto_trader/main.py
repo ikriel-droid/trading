@@ -149,6 +149,14 @@ def build_parser() -> argparse.ArgumentParser:
     loop_parser.add_argument("--max-steps", type=int)
     loop_parser.add_argument("--poll-seconds", type=float)
 
+    live_daemon_parser = subparsers.add_parser("run-live-daemon")
+    live_daemon_parser.add_argument("--config", required=True)
+    live_daemon_parser.add_argument("--state", required=True)
+    live_daemon_parser.add_argument("--warmup-csv")
+    live_daemon_parser.add_argument("--max-loops", type=int)
+    live_daemon_parser.add_argument("--poll-seconds", type=float)
+    live_daemon_parser.add_argument("--reconcile-every-loops", type=int, default=3)
+
     selector_parser = subparsers.add_parser("run-selector")
     selector_parser.add_argument("--config", required=True)
     selector_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
@@ -321,6 +329,67 @@ def _run_broker_loop(
         time.sleep(max(poll_interval, 1.0))
 
     _print_json(runtime.summary())
+    return 0
+
+
+def _run_live_daemon(
+    config: AppConfig,
+    broker: UpbitBroker,
+    state_path: str,
+    warmup_csv: Optional[str],
+    poll_seconds: Optional[float],
+    max_loops: Optional[int],
+    reconcile_every_loops: int,
+) -> int:
+    runtime = TradingRuntime(config=config, mode="live", state_path=state_path, broker=broker)
+    if os.path.exists(state_path):
+        runtime.bootstrap([])
+    else:
+        runtime.bootstrap(_load_or_fetch_warmup(runtime, config, broker, warmup_csv))
+
+    _print_json({"kind": "reconcile", "data": runtime.reconcile_live_snapshot()})
+
+    poll_interval = poll_seconds if poll_seconds is not None else config.runtime.poll_seconds
+    fetch_count = max(config.upbit.candle_count, runtime.strategy.minimum_history() + 5)
+    loops = 0
+
+    while True:
+        payload = broker.get_minute_candles(
+            market=config.market,
+            unit=config.upbit.candle_unit,
+            count=fetch_count,
+        )
+        new_candles = upbit_candles_to_internal(payload)
+        last_timestamp = runtime.state.last_processed_timestamp
+        cycle_events: List[str] = []
+        processed_candles = 0
+
+        for candle in new_candles:
+            if last_timestamp and candle.timestamp <= last_timestamp:
+                continue
+            cycle_events.extend(runtime.process_candle(candle))
+            processed_candles += 1
+            last_timestamp = runtime.state.last_processed_timestamp
+
+        loops += 1
+        _print_json(
+            {
+                "kind": "loop",
+                "cycle": loops,
+                "processed_candles": processed_candles,
+                "events": cycle_events,
+                "summary": runtime.summary(),
+            }
+        )
+
+        if reconcile_every_loops > 0 and (loops % reconcile_every_loops) == 0:
+            _print_json({"kind": "reconcile", "data": runtime.reconcile_live_snapshot()})
+
+        if max_loops is not None and loops >= max_loops:
+            break
+        time.sleep(max(poll_interval, 1.0))
+
+    _print_json({"kind": "final", "summary": runtime.summary()})
     return 0
 
 
@@ -712,6 +781,20 @@ def main(argv: Optional[List[str]] = None) -> int:
                 warmup_csv=args.warmup_csv,
                 poll_seconds=args.poll_seconds,
                 max_steps=args.max_steps,
+            )
+
+        if args.command == "run-live-daemon":
+            if not config.upbit.live_enabled:
+                print("run-live-daemon requires upbit.live_enabled=true", file=sys.stderr)
+                return 2
+            return _run_live_daemon(
+                config=config,
+                broker=broker,
+                state_path=args.state,
+                warmup_csv=args.warmup_csv,
+                poll_seconds=args.poll_seconds,
+                max_loops=args.max_loops,
+                reconcile_every_loops=args.reconcile_every_loops,
             )
 
         if args.command == "run-selector":
