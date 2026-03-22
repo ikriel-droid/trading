@@ -69,6 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
     chance_parser.add_argument("--config", required=True)
     chance_parser.add_argument("--market")
 
+    reconcile_parser = subparsers.add_parser("live-reconcile")
+    reconcile_parser.add_argument("--config", required=True)
+    reconcile_parser.add_argument("--state", required=True)
+    reconcile_parser.add_argument("--market")
+
     order_show_parser = subparsers.add_parser("order-show")
     order_show_parser.add_argument("--config", required=True)
     order_show_parser.add_argument("--uuid")
@@ -530,6 +535,18 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "chance":
             _print_json(broker.get_order_chance(_market_arg(args, config)))
+            return 0
+
+        if args.command == "live-reconcile":
+            if not os.path.exists(args.state):
+                print("state file not found: {0}".format(args.state), file=sys.stderr)
+                return 2
+            live_config = copy.deepcopy(config)
+            live_config.market = _market_arg(args, config)
+            live_config.upbit.market = live_config.market
+            runtime = TradingRuntime(config=live_config, mode="live", state_path=args.state, broker=broker)
+            runtime.bootstrap([])
+            _print_json(runtime.reconcile_live_snapshot())
             return 0
 
         if args.command == "order-show":

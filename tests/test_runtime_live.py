@@ -7,7 +7,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
-from upbit_auto_trader.models import Action, Candle, Signal  # noqa: E402
+from upbit_auto_trader.models import Action, Balance, Candle, Signal  # noqa: E402
 from upbit_auto_trader.risk import TradePlan  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 
@@ -56,6 +56,7 @@ class FakeLiveBroker:
         self.order_snapshots = list(order_snapshots or [])
         self.cancel_snapshot = cancel_snapshot
         self.cancelled_orders = []
+        self.open_orders = []
 
     def get_order_chance(self, market):
         return {
@@ -70,6 +71,27 @@ class FakeLiveBroker:
     def create_order(self, **kwargs):
         self.orders.append(kwargs)
         return {"uuid": "fake-order"}
+
+    def get_accounts(self):
+        return [
+            Balance(
+                currency="KRW",
+                balance=float(self.quote_balance),
+                locked=0.0,
+                avg_buy_price=0.0,
+                unit_currency="KRW",
+            ),
+            Balance(
+                currency="BTC",
+                balance=float(self.base_balance),
+                locked=0.0,
+                avg_buy_price=0.0,
+                unit_currency="KRW",
+            ),
+        ]
+
+    def list_open_orders(self, market=None, state=None, states=None, page=None, limit=None, order_by=None):
+        return list(self.open_orders)
 
     def get_order(self, uuid=None, identifier=None):
         if self.order_snapshots:
@@ -238,6 +260,24 @@ class RuntimeLiveTests(unittest.TestCase):
             self.assertTrue(any("state=cancel" in event for event in events))
             self.assertEqual(broker.cancelled_orders, ["fake-order"])
             self.assertIsNone(runtime.state.pending_order)
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+
+    def test_reconcile_live_snapshot_returns_open_order_report(self):
+        broker = FakeLiveBroker(quote_balance=777777.0, base_balance=0.0)
+        broker.open_orders = [{"uuid": "open-1", "market": "KRW-BTC", "state": "wait"}]
+        runtime, state_path = self.build_runtime("test-runtime-live-6.json", broker)
+        try:
+            runtime.strategy = FakeStrategy({})
+            runtime.bootstrap([self.make_candle("2026-03-26T09:00:00", 100.0)])
+
+            payload = runtime.reconcile_live_snapshot()
+
+            self.assertEqual(payload["open_order_count"], 1)
+            self.assertEqual(payload["open_orders"][0]["uuid"], "open-1")
+            self.assertAlmostEqual(payload["summary"]["cash"], 777777.0)
+            self.assertTrue(any("MYASSET SYNC" in event for event in payload["events"]))
         finally:
             if state_path.exists():
                 state_path.unlink()

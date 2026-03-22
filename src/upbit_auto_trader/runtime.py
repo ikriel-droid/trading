@@ -163,6 +163,52 @@ class TradingRuntime:
             "state_path": self.state_path,
         }
 
+    def reconcile_live_snapshot(self) -> Dict[str, Any]:
+        if self.state is None:
+            raise ValueError("runtime must be bootstrapped before reconcile_live_snapshot")
+        if self.mode != "live":
+            raise ValueError("reconcile_live_snapshot requires live mode")
+        if self.broker is None:
+            raise ValueError("live mode requires broker")
+
+        event_timestamp = datetime.now(timezone.utc).isoformat()
+        events: List[str] = []
+
+        balances = self.broker.get_accounts()
+        asset_payload = {
+            "type": "myAsset",
+            "assets": [
+                {
+                    "currency": item.currency,
+                    "balance": item.balance,
+                    "locked": item.locked,
+                }
+                for item in balances
+            ],
+            "timestamp": event_timestamp,
+        }
+        events.extend(self.apply_myasset_event(asset_payload))
+
+        if self.state.pending_order is not None:
+            events.extend(self._reconcile_live_pending_order(event_timestamp, self.state.processed_bars))
+
+        open_orders = self.broker.list_open_orders(market=self.config.market, states=["wait", "watch"])
+        chance = self._get_live_order_chance()
+        report = {
+            "summary": self.summary(),
+            "open_orders": open_orders,
+            "open_order_count": len(open_orders),
+            "chance": {
+                "bid_balance": round(self._chance_balance(chance, "bid_account"), 8),
+                "ask_balance": round(self._chance_balance(chance, "ask_account"), 8),
+                "bid_min_total": round(self._chance_min_total(chance, "bid"), 8),
+                "ask_min_total": round(self._chance_min_total(chance, "ask"), 8),
+            },
+            "events": events,
+            "reconciled_at": event_timestamp,
+        }
+        return report
+
     def apply_myorder_event(self, payload: Dict[str, Any]) -> List[str]:
         if self.state is None:
             raise ValueError("runtime must be bootstrapped before apply_myorder_event")

@@ -132,6 +132,12 @@ Listen to `MyOrder` and `MyAsset` together on the private websocket and double-c
 .venv\Scripts\python.exe -m upbit_auto_trader.main listen-private --config config.example.json --state data\live-state.json --market KRW-BTC --max-events 20
 ```
 
+Run a one-shot live reconciliation against the saved state, balances, chance info, and open orders:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main live-reconcile --config config.example.json --state data\live-state.json --market KRW-BTC
+```
+
 Download recent candle data from Upbit into a CSV:
 
 ```powershell
@@ -237,6 +243,8 @@ The selector trades only one active market at a time. It scans while flat, opens
 `listen-private` combines `myOrder` and `myAsset`. `myOrder` updates actual fills, and `myAsset` stores a live asset snapshot plus mismatch warnings when account balances and bot state drift apart.
 
 `order-show`, `open-orders`, `cancel-order`, `cancel-open-orders`, and `cancel-and-new` are direct helpers around Upbit's authenticated order-management endpoints. They are useful for live troubleshooting and manual cleanup while the runtime keeps its own JSON state file.
+
+`live-reconcile` is a one-shot audit command. It loads the saved live state, syncs balances through `accounts`, reconciles the current pending order through `get-order`, and reports current `open-orders` plus `chance` balances in one JSON payload.
 
 ## Live-trading checklist
 
