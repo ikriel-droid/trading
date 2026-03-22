@@ -16,6 +16,7 @@ from .datafeed import (
     upbit_candles_to_internal,
     write_csv_candles,
 )
+from .optimizer import run_grid_search
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
@@ -39,6 +40,16 @@ def build_parser() -> argparse.ArgumentParser:
     signal_parser = subparsers.add_parser("signal")
     signal_parser.add_argument("--config", required=True)
     signal_parser.add_argument("--csv", required=True)
+
+    optimize_parser = subparsers.add_parser("optimize-grid")
+    optimize_parser.add_argument("--config", required=True)
+    optimize_parser.add_argument("--csv", required=True)
+    optimize_parser.add_argument("--buy-thresholds")
+    optimize_parser.add_argument("--sell-thresholds")
+    optimize_parser.add_argument("--min-adx-values")
+    optimize_parser.add_argument("--min-bollinger-width-values")
+    optimize_parser.add_argument("--volume-spike-multipliers")
+    optimize_parser.add_argument("--top", type=int, default=10)
 
     markets_parser = subparsers.add_parser("markets")
     markets_parser.add_argument("--config", required=True)
@@ -213,6 +224,12 @@ def _parse_markets(value: Optional[str]) -> List[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _parse_float_values(value: Optional[str], default: List[float]) -> List[float]:
+    if not value:
+        return list(default)
+    return [float(item.strip()) for item in value.split(",") if item.strip()]
 
 
 def _selector_config_from_args(config: AppConfig, args: argparse.Namespace) -> AppConfig:
@@ -581,6 +598,47 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "score": signal.score,
                     "confidence": signal.confidence,
                     "reasons": signal.reasons,
+                }
+            )
+            return 0
+
+        if args.command == "optimize-grid":
+            candles = load_csv_candles(args.csv)
+            results = run_grid_search(
+                config=config,
+                candles=candles,
+                buy_thresholds=_parse_float_values(args.buy_thresholds, [62.0, 65.0, 68.0]),
+                sell_thresholds=_parse_float_values(args.sell_thresholds, [35.0, 40.0, 45.0]),
+                min_adx_values=_parse_float_values(args.min_adx_values, [16.0, 18.0, 20.0]),
+                min_bollinger_width_values=_parse_float_values(
+                    args.min_bollinger_width_values,
+                    [0.012, 0.015, 0.018],
+                ),
+                volume_spike_multipliers=_parse_float_values(
+                    args.volume_spike_multipliers,
+                    [1.2, 1.3, 1.4],
+                ),
+            )
+            _print_json(
+                {
+                    "market": config.market,
+                    "tested": len(results),
+                    "top": [
+                        {
+                            "rank": index + 1,
+                            "buy_threshold": item.buy_threshold,
+                            "sell_threshold": item.sell_threshold,
+                            "min_adx": item.min_adx,
+                            "min_bollinger_width_fraction": item.min_bollinger_width_fraction,
+                            "volume_spike_multiplier": item.volume_spike_multiplier,
+                            "final_equity": round(item.final_equity, 2),
+                            "total_return_pct": round(item.total_return_pct, 4),
+                            "max_drawdown_pct": round(item.max_drawdown_pct, 4),
+                            "win_rate_pct": round(item.win_rate_pct, 4),
+                            "trade_count": item.trade_count,
+                        }
+                        for index, item in enumerate(results[: max(1, args.top)])
+                    ],
                 }
             )
             return 0

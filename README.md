@@ -84,6 +84,12 @@ Inspect the latest flat-position signal:
 .venv\Scripts\python.exe -m upbit_auto_trader.main signal --config config.example.json --csv data/demo_krw_btc_15m.csv
 ```
 
+Run a small grid search to compare strategy settings on a CSV backtest:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main optimize-grid --config config.example.json --csv data/demo_krw_btc_15m.csv --top 5
+```
+
 Preview a market buy order request:
 
 ```powershell
