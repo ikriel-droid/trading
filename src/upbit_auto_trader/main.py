@@ -17,6 +17,7 @@ from .datafeed import (
     write_csv_candles,
 )
 from .optimizer import run_grid_search
+from .notifier import DiscordWebhookNotifier, NotificationError
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
@@ -89,6 +90,10 @@ def build_parser() -> argparse.ArgumentParser:
     chance_parser = subparsers.add_parser("chance")
     chance_parser.add_argument("--config", required=True)
     chance_parser.add_argument("--market")
+
+    notify_parser = subparsers.add_parser("notify-test")
+    notify_parser.add_argument("--config", required=True)
+    notify_parser.add_argument("--message", default="manual notification test")
 
     reconcile_parser = subparsers.add_parser("live-reconcile")
     reconcile_parser.add_argument("--config", required=True)
@@ -740,6 +745,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             _print_json(broker.get_order_chance(_market_arg(args, config)))
             return 0
 
+        if args.command == "notify-test":
+            notifier = DiscordWebhookNotifier(config.notifications)
+            sent = notifier.send_test(args.message)
+            _print_json(
+                {
+                    "sent": sent,
+                    "message": args.message,
+                    "webhook_configured": bool(config.notifications.discord_webhook_url),
+                }
+            )
+            return 0
+
         if args.command == "live-reconcile":
             if not os.path.exists(args.state):
                 print("state file not found: {0}".format(args.state), file=sys.stderr)
@@ -922,7 +939,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             with open(args.state, "r", encoding="utf-8") as handle:
                 _print_json(json.load(handle))
             return 0
-    except (UpbitError, ValueError) as exc:
+    except (NotificationError, UpbitError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
 

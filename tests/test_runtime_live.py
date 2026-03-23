@@ -121,15 +121,24 @@ class FakeLiveBroker:
         }
 
 
+class RecordingNotifier:
+    def __init__(self):
+        self.records = []
+
+    def notify(self, record):
+        self.records.append(dict(record))
+        return True
+
+
 class RuntimeLiveTests(unittest.TestCase):
-    def build_runtime(self, state_name, broker):
+    def build_runtime(self, state_name, broker, notifier=None):
         config = load_config(str(PROJECT_ROOT / "config.example.json"))
         config.runtime.journal_path = ""
         config.upbit.live_enabled = True
         state_path = PROJECT_ROOT / "data" / state_name
         if state_path.exists():
             state_path.unlink()
-        runtime = TradingRuntime(config=config, mode="live", state_path=state_path, broker=broker)
+        runtime = TradingRuntime(config=config, mode="live", state_path=state_path, broker=broker, notifier=notifier)
         return runtime, state_path
 
     def make_candle(self, timestamp, close):
@@ -278,6 +287,22 @@ class RuntimeLiveTests(unittest.TestCase):
             self.assertEqual(payload["open_orders"][0]["uuid"], "open-1")
             self.assertAlmostEqual(payload["summary"]["cash"], 777777.0)
             self.assertTrue(any("MYASSET SYNC" in event for event in payload["events"]))
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+
+    def test_blocked_entry_is_forwarded_to_notifier(self):
+        broker = FakeLiveBroker(quote_balance=10000.0, base_balance=0.0, bid_min_total=9000.0)
+        notifier = RecordingNotifier()
+        runtime, state_path = self.build_runtime("test-runtime-live-7.json", broker, notifier=notifier)
+        try:
+            runtime.strategy = FakeStrategy({("2026-03-26T09:01:00", False): Action.BUY})
+            runtime.risk = FakeRiskManager(size_fraction=0.1)
+            runtime.bootstrap([self.make_candle("2026-03-26T09:00:00", 100.0)])
+
+            runtime.process_candle(self.make_candle("2026-03-26T09:01:00", 100.0))
+
+            self.assertTrue(any(record["event_type"] == "blocked" for record in notifier.records))
         finally:
             if state_path.exists():
                 state_path.unlink()

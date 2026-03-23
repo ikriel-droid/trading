@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from .config import AppConfig
 from .indicators import atr
 from .models import Action, Candle, ClosedTrade, PendingOrder, Position, Signal
+from .notifier import DiscordWebhookNotifier, NotificationError
 from .risk import RiskManager
 from .strategy import ProfessionalCryptoStrategy
 
@@ -34,7 +35,14 @@ class RuntimeState:
 
 
 class TradingRuntime:
-    def __init__(self, config: AppConfig, mode: str, state_path: str, broker: Any = None) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        mode: str,
+        state_path: str,
+        broker: Any = None,
+        notifier: Any = None,
+    ) -> None:
         if mode not in ("paper", "live"):
             raise ValueError("mode must be paper or live")
 
@@ -44,6 +52,7 @@ class TradingRuntime:
         self.broker = broker
         self.strategy = ProfessionalCryptoStrategy(config.strategy)
         self.risk = RiskManager(config.risk)
+        self.notifier = notifier or DiscordWebhookNotifier(config.notifications)
         self.state = None
 
     def bootstrap(self, warmup_candles: List[Candle]) -> RuntimeState:
@@ -339,7 +348,7 @@ class TradingRuntime:
     def _maybe_enter_position(self, candle: Candle, atr_value: float, drawdown_fraction: float, signal: Signal) -> Optional[str]:
         trade_plan = self.risk.build_trade_plan(candle.close, atr_value, drawdown_fraction)
         if trade_plan.blocked:
-            return "{0} BLOCKED {1} reason={2}".format(candle.timestamp, self.config.market, trade_plan.block_reason)
+            return self._blocked_event(candle.timestamp, trade_plan.block_reason)
 
         available_cash = self.state.cash
         min_total = 0.0
@@ -351,14 +360,14 @@ class TradingRuntime:
 
         budget = available_cash * trade_plan.size_fraction
         if min_total > 0 and budget < min_total:
-            return "{0} BLOCKED {1} reason=minimum_order_bid".format(candle.timestamp, self.config.market)
+            return self._blocked_event(candle.timestamp, "minimum_order_bid")
 
         entry_price = self._apply_buy_slippage(candle.close)
         quantity = budget / entry_price
         total_cost = self._buy_total_cost(entry_price, quantity)
 
         if quantity <= 0 or total_cost > available_cash:
-            return "{0} BLOCKED {1} reason=insufficient_cash".format(candle.timestamp, self.config.market)
+            return self._blocked_event(candle.timestamp, "insufficient_cash")
 
         if self.mode == "live":
             response = self.broker.create_order(
@@ -472,12 +481,12 @@ class TradingRuntime:
             available_quantity = self._chance_balance(chance, "ask_account")
             min_total = self._chance_min_total(chance, "ask")
             if available_quantity <= 0:
-                return "{0} BLOCKED {1} reason=live_position_mismatch".format(candle.timestamp, self.config.market)
+                return self._blocked_event(candle.timestamp, "live_position_mismatch")
             if available_quantity < (position.quantity * 0.9):
-                return "{0} BLOCKED {1} reason=live_position_mismatch".format(candle.timestamp, self.config.market)
+                return self._blocked_event(candle.timestamp, "live_position_mismatch")
             quantity = min(position.quantity, available_quantity)
             if min_total > 0 and (raw_exit_price * quantity) < min_total:
-                return "{0} BLOCKED {1} reason=minimum_order_ask".format(candle.timestamp, self.config.market)
+                return self._blocked_event(candle.timestamp, "minimum_order_ask")
             response = self.broker.create_order(
                 market=self.config.market,
                 side="ask",
@@ -840,14 +849,6 @@ class TradingRuntime:
         return (current_bar_index - order.created_bar_index) >= max_bars
 
     def _append_journal(self, payload: Dict[str, Any]) -> None:
-        if not self.config.runtime.journal_path:
-            return
-
-        journal_path = os.fspath(self.config.runtime.journal_path)
-        directory = os.path.dirname(journal_path)
-        if directory:
-            os.makedirs(directory, exist_ok=True)
-
         record = {
             "saved_at": datetime.now(timezone.utc).isoformat(),
             "market": self.config.market,
@@ -858,8 +859,38 @@ class TradingRuntime:
             "asset_snapshot": self.state.asset_snapshot,
         }
         record.update(payload)
+        self._notify_record(record)
+
+        if not self.config.runtime.journal_path:
+            return
+
+        journal_path = os.fspath(self.config.runtime.journal_path)
+        directory = os.path.dirname(journal_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+
         with open(journal_path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def _notify_record(self, record: Dict[str, Any]) -> None:
+        try:
+            self.notifier.notify(record)
+        except NotificationError as exc:
+            if self.state is not None:
+                self.state.events.append("NOTIFY ERROR {0}".format(exc))
+                self.state.events = self.state.events[-500:]
+
+    def _blocked_event(self, timestamp: str, reason: str) -> str:
+        event = "{0} BLOCKED {1} reason={2}".format(timestamp, self.config.market, reason)
+        self._append_journal(
+            {
+                "event_type": "blocked",
+                "timestamp": timestamp,
+                "market": self.config.market,
+                "reason": reason,
+            }
+        )
+        return event
 
     def _load_state(self) -> Optional[RuntimeState]:
         if not os.path.exists(self.state_path):

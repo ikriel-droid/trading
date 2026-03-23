@@ -105,6 +105,12 @@ Preview a market buy order request:
 .venv\Scripts\python.exe -m upbit_auto_trader.main order-preview --config config.example.json --side bid --ord-type price --price 100000
 ```
 
+Send a test Discord webhook notification:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main notify-test --config config.example.json --message "runtime notification test"
+```
+
 Show a specific order by UUID or identifier:
 
 ```powershell
@@ -258,6 +264,16 @@ The `upbit` section also includes request-layer safety controls:
 - `retry_backoff_seconds`: exponential backoff base between retry attempts
 
 The broker only auto-retries `GET` requests. It does not auto-retry `POST` or `DELETE` order-changing calls because that would risk duplicate submissions or repeated cancels after an ambiguous network failure.
+
+The `notifications` section controls optional external alerts:
+
+- `discord_webhook_url`: Discord incoming webhook URL
+- `enabled_levels`: which severity levels can be sent
+- `enabled_event_types`: which runtime event types can trigger a webhook
+- `cooldown_seconds`: minimum gap before repeating the same event class for the same market
+- `timeout_seconds`: webhook delivery timeout
+
+If the webhook is configured, runtime journal events such as `blocked`, `buy`, `sell`, `buy_fill`, `sell_fill`, and pending-order cancellation warnings can be forwarded to Discord without changing the rest of the trading loop.
 
 In `live` mode, the runtime now checks `주문 가능 정보 조회` before placing orders:
 

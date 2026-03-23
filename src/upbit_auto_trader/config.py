@@ -90,6 +90,26 @@ class UpbitConfig:
 
 
 @dataclass
+class NotificationConfig:
+    discord_webhook_url: str = ""
+    enabled_levels: List[str] = field(default_factory=lambda: ["error", "warning", "success"])
+    enabled_event_types: List[str] = field(
+        default_factory=lambda: [
+            "blocked",
+            "buy",
+            "sell",
+            "buy_submitted",
+            "buy_fill",
+            "sell_fill",
+            "myorder_done",
+            "pending_order_cancel_requested",
+        ]
+    )
+    cooldown_seconds: float = 5.0
+    timeout_seconds: float = 5.0
+
+
+@dataclass
 class AppConfig:
     market: str
     initial_cash: float = 1000000.0
@@ -100,6 +120,7 @@ class AppConfig:
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     selector: SelectorConfig = field(default_factory=SelectorConfig)
     upbit: UpbitConfig = field(default_factory=UpbitConfig)
+    notifications: NotificationConfig = field(default_factory=NotificationConfig)
 
 
 def _resolve_env(value: Any) -> Any:
@@ -140,4 +161,5 @@ def load_config(path: str) -> AppConfig:
         runtime=RuntimeConfig(**raw.get("runtime", {})),
         selector=SelectorConfig(**raw.get("selector", {})),
         upbit=upbit,
+        notifications=NotificationConfig(**raw.get("notifications", {})),
     )

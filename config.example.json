@@ -62,6 +62,22 @@
     "skip_warning_markets": true,
     "states_dir": "data/selector-states"
   },
+  "notifications": {
+    "discord_webhook_url": "${DISCORD_WEBHOOK_URL}",
+    "enabled_levels": ["error", "warning", "success"],
+    "enabled_event_types": [
+      "blocked",
+      "buy",
+      "sell",
+      "buy_submitted",
+      "buy_fill",
+      "sell_fill",
+      "myorder_done",
+      "pending_order_cancel_requested"
+    ],
+    "cooldown_seconds": 5.0,
+    "timeout_seconds": 5.0
+  },
   "upbit": {
     "base_url": "https://api.upbit.com/v1",
     "market": "KRW-BTC",
