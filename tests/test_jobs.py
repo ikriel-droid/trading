@@ -2,6 +2,7 @@ import pathlib
 import sys
 import time
 import unittest
+import uuid
 
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -9,12 +10,20 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.jobs import (  # noqa: E402
     BackgroundJobManager,
+    JOB_LOG_DIR,
+    RotatingLogWriter,
     build_live_supervisor_command,
     build_paper_selector_command,
 )
 
 
 class JobTests(unittest.TestCase):
+    def tearDown(self):
+        for pattern in ("test-job.log*", "rotation-job.log*", "rotation-*.log*"):
+            for path in JOB_LOG_DIR.glob(pattern):
+                if path.exists():
+                    path.unlink()
+
     def test_builder_creates_selector_command(self):
         command = build_paper_selector_command(
             config_path="config.example.json",
@@ -68,6 +77,46 @@ class JobTests(unittest.TestCase):
         stopped = manager.stop_job("test-job")
         self.assertFalse(stopped["running"])
         self.assertIn("job-started", stopped["log_tail"])
+
+    def test_rotating_log_writer_rotates_when_max_size_is_exceeded(self):
+        log_name = "rotation-{0}.log".format(uuid.uuid4().hex)
+        log_path = JOB_LOG_DIR / log_name
+        writer = RotatingLogWriter(str(log_path), max_bytes=60, backup_count=2)
+        try:
+            writer.write("A" * 40)
+            writer.write("B" * 40)
+            writer.write("C" * 40)
+        finally:
+            writer.close()
+
+        self.assertTrue(log_path.exists())
+        self.assertTrue((JOB_LOG_DIR / "{0}.1".format(log_name)).exists())
+        self.assertIn(str(JOB_LOG_DIR / "{0}.1".format(log_name)), writer.list_archives())
+
+        for path in [log_path, JOB_LOG_DIR / "{0}.1".format(log_name), JOB_LOG_DIR / "{0}.2".format(log_name)]:
+            if path.exists():
+                path.unlink()
+
+    def test_manager_exposes_rotated_log_archives(self):
+        manager = BackgroundJobManager(log_max_bytes=80, log_backup_count=2)
+        command = [
+            sys.executable,
+            "-c",
+            "print('X' * 120); print('Y' * 120)",
+        ]
+
+        payload = manager.start_job(
+            name="rotation-job",
+            kind="test",
+            command=command,
+            cwd=str(PROJECT_ROOT),
+        )
+        time.sleep(0.4)
+        stopped = manager.stop_job("rotation-job")
+
+        self.assertIn("log_archives", payload)
+        self.assertGreaterEqual(len(stopped["log_archives"]), 1)
+        self.assertTrue(any(path.endswith(".1") for path in stopped["log_archives"]))
 
 
 if __name__ == "__main__":

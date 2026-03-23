@@ -9,6 +9,77 @@ from typing import Any, Dict, List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 JOB_LOG_DIR = PROJECT_ROOT / "data" / "webui-jobs"
+DEFAULT_LOG_MAX_BYTES = 1_000_000
+DEFAULT_LOG_BACKUP_COUNT = 3
+
+
+class RotatingLogWriter:
+    def __init__(self, log_path: str, max_bytes: int = DEFAULT_LOG_MAX_BYTES, backup_count: int = DEFAULT_LOG_BACKUP_COUNT) -> None:
+        self.path = Path(log_path)
+        self.max_bytes = max(0, int(max_bytes))
+        self.backup_count = max(0, int(backup_count))
+        self._lock = threading.Lock()
+        self._handle = None
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._open_handle()
+
+    def write(self, text: str) -> None:
+        if not text:
+            return
+        encoded = text.encode("utf-8", errors="replace")
+        with self._lock:
+            self._rotate_if_needed(len(encoded))
+            if self._handle is None:
+                self._open_handle()
+            self._handle.write(text)
+            self._handle.flush()
+
+    def close(self) -> None:
+        with self._lock:
+            if self._handle is not None and not self._handle.closed:
+                self._handle.flush()
+                self._handle.close()
+
+    def list_archives(self) -> List[str]:
+        archives = []
+        for index in range(1, self.backup_count + 1):
+            archive_path = self.path.with_name("{0}.{1}".format(self.path.name, index))
+            if archive_path.exists():
+                archives.append(str(archive_path))
+        return archives
+
+    def _rotate_if_needed(self, incoming_bytes: int) -> None:
+        if self.max_bytes <= 0:
+            return
+
+        current_size = self.path.stat().st_size if self.path.exists() else 0
+        if current_size + incoming_bytes <= self.max_bytes:
+            return
+
+        if self._handle is not None and not self._handle.closed:
+            self._handle.flush()
+            self._handle.close()
+
+        if self.backup_count > 0:
+            oldest = self.path.with_name("{0}.{1}".format(self.path.name, self.backup_count))
+            if oldest.exists():
+                oldest.unlink()
+
+            for index in range(self.backup_count - 1, 0, -1):
+                source = self.path.with_name("{0}.{1}".format(self.path.name, index))
+                target = self.path.with_name("{0}.{1}".format(self.path.name, index + 1))
+                if source.exists():
+                    source.replace(target)
+
+            if self.path.exists():
+                self.path.replace(self.path.with_name("{0}.1".format(self.path.name)))
+        elif self.path.exists():
+            self.path.unlink()
+
+        self._open_handle()
+
+    def _open_handle(self) -> None:
+        self._handle = open(self.path, "a", encoding="utf-8")
 
 
 @dataclass
@@ -19,35 +90,57 @@ class ManagedJob:
     cwd: str
     log_path: str
     process: subprocess.Popen
-    log_handle: Any
+    log_writer: RotatingLogWriter
+    output_thread: threading.Thread
     started_at: float
 
 
 class BackgroundJobManager:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        log_max_bytes: int = DEFAULT_LOG_MAX_BYTES,
+        log_backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
+    ) -> None:
         self._jobs: Dict[str, ManagedJob] = {}
         self._lock = threading.Lock()
+        self._log_max_bytes = log_max_bytes
+        self._log_backup_count = log_backup_count
 
     def start_job(self, name: str, kind: str, command: List[str], cwd: Optional[str] = None) -> Dict[str, Any]:
         with self._lock:
             current = self._jobs.get(name)
             if current is not None and current.process.poll() is None:
                 return self._serialize_job(current)
+            if current is not None:
+                self._finalize_job_resources(current)
 
             JOB_LOG_DIR.mkdir(parents=True, exist_ok=True)
             log_path = str(JOB_LOG_DIR / "{0}.log".format(name))
-            log_handle = open(log_path, "a", encoding="utf-8")
-            log_handle.write("\n[{0}] starting {1}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(command)))
-            log_handle.flush()
+            log_writer = RotatingLogWriter(
+                log_path=log_path,
+                max_bytes=self._log_max_bytes,
+                backup_count=self._log_backup_count,
+            )
+            log_writer.write("\n[{0}] starting {1}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(command)))
 
             process = subprocess.Popen(
                 command,
                 cwd=cwd or str(PROJECT_ROOT),
-                stdout=log_handle,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
+            output_thread = threading.Thread(
+                target=self._pump_process_output,
+                args=(process, log_writer),
+                daemon=True,
+            )
+            output_thread.start()
             job = ManagedJob(
                 name=name,
                 kind=kind,
@@ -55,7 +148,8 @@ class BackgroundJobManager:
                 cwd=cwd or str(PROJECT_ROOT),
                 log_path=log_path,
                 process=process,
-                log_handle=log_handle,
+                log_writer=log_writer,
+                output_thread=output_thread,
                 started_at=time.time(),
             )
             self._jobs[name] = job
@@ -75,10 +169,9 @@ class BackgroundJobManager:
                     job.process.kill()
                     job.process.wait(timeout=5)
 
-            if not job.log_handle.closed:
-                job.log_handle.write("\n[{0}] stopped\n".format(time.strftime("%Y-%m-%d %H:%M:%S")))
-                job.log_handle.flush()
-                job.log_handle.close()
+            self._join_output_thread(job)
+            job.log_writer.write("\n[{0}] stopped\n".format(time.strftime("%Y-%m-%d %H:%M:%S")))
+            self._finalize_job_resources(job)
             return self._serialize_job(job)
 
     def list_jobs(self) -> List[Dict[str, Any]]:
@@ -107,6 +200,7 @@ class BackgroundJobManager:
             "command": job.command,
             "cwd": job.cwd,
             "log_path": job.log_path,
+            "log_archives": job.log_writer.list_archives(),
             "log_tail": self._tail_log(job.log_path),
         }
 
@@ -117,6 +211,25 @@ class BackgroundJobManager:
         with open(path, "r", encoding="utf-8", errors="replace") as handle:
             lines = handle.readlines()
         return "".join(lines[-max_lines:])
+
+    def _pump_process_output(self, process: subprocess.Popen, log_writer: RotatingLogWriter) -> None:
+        if process.stdout is None:
+            return
+        try:
+            for chunk in process.stdout:
+                if not chunk:
+                    continue
+                log_writer.write(chunk)
+        finally:
+            process.stdout.close()
+
+    def _finalize_job_resources(self, job: ManagedJob) -> None:
+        self._join_output_thread(job)
+        job.log_writer.close()
+
+    def _join_output_thread(self, job: ManagedJob) -> None:
+        if job.output_thread.is_alive():
+            job.output_thread.join(timeout=2)
 
 
 def build_paper_loop_command(
