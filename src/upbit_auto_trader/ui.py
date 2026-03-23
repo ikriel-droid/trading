@@ -91,7 +91,7 @@ def update_editable_config(config_path: str, values: Dict[str, Any]) -> Dict[str
     }
 
 
-def load_runtime_summary(config_path: str, state_path: Optional[str], mode: str) -> Optional[Dict[str, Any]]:
+def _load_runtime_for_dashboard(config_path: str, state_path: Optional[str], mode: str) -> Optional[TradingRuntime]:
     if not state_path or not Path(state_path).exists():
         return None
 
@@ -102,7 +102,94 @@ def load_runtime_summary(config_path: str, state_path: Optional[str], mode: str)
         return None
     runtime.state = state
     runtime.mode = mode
+    return runtime
+
+
+def load_runtime_summary(config_path: str, state_path: Optional[str], mode: str) -> Optional[Dict[str, Any]]:
+    runtime = _load_runtime_for_dashboard(config_path, state_path, mode)
+    if runtime is None:
+        return None
     return runtime.summary()
+
+
+def _serialize_closed_trade(trade: Any) -> Dict[str, Any]:
+    return {
+        "market": trade.market,
+        "entry_timestamp": trade.entry_timestamp,
+        "exit_timestamp": trade.exit_timestamp,
+        "entry_price": round(trade.entry_price, 8),
+        "exit_price": round(trade.exit_price, 8),
+        "quantity": round(trade.quantity, 8),
+        "gross_pnl": round(trade.gross_pnl, 8),
+        "net_pnl": round(trade.net_pnl, 8),
+        "return_pct": round(trade.return_pct, 4),
+        "exit_reason": trade.exit_reason,
+    }
+
+
+def _build_recent_activity(runtime: Optional[TradingRuntime]) -> Dict[str, Any]:
+    if runtime is None or runtime.state is None:
+        return {
+            "recent_events": [],
+            "recent_trades": [],
+        }
+
+    recent_trades = [_serialize_closed_trade(item) for item in runtime.state.closed_trades[-10:]]
+    recent_trades.reverse()
+    recent_events = list(runtime.state.events[-20:])
+    recent_events.reverse()
+    return {
+        "recent_events": recent_events,
+        "recent_trades": recent_trades,
+    }
+
+
+def _build_chart_markers(chart_points: list[Dict[str, Any]], runtime: Optional[TradingRuntime]) -> list[Dict[str, Any]]:
+    if runtime is None or runtime.state is None:
+        return []
+
+    visible_timestamps = {point["timestamp"] for point in chart_points}
+    markers = []
+
+    for trade in runtime.state.closed_trades[-40:]:
+        if trade.entry_timestamp in visible_timestamps:
+            markers.append(
+                {
+                    "timestamp": trade.entry_timestamp,
+                    "price": round(trade.entry_price, 8),
+                    "side": "buy",
+                    "kind": "entry",
+                    "label": "B",
+                    "note": "trade entry",
+                }
+            )
+        if trade.exit_timestamp in visible_timestamps:
+            markers.append(
+                {
+                    "timestamp": trade.exit_timestamp,
+                    "price": round(trade.exit_price, 8),
+                    "side": "sell",
+                    "kind": "exit",
+                    "label": "S",
+                    "note": trade.exit_reason,
+                    "net_pnl": round(trade.net_pnl, 8),
+                }
+            )
+
+    if runtime.state.position is not None and runtime.state.position.entry_timestamp in visible_timestamps:
+        markers.append(
+            {
+                "timestamp": runtime.state.position.entry_timestamp,
+                "price": round(runtime.state.position.entry_price, 8),
+                "side": "buy",
+                "kind": "open_position",
+                "label": "O",
+                "note": "open position",
+            }
+        )
+
+    markers.sort(key=lambda item: (item["timestamp"], item["kind"], item["price"]))
+    return markers
 
 
 def run_signal_action(config_path: str, csv_path: str) -> Dict[str, Any]:
@@ -269,6 +356,7 @@ def build_dashboard_payload(
     config = load_config(config_path)
     broker = UpbitBroker(config.upbit)
     job_manager = job_manager or JOB_MANAGER
+    runtime = _load_runtime_for_dashboard(config_path, state_path, mode)
     payload: Dict[str, Any] = {
         "paths": {
             "config_path": config_path,
@@ -283,7 +371,8 @@ def build_dashboard_payload(
             "selector_max_markets": config.selector.max_markets,
         },
         "broker_readiness": broker.readiness_report(),
-        "state_summary": load_runtime_summary(config_path, state_path, mode),
+        "state_summary": runtime.summary() if runtime is not None else None,
+        "activity": _build_recent_activity(runtime),
         "editable_config": load_editable_config(config_path),
         "jobs": job_manager.list_jobs(),
         "ui_defaults": {
@@ -297,28 +386,30 @@ def build_dashboard_payload(
 
     if csv_path and Path(csv_path).exists():
         candles = load_csv_candles(csv_path)
+        chart_points = [
+            {
+                "timestamp": candle.timestamp,
+                "open": candle.open,
+                "high": candle.high,
+                "low": candle.low,
+                "close": candle.close,
+                "volume": candle.volume,
+            }
+            for candle in candles[-120:]
+        ]
         payload["csv_info"] = {
             "rows": len(candles),
             "first_timestamp": candles[0].timestamp if candles else "",
             "last_timestamp": candles[-1].timestamp if candles else "",
         }
         payload["chart"] = {
-            "points": [
-                {
-                    "timestamp": candle.timestamp,
-                    "open": candle.open,
-                    "high": candle.high,
-                    "low": candle.low,
-                    "close": candle.close,
-                    "volume": candle.volume,
-                }
-                for candle in candles[-120:]
-            ],
+            "points": chart_points,
+            "markers": _build_chart_markers(chart_points, runtime),
         }
         payload["latest_signal"] = run_signal_action(config_path, csv_path)
     else:
         payload["csv_info"] = None
-        payload["chart"] = None
+        payload["chart"] = {"points": [], "markers": []}
         payload["latest_signal"] = None
 
     return payload

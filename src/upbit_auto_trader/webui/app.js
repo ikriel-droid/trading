@@ -16,6 +16,8 @@ const ids = {
   logs: document.getElementById("logs-json"),
   paths: document.getElementById("paths-json"),
   readiness: document.getElementById("readiness-json"),
+  recentTrades: document.getElementById("recent-trades-json"),
+  recentEvents: document.getElementById("recent-events-json"),
   chart: document.getElementById("price-chart"),
   chartMeta: document.getElementById("chart-meta"),
   csvPath: document.getElementById("csv-path-input"),
@@ -45,6 +47,15 @@ let refreshTimer = null;
 
 function pretty(value) {
   return JSON.stringify(value, null, 2);
+}
+
+function escapeXml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
 function setMetric(element, value) {
@@ -134,6 +145,44 @@ function renderPriceChart(chartPayload) {
     const y = height - padding - (((point.close - min) / range) * (height - (padding * 2)));
     return { x, y, close: point.close, timestamp: point.timestamp };
   });
+  const timestampIndex = new Map(coords.map((point) => [point.timestamp, point]));
+  const markerOffsets = {};
+  const markers = (chartPayload.markers || [])
+    .map((marker) => {
+      const point = timestampIndex.get(marker.timestamp);
+      if (!point) {
+        return "";
+      }
+
+      const offsetKey = `${marker.timestamp}:${marker.kind}`;
+      const stackIndex = markerOffsets[offsetKey] || 0;
+      markerOffsets[offsetKey] = stackIndex + 1;
+      const markerY = height - padding - (((marker.price - min) / range) * (height - (padding * 2))) - (stackIndex * 18);
+      const markerX = point.x;
+      let fill = "#d18a1f";
+      if (marker.side === "buy") {
+        fill = marker.kind === "open_position" ? "#c9892a" : "#0f9b62";
+      } else if (marker.side === "sell") {
+        fill = "#b2392e";
+      }
+      const label = escapeXml(marker.label || "?");
+      const title = escapeXml(
+        `${marker.timestamp} ${marker.kind} price=${Number(marker.price || 0).toFixed(2)}`
+        + (marker.note ? ` ${marker.note}` : "")
+        + (marker.net_pnl !== undefined ? ` pnl=${Number(marker.net_pnl).toFixed(2)}` : ""),
+      );
+      return `
+        <g class="chart-marker">
+          <line x1="${markerX}" y1="${markerY + 8}" x2="${markerX}" y2="${height - padding}" stroke="${fill}" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.65"></line>
+          <circle cx="${markerX}" cy="${markerY}" r="8" fill="${fill}" stroke="#fff8ec" stroke-width="2">
+            <title>${title}</title>
+          </circle>
+          <text x="${markerX}" y="${markerY + 3}" text-anchor="middle" font-size="9" font-weight="700" fill="#fff8ec">${label}</text>
+        </g>
+      `;
+    })
+    .filter(Boolean)
+    .join("");
 
   const linePath = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
   const areaPath = `${linePath} L ${coords[coords.length - 1].x} ${height - padding} L ${coords[0].x} ${height - padding} Z`;
@@ -148,9 +197,10 @@ function renderPriceChart(chartPayload) {
     </defs>
     <path d="${areaPath}" fill="url(#price-fill)"></path>
     <path d="${linePath}" fill="none" stroke="#c75c2a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
+    ${markers}
     <circle cx="${latest.x}" cy="${latest.y}" r="6" fill="#8d2f1b"></circle>
   `;
-  ids.chartMeta.textContent = `Last ${chartPayload.points.length} candles | low ${min.toFixed(2)} | high ${max.toFixed(2)} | latest ${latest.close.toFixed(2)} @ ${latest.timestamp}`;
+  ids.chartMeta.textContent = `Last ${chartPayload.points.length} candles | markers ${(chartPayload.markers || []).length} | low ${min.toFixed(2)} | high ${max.toFixed(2)} | latest ${latest.close.toFixed(2)} @ ${latest.timestamp}`;
 }
 
 async function getJson(url, options = {}) {
@@ -186,6 +236,8 @@ async function refreshDashboard() {
     ids.signal.textContent = pretty(payload.latest_signal);
     ids.paths.textContent = pretty(payload.paths);
     ids.readiness.textContent = pretty(payload.broker_readiness);
+    ids.recentTrades.textContent = pretty(payload.activity?.recent_trades || []);
+    ids.recentEvents.textContent = pretty(payload.activity?.recent_events || []);
     renderJobs(payload.jobs);
     renderPriceChart(payload.chart);
   } catch (error) {

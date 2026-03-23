@@ -10,7 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from upbit_auto_trader.config import load_config  # noqa: E402
 from upbit_auto_trader.datafeed import load_csv_candles  # noqa: E402
 from upbit_auto_trader.jobs import BackgroundJobManager  # noqa: E402
-from upbit_auto_trader.models import Balance  # noqa: E402
+from upbit_auto_trader.models import Balance, ClosedTrade  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.ui import (  # noqa: E402
     build_dashboard_payload,
@@ -114,6 +114,33 @@ class UiTests(unittest.TestCase):
         runtime.bootstrap(candles[:minimum_history])
         for candle in candles[minimum_history : minimum_history + 3]:
             runtime.process_candle(candle)
+        runtime.state.closed_trades.append(
+            ClosedTrade(
+                market="KRW-BTC",
+                entry_timestamp=candles[-3].timestamp,
+                exit_timestamp=candles[-2].timestamp,
+                entry_price=candles[-3].close,
+                exit_price=candles[-2].close,
+                quantity=0.01,
+                gross_pnl=1200.0,
+                net_pnl=1000.0,
+                return_pct=1.25,
+                exit_reason="strategy_exit",
+            )
+        )
+        runtime.state.events.extend(
+            [
+                "{0} PAPER BUY KRW-BTC qty=0.01000000 price={1:.2f} score=66.0".format(
+                    candles[-3].timestamp,
+                    candles[-3].close,
+                ),
+                "{0} PAPER SELL KRW-BTC qty=0.01000000 price={1:.2f} reason=strategy_exit pnl=1000.00".format(
+                    candles[-2].timestamp,
+                    candles[-2].close,
+                ),
+            ]
+        )
+        runtime._save_state()  # noqa: SLF001
 
     def tearDown(self):
         if self.state_path.exists():
@@ -139,6 +166,9 @@ class UiTests(unittest.TestCase):
         self.assertEqual(payload["ui_defaults"]["scan_max_markets"], 10)
         self.assertTrue(payload["paths"]["selector_state_path"].endswith("selector-state-ui.json"))
         self.assertTrue(len(payload["chart"]["points"]) > 0)
+        self.assertGreaterEqual(len(payload["chart"]["markers"]), 2)
+        self.assertGreaterEqual(len(payload["activity"]["recent_trades"]), 1)
+        self.assertGreaterEqual(len(payload["activity"]["recent_events"]), 1)
         self.assertEqual(payload["jobs"], [])
 
     def test_backtest_signal_and_optimize_actions_return_expected_keys(self):
