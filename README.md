@@ -237,6 +237,8 @@ The `runtime` section in `config.example.json` controls operational rules:
 - `journal_path`: JSONL audit log path for buy, sell, and blocked-entry events
 - `pending_order_max_bars`: in live mode, cancel a still-open order after this many processed bars
 
+Runtime state files are now mirrored to `<state>.bak` after each successful save. If the main JSON state file is missing or corrupted on restart, the runtime automatically falls back to the backup snapshot and records a `STATE RECOVERED source=backup` event.
+
 The `selector` section controls multi-market behavior:
 
 - `quote_currency`: market prefix to scan such as `KRW`

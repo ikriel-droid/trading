@@ -18,8 +18,11 @@ class RuntimeTests(unittest.TestCase):
         config.runtime.journal_path = ""
         candles = load_csv_candles(str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"))
         state_path = PROJECT_ROOT / "data" / "test-runtime-state-1.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
         if state_path.exists():
             state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
         try:
             runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
             minimum_history = runtime.strategy.minimum_history()
@@ -35,17 +38,23 @@ class RuntimeTests(unittest.TestCase):
 
             self.assertEqual(payload["last_processed_timestamp"], candles[minimum_history + 4].timestamp)
             self.assertLessEqual(len(payload["history"]), 300)
+            self.assertTrue(backup_path.exists())
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_full_replay_updates_summary(self) -> None:
         config = load_config(str(PROJECT_ROOT / "config.example.json"))
         config.runtime.journal_path = ""
         candles = load_csv_candles(str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"))
         state_path = PROJECT_ROOT / "data" / "test-runtime-state-2.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
         if state_path.exists():
             state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
         try:
             runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
             minimum_history = runtime.strategy.minimum_history()
@@ -61,6 +70,39 @@ class RuntimeTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+
+    def test_runtime_restores_from_backup_when_primary_state_is_corrupted(self) -> None:
+        config = load_config(str(PROJECT_ROOT / "config.example.json"))
+        config.runtime.journal_path = ""
+        candles = load_csv_candles(str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"))
+        state_path = PROJECT_ROOT / "data" / "test-runtime-state-3.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
+        if state_path.exists():
+            state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
+        try:
+            runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
+            minimum_history = runtime.strategy.minimum_history()
+            runtime.bootstrap(candles[:minimum_history])
+            for candle in candles[minimum_history : minimum_history + 2]:
+                runtime.process_candle(candle)
+
+            with open(state_path, "w", encoding="utf-8") as handle:
+                handle.write("{broken json")
+
+            restored_runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
+            restored_state = restored_runtime.bootstrap([])
+
+            self.assertTrue(any("STATE RECOVERED source=backup" in event for event in restored_state.events))
+            self.assertEqual(restored_state.last_processed_timestamp, runtime.state.last_processed_timestamp)
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
 
 if __name__ == "__main__":

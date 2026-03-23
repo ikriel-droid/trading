@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, time as datetime_time, timezone
@@ -893,10 +894,32 @@ class TradingRuntime:
         return event
 
     def _load_state(self) -> Optional[RuntimeState]:
-        if not os.path.exists(self.state_path):
-            return None
-        with open(self.state_path, "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
+        state_candidates = [
+            (self.state_path, False),
+            (self._backup_state_path(), True),
+        ]
+        last_error = None
+
+        for candidate_path, is_backup in state_candidates:
+            if not os.path.exists(candidate_path):
+                continue
+            try:
+                with open(candidate_path, "r", encoding="utf-8") as handle:
+                    payload = json.load(handle)
+                state = self._runtime_state_from_payload(payload)
+                if is_backup:
+                    state.events.append("STATE RECOVERED source=backup path={0}".format(candidate_path))
+                    state.events = state.events[-500:]
+                return state
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                last_error = exc
+                continue
+
+        if last_error is not None:
+            raise ValueError("state restore failed for {0}: {1}".format(self.state_path, last_error))
+        return None
+
+    def _runtime_state_from_payload(self, payload: Dict[str, Any]) -> RuntimeState:
         return RuntimeState(
             market=payload["market"],
             cash=float(payload["cash"]),
@@ -948,11 +971,22 @@ class TradingRuntime:
         for attempt in range(5):
             try:
                 os.replace(temp_path, self.state_path)
+                self._write_backup_state()
                 return
             except PermissionError:
                 if attempt == 4:
                     raise
                 time.sleep(0.05)
+
+    def _backup_state_path(self) -> str:
+        return self.state_path + ".bak"
+
+    def _write_backup_state(self) -> None:
+        backup_path = self._backup_state_path()
+        try:
+            shutil.copyfile(self.state_path, backup_path)
+        except OSError:
+            return
 
     def _serialize_signal(self, signal: Signal, timestamp: str) -> Dict[str, Any]:
         return {
