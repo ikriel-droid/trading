@@ -10,6 +10,7 @@ from .config import load_config
 from .datafeed import load_csv_candles
 from .optimizer import run_grid_search
 from .runtime import TradingRuntime
+from .scanner import MarketScanner
 from .strategy import ProfessionalCryptoStrategy
 
 
@@ -41,6 +42,41 @@ def run_signal_action(config_path: str, csv_path: str) -> Dict[str, Any]:
         "confidence": signal.confidence,
         "reasons": signal.reasons,
         "csv_path": csv_path,
+    }
+
+
+def run_scan_action(
+    config_path: str,
+    max_markets: int = 10,
+    quote_currency: Optional[str] = None,
+    broker: Optional[UpbitBroker] = None,
+) -> Dict[str, Any]:
+    config = load_config(config_path)
+    if quote_currency:
+        config.selector.quote_currency = quote_currency
+    config.selector.max_markets = max(1, max_markets)
+    broker = broker or UpbitBroker(config.upbit)
+    scanner = MarketScanner(config, broker)
+    markets = scanner.discover_markets()
+    results = scanner.scan_markets(markets)
+    return {
+        "market": config.market,
+        "quote_currency": config.selector.quote_currency,
+        "scanned_market_count": len(markets),
+        "scan_results": [
+            {
+                "market": item.market,
+                "action": item.action,
+                "score": item.score,
+                "confidence": item.confidence,
+                "reasons": item.reasons,
+                "timestamp": item.timestamp,
+                "close": item.close,
+                "liquidity_24h": item.liquidity_24h,
+                "liquidity_ok": item.liquidity_ok,
+            }
+            for item in results[: max_markets]
+        ],
     }
 
 
@@ -94,6 +130,29 @@ def run_optimize_action(config_path: str, csv_path: str, top: int = 5) -> Dict[s
     }
 
 
+def run_live_reconcile_action(
+    config_path: str,
+    state_path: Optional[str],
+    mode: str,
+    market: Optional[str] = None,
+    broker: Optional[UpbitBroker] = None,
+) -> Dict[str, Any]:
+    if not state_path or not Path(state_path).exists():
+        return {
+            "error": "state file not found",
+            "state_path": state_path or "",
+        }
+
+    config = load_config(config_path)
+    if market:
+        config.market = market
+        config.upbit.market = market
+    broker = broker or UpbitBroker(config.upbit)
+    runtime = TradingRuntime(config=config, mode="live", state_path=state_path, broker=broker)
+    runtime.bootstrap([])
+    return runtime.reconcile_live_snapshot()
+
+
 def build_dashboard_payload(
     config_path: str,
     state_path: Optional[str],
@@ -116,6 +175,12 @@ def build_dashboard_payload(
         },
         "broker_readiness": broker.readiness_report(),
         "state_summary": load_runtime_summary(config_path, state_path, mode),
+        "ui_defaults": {
+            "refresh_seconds": 5,
+            "optimize_top": 5,
+            "scan_max_markets": min(10, config.selector.max_markets),
+            "quote_currency": config.selector.quote_currency,
+        },
     }
 
     if csv_path and Path(csv_path).exists():
@@ -125,9 +190,23 @@ def build_dashboard_payload(
             "first_timestamp": candles[0].timestamp if candles else "",
             "last_timestamp": candles[-1].timestamp if candles else "",
         }
+        payload["chart"] = {
+            "points": [
+                {
+                    "timestamp": candle.timestamp,
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "volume": candle.volume,
+                }
+                for candle in candles[-120:]
+            ],
+        }
         payload["latest_signal"] = run_signal_action(config_path, csv_path)
     else:
         payload["csv_info"] = None
+        payload["chart"] = None
         payload["latest_signal"] = None
 
     return payload
@@ -176,6 +255,25 @@ def _build_handler(
                         config_path,
                         body.get("csv_path") or csv_path or "",
                         top=int(body.get("top", 5)),
+                    )
+                )
+                return
+            if self.path == "/api/scan":
+                self._write_json(
+                    run_scan_action(
+                        config_path=config_path,
+                        max_markets=int(body.get("max_markets", 10)),
+                        quote_currency=body.get("quote_currency"),
+                    )
+                )
+                return
+            if self.path == "/api/reconcile":
+                self._write_json(
+                    run_live_reconcile_action(
+                        config_path=config_path,
+                        state_path=body.get("state_path") or state_path,
+                        mode=body.get("mode") or mode,
+                        market=body.get("market"),
                     )
                 )
                 return

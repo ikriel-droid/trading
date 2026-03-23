@@ -8,13 +8,66 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
 from upbit_auto_trader.datafeed import load_csv_candles  # noqa: E402
+from upbit_auto_trader.models import Balance  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.ui import (  # noqa: E402
     build_dashboard_payload,
     run_backtest_action,
+    run_live_reconcile_action,
+    run_scan_action,
     run_optimize_action,
     run_signal_action,
 )
+
+
+class FakeUiBroker:
+    def __init__(self):
+        self.markets = [
+            {"market": "KRW-BTC", "market_warning": "NONE"},
+            {"market": "KRW-XRP", "market_warning": "NONE"},
+        ]
+        self.base_balance = 0.01
+
+    def list_markets(self, is_details=True):
+        return list(self.markets)
+
+    def get_ticker(self, markets):
+        return [
+            {"market": "KRW-BTC", "acc_trade_price_24h": 15000000000.0},
+            {"market": "KRW-XRP", "acc_trade_price_24h": 3000000000.0},
+        ]
+
+    def get_minute_candles(self, market, unit, count=200, to=None):
+        candles = load_csv_candles(str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"))
+        mapped = []
+        for candle in candles[-count:]:
+            mapped.append(
+                {
+                    "candle_date_time_kst": candle.timestamp,
+                    "opening_price": candle.open,
+                    "high_price": candle.high,
+                    "low_price": candle.low,
+                    "trade_price": candle.close,
+                    "candle_acc_trade_volume": candle.volume,
+                }
+            )
+        return list(reversed(mapped))
+
+    def get_order_chance(self, market):
+        return {
+            "bid_account": {"balance": "700000"},
+            "ask_account": {"balance": str(self.base_balance)},
+            "market": {"bid": {"min_total": "5000"}, "ask": {"min_total": "5000"}},
+        }
+
+    def get_accounts(self):
+        return [
+            Balance(currency="KRW", balance=700000.0, locked=0.0, avg_buy_price=0.0, unit_currency="KRW"),
+            Balance(currency="BTC", balance=self.base_balance, locked=0.0, avg_buy_price=0.0, unit_currency="KRW"),
+        ]
+
+    def list_open_orders(self, market=None, state=None, states=None, page=None, limit=None, order_by=None):
+        return [{"uuid": "open-1", "market": "KRW-BTC", "state": "wait"}]
 
 
 class UiTests(unittest.TestCase):
@@ -50,6 +103,8 @@ class UiTests(unittest.TestCase):
         self.assertIsNotNone(payload["state_summary"])
         self.assertIsNotNone(payload["latest_signal"])
         self.assertTrue(payload["csv_info"]["rows"] > 0)
+        self.assertEqual(payload["ui_defaults"]["scan_max_markets"], 10)
+        self.assertTrue(len(payload["chart"]["points"]) > 0)
 
     def test_backtest_signal_and_optimize_actions_return_expected_keys(self):
         signal = run_signal_action(self.config_path, self.csv_path)
@@ -59,6 +114,21 @@ class UiTests(unittest.TestCase):
         self.assertIn("action", signal)
         self.assertIn("final_equity", backtest)
         self.assertEqual(len(optimize["top"]), 3)
+
+    def test_scan_and_reconcile_actions_return_expected_keys(self):
+        broker = FakeUiBroker()
+        scan = run_scan_action(self.config_path, max_markets=2, quote_currency="KRW", broker=broker)
+        reconcile = run_live_reconcile_action(
+            self.config_path,
+            str(self.state_path),
+            mode="live",
+            broker=broker,
+        )
+
+        self.assertEqual(scan["scanned_market_count"], 2)
+        self.assertTrue(len(scan["scan_results"]) >= 1)
+        self.assertEqual(reconcile["open_order_count"], 1)
+        self.assertIn("summary", reconcile)
 
 
 if __name__ == "__main__":

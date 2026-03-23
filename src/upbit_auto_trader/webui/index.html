@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,12 +12,44 @@
         <div class="hero-copy">
           <p class="eyebrow">UPBIT AUTO TRADER</p>
           <h1>Control Room</h1>
-          <p class="hero-text">엔진 상태, 최신 신호, 백테스트, 파라미터 탐색을 한 화면에서 다루는 운영 대시보드입니다.</p>
+          <p class="hero-text">A browser dashboard for runtime state, signal review, scan results, backtests, and parameter exploration.</p>
         </div>
         <div class="hero-actions">
-          <button id="refresh-dashboard" class="primary-button">대시보드 새로고침</button>
+          <button id="refresh-dashboard" class="primary-button">Refresh</button>
         </div>
       </header>
+
+      <section class="toolbar">
+        <label class="field">
+          <span>CSV Path</span>
+          <input id="csv-path-input" type="text" placeholder="data/demo_krw_btc_15m.csv">
+        </label>
+        <label class="field">
+          <span>State Path</span>
+          <input id="state-path-input" type="text" placeholder="data/paper-state.json">
+        </label>
+        <label class="field short">
+          <span>Refresh</span>
+          <select id="refresh-seconds">
+            <option value="0">Off</option>
+            <option value="3">3s</option>
+            <option value="5" selected>5s</option>
+            <option value="10">10s</option>
+          </select>
+        </label>
+        <label class="field short">
+          <span>Optimize Top</span>
+          <input id="optimize-top-input" type="number" min="1" max="20" value="5">
+        </label>
+        <label class="field short">
+          <span>Scan Markets</span>
+          <input id="scan-max-markets-input" type="number" min="1" max="50" value="10">
+        </label>
+        <label class="field short">
+          <span>Quote</span>
+          <input id="quote-currency-input" type="text" value="KRW">
+        </label>
+      </section>
 
       <section class="status-grid">
         <article class="metric-card">
@@ -46,6 +78,19 @@
         </article>
       </section>
 
+      <section class="panel-grid chart-grid">
+        <article class="panel chart-panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-eyebrow">Chart</p>
+              <h2>Price Curve</h2>
+            </div>
+          </div>
+          <div id="chart-meta" class="chart-meta">Loading...</div>
+          <svg id="price-chart" class="price-chart" viewBox="0 0 960 320" preserveAspectRatio="none"></svg>
+        </article>
+      </section>
+
       <section class="panel-grid">
         <article class="panel">
           <div class="panel-head">
@@ -54,7 +99,7 @@
               <h2>Runtime Summary</h2>
             </div>
           </div>
-          <pre id="summary-json" class="code-block">로딩 중...</pre>
+          <pre id="summary-json" class="code-block">Loading...</pre>
         </article>
 
         <article class="panel">
@@ -63,9 +108,9 @@
               <p class="panel-eyebrow">Signal</p>
               <h2>Latest Signal</h2>
             </div>
-            <button id="run-signal" class="ghost-button">다시 계산</button>
+            <button id="run-signal" class="ghost-button">Run Signal</button>
           </div>
-          <pre id="signal-json" class="code-block">로딩 중...</pre>
+          <pre id="signal-json" class="code-block">Loading...</pre>
         </article>
 
         <article class="panel">
@@ -74,9 +119,9 @@
               <p class="panel-eyebrow">Backtest</p>
               <h2>Quick Replay</h2>
             </div>
-            <button id="run-backtest" class="ghost-button">실행</button>
+            <button id="run-backtest" class="ghost-button">Run Backtest</button>
           </div>
-          <pre id="backtest-json" class="code-block">아직 실행 전</pre>
+          <pre id="backtest-json" class="code-block">Idle</pre>
         </article>
 
         <article class="panel">
@@ -85,9 +130,33 @@
               <p class="panel-eyebrow">Optimizer</p>
               <h2>Grid Search</h2>
             </div>
-            <button id="run-optimize" class="ghost-button">상위 5개 찾기</button>
+            <button id="run-optimize" class="ghost-button">Run Top Search</button>
           </div>
-          <pre id="optimize-json" class="code-block">아직 실행 전</pre>
+          <pre id="optimize-json" class="code-block">Idle</pre>
+        </article>
+      </section>
+
+      <section class="panel-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-eyebrow">Scanner</p>
+              <h2>Market Ranking</h2>
+            </div>
+            <button id="run-scan" class="ghost-button">Run Scan</button>
+          </div>
+          <pre id="scan-json" class="code-block">Idle</pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-eyebrow">Reconcile</p>
+              <h2>Live Snapshot</h2>
+            </div>
+            <button id="run-reconcile" class="ghost-button">Run Reconcile</button>
+          </div>
+          <pre id="reconcile-json" class="code-block">Idle</pre>
         </article>
       </section>
 
@@ -99,7 +168,7 @@
               <h2>Workspace Inputs</h2>
             </div>
           </div>
-          <pre id="paths-json" class="code-block">로딩 중...</pre>
+          <pre id="paths-json" class="code-block">Loading...</pre>
         </article>
 
         <article class="panel">
@@ -109,7 +178,7 @@
               <h2>Readiness</h2>
             </div>
           </div>
-          <pre id="readiness-json" class="code-block">로딩 중...</pre>
+          <pre id="readiness-json" class="code-block">Loading...</pre>
         </article>
       </section>
     </div>
