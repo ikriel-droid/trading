@@ -52,6 +52,7 @@ Official sources used while building this starter on 2026-03-22:
 - `src/upbit_auto_trader/risk.py`: sizing and stop logic
 - `src/upbit_auto_trader/backtest.py`: simulation engine
 - `src/upbit_auto_trader/runtime.py`: stateful paper or live loop
+- `src/upbit_auto_trader/ui.py`: standard-library web dashboard server
 - `src/upbit_auto_trader/scanner.py`: multi-market ranking
 - `src/upbit_auto_trader/selector.py`: rotating best-market selector
 - `src/upbit_auto_trader/brokers/upbit.py`: Upbit REST adapter
@@ -88,6 +89,12 @@ Run a small grid search to compare strategy settings on a CSV backtest:
 
 ```powershell
 .venv\Scripts\python.exe -m upbit_auto_trader.main optimize-grid --config config.example.json --csv data/demo_krw_btc_15m.csv --top 5
+```
+
+Start the browser-based control room UI:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main web-ui --config config.example.json --state data\paper-state.json --csv data/demo_krw_btc_15m.csv --mode paper --port 8765
 ```
 
 Preview a market buy order request:

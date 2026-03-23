@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Upbit Auto Trader Control Room</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">UPBIT AUTO TRADER</p>
+          <h1>Control Room</h1>
+          <p class="hero-text">엔진 상태, 최신 신호, 백테스트, 파라미터 탐색을 한 화면에서 다루는 운영 대시보드입니다.</p>
+        </div>
+        <div class="hero-actions">
+          <button id="refresh-dashboard" class="primary-button">대시보드 새로고침</button>
+        </div>
+      </header>
+
+      <section class="status-grid">
+        <article class="metric-card">
+          <span class="metric-label">Market</span>
+          <strong id="market-value">-</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Mode</span>
+          <strong id="mode-value">-</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Equity</span>
+          <strong id="equity-value">-</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Cash</span>
+          <strong id="cash-value">-</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Position</span>
+          <strong id="position-value">-</strong>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Pending Order</span>
+          <strong id="pending-value">-</strong>
+        </article>
+      </section>
+
+      <section class="panel-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-eyebrow">Snapshot</p>
+              <h2>Runtime Summary</h2>
+            </div>
+          </div>
+          <pre id="summary-json" class="code-block">로딩 중...</pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-eyebrow">Signal</p>
+              <h2>Latest Signal</h2>
+            </div>
+            <button id="run-signal" class="ghost-button">다시 계산</button>
+          </div>
+          <pre id="signal-json" class="code-block">로딩 중...</pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-eyebrow">Backtest</p>
+              <h2>Quick Replay</h2>
+            </div>
+            <button id="run-backtest" class="ghost-button">실행</button>
+          </div>
+          <pre id="backtest-json" class="code-block">아직 실행 전</pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-eyebrow">Optimizer</p>
+              <h2>Grid Search</h2>
+            </div>
+            <button id="run-optimize" class="ghost-button">상위 5개 찾기</button>
+          </div>
+          <pre id="optimize-json" class="code-block">아직 실행 전</pre>
+        </article>
+      </section>
+
+      <section class="panel-grid secondary">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-eyebrow">Paths</p>
+              <h2>Workspace Inputs</h2>
+            </div>
+          </div>
+          <pre id="paths-json" class="code-block">로딩 중...</pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-eyebrow">Broker</p>
+              <h2>Readiness</h2>
+            </div>
+          </div>
+          <pre id="readiness-json" class="code-block">로딩 중...</pre>
+        </article>
+      </section>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

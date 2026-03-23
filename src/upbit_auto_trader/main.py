@@ -21,6 +21,7 @@ from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
 from .strategy import ProfessionalCryptoStrategy
+from .ui import run_web_ui_server
 from .websocket_client import (
     UpbitWebSocketClient,
     build_myorder_subscription,
@@ -50,6 +51,14 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--min-bollinger-width-values")
     optimize_parser.add_argument("--volume-spike-multipliers")
     optimize_parser.add_argument("--top", type=int, default=10)
+
+    web_ui_parser = subparsers.add_parser("web-ui")
+    web_ui_parser.add_argument("--config", required=True)
+    web_ui_parser.add_argument("--state")
+    web_ui_parser.add_argument("--csv")
+    web_ui_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
+    web_ui_parser.add_argument("--host", default="127.0.0.1")
+    web_ui_parser.add_argument("--port", type=int, default=8765)
 
     markets_parser = subparsers.add_parser("markets")
     markets_parser.add_argument("--config", required=True)
@@ -640,6 +649,17 @@ def main(argv: Optional[List[str]] = None) -> int:
                         for index, item in enumerate(results[: max(1, args.top)])
                     ],
                 }
+            )
+            return 0
+
+        if args.command == "web-ui":
+            run_web_ui_server(
+                config_path=args.config,
+                state_path=args.state,
+                csv_path=args.csv,
+                mode=args.mode,
+                host=args.host,
+                port=args.port,
             )
             return 0
 
