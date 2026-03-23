@@ -22,6 +22,10 @@ const ids = {
   selectorCards: document.getElementById("selector-cards"),
   chart: document.getElementById("price-chart"),
   chartMeta: document.getElementById("chart-meta"),
+  selectorActiveChart: document.getElementById("selector-active-chart"),
+  selectorActiveChartMeta: document.getElementById("selector-active-chart-meta"),
+  selectorActiveSummary: document.getElementById("selector-active-summary-json"),
+  selectorActiveEvents: document.getElementById("selector-active-events-json"),
   csvPath: document.getElementById("csv-path-input"),
   statePath: document.getElementById("state-path-input"),
   selectorStatePath: document.getElementById("selector-state-path-input"),
@@ -232,10 +236,10 @@ function renderSelectorCards(selectorPayload) {
   );
 }
 
-function renderPriceChart(chartPayload) {
+function renderChart(chartElement, metaElement, chartPayload) {
   if (!chartPayload || !chartPayload.points || chartPayload.points.length === 0) {
-    ids.chart.innerHTML = "";
-    ids.chartMeta.textContent = "No chart data";
+    chartElement.innerHTML = "";
+    metaElement.textContent = "No chart data";
     return;
   }
 
@@ -295,20 +299,25 @@ function renderPriceChart(chartPayload) {
   const linePath = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
   const areaPath = `${linePath} L ${coords[coords.length - 1].x} ${height - padding} L ${coords[0].x} ${height - padding} Z`;
   const latest = coords[coords.length - 1];
+  const gradientId = `${chartElement.id}-price-fill`;
 
-  ids.chart.innerHTML = `
+  chartElement.innerHTML = `
     <defs>
-      <linearGradient id="price-fill" x1="0" y1="0" x2="0" y2="1">
+      <linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="rgba(199, 92, 42, 0.34)"></stop>
         <stop offset="100%" stop-color="rgba(199, 92, 42, 0.02)"></stop>
       </linearGradient>
     </defs>
-    <path d="${areaPath}" fill="url(#price-fill)"></path>
+    <path d="${areaPath}" fill="url(#${gradientId})"></path>
     <path d="${linePath}" fill="none" stroke="#c75c2a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
     ${markers}
     <circle cx="${latest.x}" cy="${latest.y}" r="6" fill="#8d2f1b"></circle>
   `;
-  ids.chartMeta.textContent = `Last ${chartPayload.points.length} candles | markers ${(chartPayload.markers || []).length} | low ${min.toFixed(2)} | high ${max.toFixed(2)} | latest ${latest.close.toFixed(2)} @ ${latest.timestamp}`;
+  metaElement.textContent = `Last ${chartPayload.points.length} candles | markers ${(chartPayload.markers || []).length} | low ${min.toFixed(2)} | high ${max.toFixed(2)} | latest ${latest.close.toFixed(2)} @ ${latest.timestamp}`;
+}
+
+function renderPriceChart(chartPayload) {
+  renderChart(ids.chart, ids.chartMeta, chartPayload);
 }
 
 async function getJson(url, options = {}) {
@@ -347,7 +356,10 @@ async function refreshDashboard() {
     ids.recentTrades.textContent = pretty(payload.activity?.recent_trades || []);
     ids.recentEvents.textContent = pretty(payload.activity?.recent_events || []);
     ids.selectorSummary.textContent = pretty(payload.selector_summary || {});
+    ids.selectorActiveSummary.textContent = pretty(payload.selector_summary?.active_market_summary || {});
+    ids.selectorActiveEvents.textContent = pretty(payload.selector_summary?.active_market_activity?.recent_events || []);
     renderSelectorCards(payload.selector_summary || null);
+    renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, payload.selector_summary?.active_market_chart);
     renderJobs(payload.jobs);
     renderPriceChart(payload.chart);
   } catch (error) {
@@ -550,5 +562,6 @@ ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 
 renderScanCards(null);
 renderSelectorCards(null);
+renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, null);
 refreshDashboard();
 resetAutoRefresh();

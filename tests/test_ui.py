@@ -224,6 +224,8 @@ class UiTests(unittest.TestCase):
         self.assertEqual(payload["selector_summary"]["active_market"], "KRW-BTC")
         self.assertEqual(payload["selector_summary"]["cycle_count"], 7)
         self.assertIsNotNone(payload["selector_summary"]["active_market_summary"])
+        self.assertGreaterEqual(len(payload["selector_summary"]["active_market_chart"]["points"]), 1)
+        self.assertGreaterEqual(len(payload["selector_summary"]["active_market_activity"]["recent_events"]), 1)
         self.assertGreaterEqual(len(payload["selector_summary"]["last_scan_results"]), 2)
         self.assertEqual(payload["jobs"], [])
 

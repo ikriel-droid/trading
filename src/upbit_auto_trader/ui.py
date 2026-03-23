@@ -148,6 +148,20 @@ def _build_recent_activity(runtime: Optional[TradingRuntime]) -> Dict[str, Any]:
     }
 
 
+def _chart_points_from_candles(candles: list[Any], limit: int = 120) -> list[Dict[str, Any]]:
+    return [
+        {
+            "timestamp": candle.timestamp,
+            "open": candle.open,
+            "high": candle.high,
+            "low": candle.low,
+            "close": candle.close,
+            "volume": candle.volume,
+        }
+        for candle in candles[-limit:]
+    ]
+
+
 def _build_chart_markers(chart_points: list[Dict[str, Any]], runtime: Optional[TradingRuntime]) -> list[Dict[str, Any]]:
     if runtime is None or runtime.state is None:
         return []
@@ -196,6 +210,16 @@ def _build_chart_markers(chart_points: list[Dict[str, Any]], runtime: Optional[T
     return markers
 
 
+def _build_runtime_chart(runtime: Optional[TradingRuntime]) -> Dict[str, Any]:
+    if runtime is None or runtime.state is None:
+        return {"points": [], "markers": []}
+    chart_points = _chart_points_from_candles(runtime.state.history)
+    return {
+        "points": chart_points,
+        "markers": _build_chart_markers(chart_points, runtime),
+    }
+
+
 def _selector_market_state_path(config_path: str, selector_state_path: str, market: str) -> str:
     config = load_config(config_path)
     project_root = Path(config_path).resolve().parent
@@ -227,18 +251,25 @@ def load_selector_summary(config_path: str, selector_state_path: Optional[str]) 
     active_market_summary = None
     if active_market:
         active_state_path = _selector_market_state_path(config_path, resolved_state_path, active_market)
-        active_market_summary = load_runtime_summary(config_path, active_state_path, mode="paper")
+        active_runtime = _load_runtime_for_dashboard(config_path, active_state_path, mode="paper")
+        active_market_summary = active_runtime.summary() if active_runtime is not None else None
+    else:
+        active_state_path = ""
+        active_runtime = None
 
     return {
         "selector_state_path": resolved_state_path,
         "exists": True,
         "active_market": active_market,
+        "active_market_state_path": active_state_path,
         "cycle_count": int(payload.get("cycle_count", 0)),
         "last_selected_market": payload.get("last_selected_market", ""),
         "last_selected_score": float(payload.get("last_selected_score", 0.0)),
         "last_scan_timestamp": payload.get("last_scan_timestamp", ""),
         "last_scan_results": list(payload.get("last_scan_results", []))[:6],
         "active_market_summary": active_market_summary,
+        "active_market_activity": _build_recent_activity(active_runtime),
+        "active_market_chart": _build_runtime_chart(active_runtime),
     }
 
 
@@ -439,17 +470,7 @@ def build_dashboard_payload(
 
     if csv_path and Path(csv_path).exists():
         candles = load_csv_candles(csv_path)
-        chart_points = [
-            {
-                "timestamp": candle.timestamp,
-                "open": candle.open,
-                "high": candle.high,
-                "low": candle.low,
-                "close": candle.close,
-                "volume": candle.volume,
-            }
-            for candle in candles[-120:]
-        ]
+        chart_points = _chart_points_from_candles(candles)
         payload["csv_info"] = {
             "rows": len(candles),
             "first_timestamp": candles[0].timestamp if candles else "",
