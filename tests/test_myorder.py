@@ -22,15 +22,18 @@ class MyOrderTests(unittest.TestCase):
         config.runtime.journal_path = ""
         config.upbit.live_enabled = True
         state_path = PROJECT_ROOT / "data" / state_name
+        backup_path = pathlib.Path(str(state_path) + ".bak")
         if state_path.exists():
             state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
         runtime = TradingRuntime(config=config, mode="live", state_path=state_path, broker=None)
         runtime.state = RuntimeState(
             market=config.market,
             cash=1000000.0,
             peak_equity=1000000.0,
         )
-        return runtime, state_path
+        return runtime, state_path, backup_path
 
     def test_build_myorder_subscription_for_market(self):
         payload = build_myorder_subscription(["krw-btc"])
@@ -52,7 +55,7 @@ class MyOrderTests(unittest.TestCase):
         self.assertEqual(payload[2]["type"], "myAsset")
 
     def test_apply_myorder_buy_fill_creates_position(self):
-        runtime, state_path = self.build_runtime("test-myorder-state-1.json")
+        runtime, state_path, backup_path = self.build_runtime("test-myorder-state-1.json")
         try:
             runtime.state.pending_order = PendingOrder(
                 uuid="order-1",
@@ -92,9 +95,11 @@ class MyOrderTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_apply_myorder_sell_fill_closes_position(self):
-        runtime, state_path = self.build_runtime("test-myorder-state-2.json")
+        runtime, state_path, backup_path = self.build_runtime("test-myorder-state-2.json")
         try:
             runtime.state.cash = 900000.0
             runtime.state.position = Position(
@@ -142,9 +147,11 @@ class MyOrderTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_apply_myasset_updates_cash_and_snapshot(self):
-        runtime, state_path = self.build_runtime("test-myasset-state-1.json")
+        runtime, state_path, backup_path = self.build_runtime("test-myasset-state-1.json")
         try:
             events = runtime.apply_myasset_event(
                 {
@@ -164,9 +171,11 @@ class MyOrderTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_apply_myasset_warns_when_untracked_base_balance_exists(self):
-        runtime, state_path = self.build_runtime("test-myasset-state-2.json")
+        runtime, state_path, backup_path = self.build_runtime("test-myasset-state-2.json")
         try:
             events = runtime.apply_myasset_event(
                 {
@@ -183,6 +192,8 @@ class MyOrderTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
 
 if __name__ == "__main__":

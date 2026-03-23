@@ -1,4 +1,5 @@
 import io
+import json
 import pathlib
 import sys
 import unittest
@@ -9,7 +10,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
-from upbit_auto_trader.main import _run_live_daemon, _run_live_supervisor  # noqa: E402
+from upbit_auto_trader.main import _build_doctor_report, _run_live_daemon, _run_live_supervisor  # noqa: E402
 from upbit_auto_trader.models import Balance, Candle  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.websocket_client import UpbitWebSocketClient  # noqa: E402
@@ -144,6 +145,92 @@ class MainTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+
+    def test_doctor_reports_state_backup_and_missing_webhook(self):
+        config = load_config(str(PROJECT_ROOT / "config.example.json"))
+        config.runtime.journal_path = ""
+        state_path = PROJECT_ROOT / "data" / "test-doctor-state.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
+        if state_path.exists():
+            state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
+        try:
+            runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
+            minimum_history = runtime.strategy.minimum_history()
+            runtime.bootstrap(
+                [
+                    Candle(
+                        timestamp="2026-03-26T09:{0:02d}:00".format(index),
+                        open=100.0,
+                        high=100.0,
+                        low=100.0,
+                        close=100.0,
+                        volume=1000.0,
+                    )
+                    for index in range(minimum_history)
+                ]
+            )
+
+            report = _build_doctor_report(
+                config_path=str(PROJECT_ROOT / "config.example.json"),
+                config=config,
+                state_path=str(state_path),
+                selector_state_path=str(PROJECT_ROOT / "data" / "selector-state.json"),
+            )
+
+            self.assertTrue(report["state"]["exists"])
+            self.assertTrue(report["state"]["backup_exists"])
+            self.assertTrue(report["state"]["load_ok"])
+            self.assertIn("discord_webhook_not_configured", report["issues"])
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+
+    def test_doctor_recovers_when_primary_state_is_corrupted(self):
+        config = load_config(str(PROJECT_ROOT / "config.example.json"))
+        config.runtime.journal_path = ""
+        state_path = PROJECT_ROOT / "data" / "test-doctor-state-corrupt.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
+        if state_path.exists():
+            state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
+        try:
+            runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
+            minimum_history = runtime.strategy.minimum_history()
+            runtime.bootstrap(
+                [
+                    Candle(
+                        timestamp="2026-03-26T10:{0:02d}:00".format(index),
+                        open=100.0,
+                        high=100.0,
+                        low=100.0,
+                        close=100.0,
+                        volume=1000.0,
+                    )
+                    for index in range(minimum_history)
+                ]
+            )
+            with open(state_path, "w", encoding="utf-8") as handle:
+                handle.write("{broken")
+
+            report = _build_doctor_report(
+                config_path=str(PROJECT_ROOT / "config.example.json"),
+                config=config,
+                state_path=str(state_path),
+                selector_state_path=None,
+            )
+
+            self.assertTrue(report["state"]["load_ok"])
+            self.assertTrue(report["state"]["recovered_from_backup"])
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
 
 if __name__ == "__main__":

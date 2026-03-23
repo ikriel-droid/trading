@@ -136,10 +136,13 @@ class RuntimeLiveTests(unittest.TestCase):
         config.runtime.journal_path = ""
         config.upbit.live_enabled = True
         state_path = PROJECT_ROOT / "data" / state_name
+        backup_path = pathlib.Path(str(state_path) + ".bak")
         if state_path.exists():
             state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
         runtime = TradingRuntime(config=config, mode="live", state_path=state_path, broker=broker, notifier=notifier)
-        return runtime, state_path
+        return runtime, state_path, backup_path
 
     def make_candle(self, timestamp, close):
         return Candle(
@@ -153,7 +156,7 @@ class RuntimeLiveTests(unittest.TestCase):
 
     def test_live_bootstrap_uses_exchange_quote_balance(self):
         broker = FakeLiveBroker(quote_balance=123456.78, base_balance=0.0)
-        runtime, state_path = self.build_runtime("test-runtime-live-1.json", broker)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-1.json", broker)
         try:
             runtime.strategy = FakeStrategy({})
             runtime.bootstrap([self.make_candle("2026-03-26T09:00:00", 100.0)])
@@ -162,10 +165,12 @@ class RuntimeLiveTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_live_bootstrap_blocks_existing_asset_balance(self):
         broker = FakeLiveBroker(quote_balance=100000.0, base_balance=0.25)
-        runtime, state_path = self.build_runtime("test-runtime-live-2.json", broker)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-2.json", broker)
         try:
             runtime.strategy = FakeStrategy({})
             with self.assertRaises(ValueError):
@@ -173,10 +178,12 @@ class RuntimeLiveTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_live_buy_is_blocked_below_minimum_order_total(self):
         broker = FakeLiveBroker(quote_balance=10000.0, base_balance=0.0, bid_min_total=9000.0)
-        runtime, state_path = self.build_runtime("test-runtime-live-3.json", broker)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-3.json", broker)
         try:
             runtime.strategy = FakeStrategy({("2026-03-26T09:01:00", False): Action.BUY})
             runtime.risk = FakeRiskManager(size_fraction=0.1)
@@ -190,6 +197,8 @@ class RuntimeLiveTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_live_pending_order_poll_applies_partial_fill(self):
         broker = FakeLiveBroker(
@@ -211,7 +220,7 @@ class RuntimeLiveTests(unittest.TestCase):
                 }
             ],
         )
-        runtime, state_path = self.build_runtime("test-runtime-live-4.json", broker)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-4.json", broker)
         try:
             runtime.config.runtime.pending_order_max_bars = 10
             runtime.strategy = FakeStrategy({("2026-03-26T09:01:00", False): Action.BUY})
@@ -229,6 +238,8 @@ class RuntimeLiveTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_live_pending_order_is_cancelled_after_max_bars(self):
         broker = FakeLiveBroker(
@@ -255,7 +266,7 @@ class RuntimeLiveTests(unittest.TestCase):
                 "trades": [],
             },
         )
-        runtime, state_path = self.build_runtime("test-runtime-live-5.json", broker)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-5.json", broker)
         try:
             runtime.config.runtime.pending_order_max_bars = 1
             runtime.strategy = FakeStrategy({("2026-03-26T09:01:00", False): Action.BUY})
@@ -272,11 +283,13 @@ class RuntimeLiveTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_reconcile_live_snapshot_returns_open_order_report(self):
         broker = FakeLiveBroker(quote_balance=777777.0, base_balance=0.0)
         broker.open_orders = [{"uuid": "open-1", "market": "KRW-BTC", "state": "wait"}]
-        runtime, state_path = self.build_runtime("test-runtime-live-6.json", broker)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-6.json", broker)
         try:
             runtime.strategy = FakeStrategy({})
             runtime.bootstrap([self.make_candle("2026-03-26T09:00:00", 100.0)])
@@ -290,11 +303,13 @@ class RuntimeLiveTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_blocked_entry_is_forwarded_to_notifier(self):
         broker = FakeLiveBroker(quote_balance=10000.0, base_balance=0.0, bid_min_total=9000.0)
         notifier = RecordingNotifier()
-        runtime, state_path = self.build_runtime("test-runtime-live-7.json", broker, notifier=notifier)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-7.json", broker, notifier=notifier)
         try:
             runtime.strategy = FakeStrategy({("2026-03-26T09:01:00", False): Action.BUY})
             runtime.risk = FakeRiskManager(size_fraction=0.1)
@@ -306,6 +321,8 @@ class RuntimeLiveTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
 
 if __name__ == "__main__":

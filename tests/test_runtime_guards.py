@@ -44,10 +44,13 @@ class RuntimeGuardTests(unittest.TestCase):
         config.initial_cash = 1000000.0
         config.runtime.journal_path = ""
         state_path = PROJECT_ROOT / "data" / state_name
+        backup_path = pathlib.Path(str(state_path) + ".bak")
         if state_path.exists():
             state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
         runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
-        return runtime, state_path
+        return runtime, state_path, backup_path
 
     def make_candle(self, timestamp, close):
         return Candle(
@@ -60,7 +63,7 @@ class RuntimeGuardTests(unittest.TestCase):
         )
 
     def test_cooldown_blocks_immediate_reentry(self):
-        runtime, state_path = self.build_runtime("test-runtime-guard-1.json")
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-guard-1.json")
         try:
             runtime.config.runtime.cooldown_bars_after_exit = 1
             runtime.config.runtime.max_trades_per_day = 10
@@ -90,9 +93,11 @@ class RuntimeGuardTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_daily_loss_limit_blocks_new_entries(self):
-        runtime, state_path = self.build_runtime("test-runtime-guard-2.json")
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-guard-2.json")
         try:
             runtime.config.runtime.cooldown_bars_after_exit = 0
             runtime.config.runtime.max_trades_per_day = 10
@@ -119,9 +124,11 @@ class RuntimeGuardTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
     def test_max_trades_per_day_blocks_third_entry(self):
-        runtime, state_path = self.build_runtime("test-runtime-guard-3.json")
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-guard-3.json")
         try:
             runtime.config.runtime.cooldown_bars_after_exit = 0
             runtime.config.runtime.max_trades_per_day = 2
@@ -152,6 +159,8 @@ class RuntimeGuardTests(unittest.TestCase):
         finally:
             if state_path.exists():
                 state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
 
 if __name__ == "__main__":
