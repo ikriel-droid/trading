@@ -20,6 +20,13 @@ from .jobs import (
     build_paper_selector_command,
 )
 from .optimizer import run_grid_search
+from .presets import (
+    apply_strategy_preset,
+    default_preset_dir,
+    list_strategy_presets,
+    save_current_strategy_preset,
+    save_grid_search_best_preset,
+)
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .strategy import ProfessionalCryptoStrategy
@@ -710,6 +717,7 @@ def run_optimize_action(
     csv_path: str,
     top: int = 5,
     market: Optional[str] = None,
+    save_best_preset_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     config = _override_market(load_config(config_path), market)
     resolved_csv_path = _resolve_project_path(config_path, csv_path)
@@ -723,6 +731,15 @@ def run_optimize_action(
         min_bollinger_width_values=[0.012, 0.015, 0.018],
         volume_spike_multipliers=[1.2, 1.3, 1.4],
     )
+    saved_preset = None
+    if save_best_preset_name and results:
+        saved_preset = save_grid_search_best_preset(
+            config_path=config_path,
+            name=save_best_preset_name,
+            result=results[0],
+            market=config.market,
+            csv_path=resolved_csv_path,
+        )
     return {
         "market": config.market,
         "csv_path": resolved_csv_path,
@@ -742,7 +759,28 @@ def run_optimize_action(
             }
             for index, item in enumerate(results[: max(1, top)])
         ],
+        "saved_preset": saved_preset,
     }
+
+
+def run_save_current_preset_action(
+    config_path: str,
+    preset_name: str,
+    csv_path: Optional[str] = None,
+    market: Optional[str] = None,
+) -> Dict[str, Any]:
+    config = _override_market(load_config(config_path), market)
+    resolved_csv_path = _resolve_project_path(config_path, csv_path) if csv_path else ""
+    return save_current_strategy_preset(
+        config_path=config_path,
+        name=preset_name,
+        market=config.market,
+        csv_path=resolved_csv_path,
+    )
+
+
+def run_apply_preset_action(config_path: str, preset_ref: str) -> Dict[str, Any]:
+    return apply_strategy_preset(config_path, preset_ref)
 
 
 def run_live_reconcile_action(
@@ -814,6 +852,10 @@ def build_dashboard_payload(
         "selector_summary": selector_summary,
         "activity": _build_recent_activity(runtime),
         "editable_config": load_editable_config(config_path),
+        "strategy_presets": {
+            "dir": default_preset_dir(config_path),
+            "items": list_strategy_presets(config_path),
+        },
         "jobs": jobs,
         "alerts": _build_alert_feed(
             config_path=config_path,
@@ -985,8 +1027,22 @@ def _build_handler(
                         body.get("csv_path") or csv_path or "",
                         top=int(body.get("top", 5)),
                         market=body.get("market"),
+                        save_best_preset_name=body.get("save_best_preset_name"),
                     )
                 )
+                return
+            if self.path == "/api/preset-save-current":
+                self._write_json(
+                    run_save_current_preset_action(
+                        config_path=config_path,
+                        preset_name=body.get("preset_name", ""),
+                        csv_path=body.get("csv_path") or csv_path,
+                        market=body.get("market"),
+                    )
+                )
+                return
+            if self.path == "/api/preset-apply":
+                self._write_json(run_apply_preset_action(config_path, body.get("preset", "")))
                 return
             if self.path == "/api/scan":
                 self._write_json(

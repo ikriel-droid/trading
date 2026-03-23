@@ -1,6 +1,7 @@
 import io
 import json
 import pathlib
+import shutil
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -10,7 +11,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
-from upbit_auto_trader.main import _build_doctor_report, _run_live_daemon, _run_live_supervisor  # noqa: E402
+from upbit_auto_trader.main import _build_doctor_report, _run_live_daemon, _run_live_supervisor, main  # noqa: E402
 from upbit_auto_trader.models import Balance, Candle  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.websocket_client import UpbitWebSocketClient  # noqa: E402
@@ -231,6 +232,63 @@ class MainTests(unittest.TestCase):
                 state_path.unlink()
             if backup_path.exists():
                 backup_path.unlink()
+
+    def test_cli_optimize_can_save_and_apply_preset(self):
+        config_path = PROJECT_ROOT / "test-main-config.json"
+        preset_path = PROJECT_ROOT / "data" / "strategy-presets" / "test-main-best.json"
+        if config_path.exists():
+            config_path.unlink()
+        if preset_path.exists():
+            preset_path.unlink()
+        try:
+            shutil.copyfile(PROJECT_ROOT / "config.example.json", config_path)
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "optimize-grid",
+                        "--config",
+                        str(config_path),
+                        "--csv",
+                        str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"),
+                        "--top",
+                        "1",
+                        "--save-best-preset",
+                        "test-main-best",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertTrue(preset_path.exists())
+
+            with open(config_path, "r", encoding="utf-8") as handle:
+                raw = json.load(handle)
+            raw["strategy"]["buy_threshold"] = 99.0
+            with open(config_path, "w", encoding="utf-8") as handle:
+                json.dump(raw, handle, indent=2)
+                handle.write("\n")
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "preset-apply",
+                        "--config",
+                        str(config_path),
+                        "--preset",
+                        "test-main-best",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            updated = load_config(str(config_path))
+            self.assertNotEqual(updated.strategy.buy_threshold, 99.0)
+        finally:
+            if config_path.exists():
+                config_path.unlink()
+            if preset_path.exists():
+                preset_path.unlink()
 
 
 if __name__ == "__main__":

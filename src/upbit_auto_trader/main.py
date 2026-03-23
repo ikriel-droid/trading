@@ -18,6 +18,13 @@ from .datafeed import (
 )
 from .optimizer import run_grid_search
 from .notifier import DiscordWebhookNotifier, NotificationError
+from .presets import (
+    apply_strategy_preset,
+    default_preset_dir,
+    list_strategy_presets,
+    save_current_strategy_preset,
+    save_grid_search_best_preset,
+)
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
@@ -52,6 +59,20 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--min-bollinger-width-values")
     optimize_parser.add_argument("--volume-spike-multipliers")
     optimize_parser.add_argument("--top", type=int, default=10)
+    optimize_parser.add_argument("--save-best-preset")
+
+    preset_list_parser = subparsers.add_parser("preset-list")
+    preset_list_parser.add_argument("--config", required=True)
+
+    preset_save_parser = subparsers.add_parser("preset-save")
+    preset_save_parser.add_argument("--config", required=True)
+    preset_save_parser.add_argument("--name", required=True)
+    preset_save_parser.add_argument("--market")
+    preset_save_parser.add_argument("--csv")
+
+    preset_apply_parser = subparsers.add_parser("preset-apply")
+    preset_apply_parser.add_argument("--config", required=True)
+    preset_apply_parser.add_argument("--preset", required=True)
 
     web_ui_parser = subparsers.add_parser("web-ui")
     web_ui_parser.add_argument("--config", required=True)
@@ -720,6 +741,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                     [1.2, 1.3, 1.4],
                 ),
             )
+            saved_preset = None
+            if args.save_best_preset and results:
+                saved_preset = save_grid_search_best_preset(
+                    config_path=args.config,
+                    name=args.save_best_preset,
+                    result=results[0],
+                    market=config.market,
+                    csv_path=args.csv,
+                )
             _print_json(
                 {
                     "market": config.market,
@@ -740,8 +770,33 @@ def main(argv: Optional[List[str]] = None) -> int:
                         }
                         for index, item in enumerate(results[: max(1, args.top)])
                     ],
+                    "saved_preset": saved_preset,
                 }
             )
+            return 0
+
+        if args.command == "preset-list":
+            _print_json(
+                {
+                    "dir": default_preset_dir(args.config),
+                    "items": list_strategy_presets(args.config),
+                }
+            )
+            return 0
+
+        if args.command == "preset-save":
+            _print_json(
+                save_current_strategy_preset(
+                    config_path=args.config,
+                    name=args.name,
+                    market=args.market or config.market,
+                    csv_path=args.csv or "",
+                )
+            )
+            return 0
+
+        if args.command == "preset-apply":
+            _print_json(apply_strategy_preset(args.config, args.preset))
             return 0
 
         if args.command == "web-ui":

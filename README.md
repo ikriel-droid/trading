@@ -53,6 +53,7 @@ Official sources used while building this starter on 2026-03-22:
 - `src/upbit_auto_trader/backtest.py`: simulation engine
 - `src/upbit_auto_trader/runtime.py`: stateful paper or live loop
 - `src/upbit_auto_trader/ui.py`: standard-library web dashboard server
+- `src/upbit_auto_trader/presets.py`: strategy preset save or apply helpers
 - `src/upbit_auto_trader/scanner.py`: multi-market ranking
 - `src/upbit_auto_trader/selector.py`: rotating best-market selector
 - `src/upbit_auto_trader/brokers/upbit.py`: Upbit REST adapter
@@ -91,6 +92,30 @@ Run a small grid search to compare strategy settings on a CSV backtest:
 .venv\Scripts\python.exe -m upbit_auto_trader.main optimize-grid --config config.example.json --csv data/demo_krw_btc_15m.csv --top 5
 ```
 
+Run the same grid search and save the best result as a reusable strategy preset:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main optimize-grid --config config.example.json --csv data/demo_krw_btc_15m.csv --top 5 --save-best-preset krw-btc-best
+```
+
+List saved strategy presets:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main preset-list --config config.example.json
+```
+
+Save the current strategy section as a preset:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main preset-save --config config.example.json --name krw-btc-manual-a --csv data/demo_krw_btc_15m.csv
+```
+
+Apply a saved preset back into the config file:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main preset-apply --config config.example.json --preset krw-btc-best
+```
+
 Start the browser-based control room UI:
 
 ```powershell
@@ -103,7 +128,7 @@ Run a local preflight check before paper or live operation:
 .venv\Scripts\python.exe -m upbit_auto_trader.main doctor --config config.example.json --state data\paper-state.json --selector-state data\selector-state.json
 ```
 
-The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, key config editing, separate selector-state input, and start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs. Background job logs are rotated automatically under `data/webui-jobs` so repeated runs do not keep one file growing forever.
+The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, key config editing, strategy preset save or apply controls, separate selector-state input, and start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs. Background job logs are rotated automatically under `data/webui-jobs` so repeated runs do not keep one file growing forever.
 
 Preview a market buy order request:
 

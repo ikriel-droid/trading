@@ -16,9 +16,11 @@ from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.ui import (  # noqa: E402
     build_dashboard_payload,
     load_editable_config,
+    run_apply_preset_action,
     run_backtest_action,
     run_live_reconcile_action,
     run_scan_action,
+    run_save_current_preset_action,
     run_sync_candles_action,
     run_optimize_action,
     run_signal_action,
@@ -108,10 +110,14 @@ class UiTests(unittest.TestCase):
         self.alert_journal_path = PROJECT_ROOT / "data" / "test-ui-alerts.jsonl"
         self.csv_path = str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv")
         self.state_path = PROJECT_ROOT / "data" / "test-ui-state.json"
+        self.state_backup_path = pathlib.Path(str(self.state_path) + ".bak")
         self.selector_state_path = PROJECT_ROOT / "data" / "test-ui-selector-state.json"
         self.selector_market_state_path = PROJECT_ROOT / "data" / "selector-states" / "KRW_BTC.json"
+        self.preset_dir = PROJECT_ROOT / "data" / "strategy-presets"
         if self.state_path.exists():
             self.state_path.unlink()
+        if self.state_backup_path.exists():
+            self.state_backup_path.unlink()
         if self.selector_state_path.exists():
             self.selector_state_path.unlink()
         if self.selector_market_state_path.exists():
@@ -122,6 +128,9 @@ class UiTests(unittest.TestCase):
             self.temp_csv_path.unlink()
         if self.alert_journal_path.exists():
             self.alert_journal_path.unlink()
+        if self.preset_dir.exists():
+            for preset_path in self.preset_dir.glob("test-ui-*.json"):
+                preset_path.unlink()
         shutil.copyfile(self.config_path, self.temp_config_path)
         with open(self.temp_config_path, "r", encoding="utf-8") as handle:
             temp_config = json.load(handle)
@@ -210,6 +219,8 @@ class UiTests(unittest.TestCase):
     def tearDown(self):
         if self.state_path.exists():
             self.state_path.unlink()
+        if self.state_backup_path.exists():
+            self.state_backup_path.unlink()
         if self.selector_state_path.exists():
             self.selector_state_path.unlink()
         if self.selector_market_state_path.exists():
@@ -220,6 +231,9 @@ class UiTests(unittest.TestCase):
             self.temp_csv_path.unlink()
         if self.alert_journal_path.exists():
             self.alert_journal_path.unlink()
+        if self.preset_dir.exists():
+            for preset_path in self.preset_dir.glob("test-ui-*.json"):
+                preset_path.unlink()
 
     def test_build_dashboard_payload_contains_summary_and_signal(self):
         payload = build_dashboard_payload(
@@ -264,6 +278,26 @@ class UiTests(unittest.TestCase):
         self.assertTrue(payload["paths"]["suggested_market_csv_path"].endswith("krw_xrp_15m.csv"))
         self.assertIsNone(payload["latest_signal"])
         self.assertEqual(payload["chart"]["points"], [])
+
+    def test_build_dashboard_payload_exposes_strategy_presets(self):
+        run_save_current_preset_action(
+            config_path=str(self.temp_config_path),
+            preset_name="test-ui-current",
+            csv_path=self.csv_path,
+            market="KRW-BTC",
+        )
+
+        payload = build_dashboard_payload(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="paper",
+            job_manager=BackgroundJobManager(),
+        )
+
+        self.assertTrue(payload["strategy_presets"]["dir"].endswith("data\\strategy-presets"))
+        self.assertTrue(any(item["name"] == "test-ui-current" for item in payload["strategy_presets"]["items"]))
 
     def test_build_dashboard_payload_exposes_alerts(self):
         with open(self.alert_journal_path, "w", encoding="utf-8") as handle:
@@ -334,6 +368,44 @@ class UiTests(unittest.TestCase):
         self.assertIn("final_equity", backtest)
         self.assertEqual(backtest["market"], "KRW-BTC")
         self.assertEqual(len(optimize["top"]), 3)
+
+    def test_optimize_action_can_save_best_preset(self):
+        optimize = run_optimize_action(
+            str(self.temp_config_path),
+            self.csv_path,
+            top=3,
+            market="KRW-BTC",
+            save_best_preset_name="test-ui-best",
+        )
+
+        self.assertIsNotNone(optimize["saved_preset"])
+        self.assertEqual(optimize["saved_preset"]["name"], "test-ui-best")
+        self.assertEqual(
+            optimize["saved_preset"]["summary"]["buy_threshold"],
+            optimize["top"][0]["buy_threshold"],
+        )
+
+    def test_strategy_preset_can_be_saved_and_applied(self):
+        saved = run_save_current_preset_action(
+            config_path=str(self.temp_config_path),
+            preset_name="test-ui-apply",
+            csv_path=self.csv_path,
+            market="KRW-BTC",
+        )
+        update_editable_config(
+            str(self.temp_config_path),
+            {
+                "strategy.buy_threshold": 71.0,
+                "strategy.sell_threshold": 44.0,
+            },
+        )
+
+        applied = run_apply_preset_action(str(self.temp_config_path), saved["path"])
+        updated = load_config(str(self.temp_config_path))
+
+        self.assertEqual(applied["preset"]["name"], "test-ui-apply")
+        self.assertEqual(updated.strategy.buy_threshold, saved["strategy"]["buy_threshold"])
+        self.assertEqual(updated.strategy.sell_threshold, saved["strategy"]["sell_threshold"])
 
     def test_scan_and_reconcile_actions_return_expected_keys(self):
         broker = FakeUiBroker()

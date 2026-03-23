@@ -12,6 +12,7 @@ const ids = {
   scan: document.getElementById("scan-json"),
   reconcile: document.getElementById("reconcile-json"),
   config: document.getElementById("config-json"),
+  presets: document.getElementById("presets-json"),
   jobs: document.getElementById("jobs-json"),
   logs: document.getElementById("logs-json"),
   paths: document.getElementById("paths-json"),
@@ -46,6 +47,8 @@ const ids = {
   cfgVolumeSpike: document.getElementById("cfg-volume-spike"),
   cfgPollSeconds: document.getElementById("cfg-poll-seconds"),
   cfgSelectorMaxMarkets: document.getElementById("cfg-selector-max-markets"),
+  presetName: document.getElementById("preset-name-input"),
+  presetSelect: document.getElementById("preset-select"),
 };
 
 let dashboardState = {
@@ -190,6 +193,23 @@ function setFocusMarket(market, statusElement, statusPrefix) {
   statusElement.textContent = `${statusPrefix} ${market}`;
 }
 
+function defaultPresetName(suffix) {
+  const market = (ids.marketFocus.value.trim() || dashboardState.app.market || "market")
+    .toLowerCase()
+    .replaceAll("-", "_");
+  return `${market}-${suffix}`;
+}
+
+function resolvePresetName(suffix) {
+  const current = ids.presetName.value.trim();
+  if (current) {
+    return current;
+  }
+  const generated = defaultPresetName(suffix);
+  ids.presetName.value = generated;
+  return generated;
+}
+
 function formatCompactNumber(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) {
@@ -289,6 +309,26 @@ function renderSelectorCards(selectorPayload) {
       buttonLabel: "Focus Market",
     },
   );
+}
+
+function renderPresets(presetPayload) {
+  const items = presetPayload?.items || [];
+  ids.presets.textContent = pretty(presetPayload || { dir: "", items: [] });
+
+  const currentValue = ids.presetSelect.value;
+  if (!items.length) {
+    ids.presetSelect.innerHTML = '<option value="">No presets</option>';
+    return;
+  }
+
+  ids.presetSelect.innerHTML = items
+    .map((item) => `<option value="${escapeXml(item.path)}">${escapeXml(item.name)}</option>`)
+    .join("");
+
+  const nextValue = items.some((item) => item.path === currentValue)
+    ? currentValue
+    : items[0].path;
+  ids.presetSelect.value = nextValue;
 }
 
 function renderChart(chartElement, metaElement, chartPayload) {
@@ -422,6 +462,7 @@ async function refreshDashboard() {
     ids.selectorActiveSummary.textContent = pretty(payload.selector_summary?.active_market_summary || {});
     ids.selectorActiveEvents.textContent = pretty(payload.selector_summary?.active_market_activity?.recent_events || []);
     renderSelectorCards(payload.selector_summary || null);
+    renderPresets(payload.strategy_presets || null);
     renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, payload.selector_summary?.active_market_chart);
     renderJobs(payload.jobs);
     renderPriceChart(payload.chart);
@@ -458,16 +499,21 @@ async function runBacktest() {
   }
 }
 
-async function runOptimize() {
+async function runOptimize(saveBest = false) {
   try {
-    ids.optimize.textContent = "Running optimizer...";
+    ids.optimize.textContent = saveBest ? "Running optimizer and saving preset..." : "Running optimizer...";
     const inputs = currentInputs();
     const payload = await postJson("/api/optimize", {
       csv_path: inputs.csv_path,
       top: inputs.top,
       market: inputs.market || dashboardState.app.market || undefined,
+      save_best_preset_name: saveBest ? resolvePresetName("best") : undefined,
     });
     ids.optimize.textContent = pretty(payload);
+    if (payload.saved_preset) {
+      ids.presets.textContent = pretty(payload.saved_preset);
+      await refreshDashboard();
+    }
   } catch (error) {
     ids.optimize.textContent = `optimize error: ${error.message}`;
   }
@@ -582,6 +628,38 @@ async function saveConfig() {
   }
 }
 
+async function saveCurrentPreset() {
+  try {
+    ids.presets.textContent = "Saving current preset...";
+    const inputs = currentInputs();
+    const payload = await postJson("/api/preset-save-current", {
+      preset_name: resolvePresetName("current"),
+      csv_path: inputs.csv_path,
+      market: inputs.market || dashboardState.app.market || undefined,
+    });
+    ids.presets.textContent = pretty(payload);
+    await refreshDashboard();
+  } catch (error) {
+    ids.presets.textContent = `preset save error: ${error.message}`;
+  }
+}
+
+async function applyPreset() {
+  try {
+    const preset = ids.presetSelect.value;
+    if (!preset) {
+      ids.presets.textContent = "preset apply error: select a preset first";
+      return;
+    }
+    ids.presets.textContent = "Applying preset...";
+    const payload = await postJson("/api/preset-apply", { preset });
+    ids.presets.textContent = pretty(payload);
+    await refreshDashboard();
+  } catch (error) {
+    ids.presets.textContent = `preset apply error: ${error.message}`;
+  }
+}
+
 function resetAutoRefresh() {
   if (refreshTimer) {
     clearInterval(refreshTimer);
@@ -596,11 +674,14 @@ function resetAutoRefresh() {
 document.getElementById("refresh-dashboard").addEventListener("click", refreshDashboard);
 document.getElementById("run-signal").addEventListener("click", runSignal);
 document.getElementById("run-backtest").addEventListener("click", runBacktest);
-document.getElementById("run-optimize").addEventListener("click", runOptimize);
+document.getElementById("run-optimize").addEventListener("click", () => runOptimize(false));
 document.getElementById("run-scan").addEventListener("click", runScan);
 document.getElementById("run-reconcile").addEventListener("click", runReconcile);
 document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
 document.getElementById("save-config").addEventListener("click", saveConfig);
+document.getElementById("save-current-preset").addEventListener("click", saveCurrentPreset);
+document.getElementById("save-best-preset").addEventListener("click", () => runOptimize(true));
+document.getElementById("apply-preset").addEventListener("click", applyPreset);
 document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);
 ids.scanCards.addEventListener("click", (event) => {
   const button = event.target.closest("[data-market]");
@@ -630,6 +711,7 @@ ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 
 renderScanCards(null);
 renderSelectorCards(null);
+renderPresets(null);
 renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, null);
 refreshDashboard();
 resetAutoRefresh();

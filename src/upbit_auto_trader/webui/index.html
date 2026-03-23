@@ -355,6 +355,33 @@
         <article class="panel">
           <div class="panel-head">
             <div>
+              <p class="panel-eyebrow">Config</p>
+              <h2>Strategy Presets</h2>
+            </div>
+            <div class="button-row">
+              <button id="save-current-preset" class="ghost-button">Save Current</button>
+              <button id="save-best-preset" class="ghost-button">Save Best Optimize</button>
+              <button id="apply-preset" class="ghost-button">Apply Preset</button>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>Preset Name</span>
+              <input id="preset-name-input" type="text" placeholder="krw-btc-swing-a">
+            </label>
+            <label class="field">
+              <span>Saved Presets</span>
+              <select id="preset-select">
+                <option value="">No presets</option>
+              </select>
+            </label>
+          </div>
+          <pre id="presets-json" class="code-block">Loading...</pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
               <p class="panel-eyebrow">Paths</p>
               <h2>Workspace Inputs</h2>
             </div>
