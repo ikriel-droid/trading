@@ -17,6 +17,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_backtest_action,
     run_live_reconcile_action,
     run_scan_action,
+    run_sync_candles_action,
     run_optimize_action,
     run_signal_action,
     update_editable_config,
@@ -77,12 +78,15 @@ class UiTests(unittest.TestCase):
     def setUp(self):
         self.config_path = str(PROJECT_ROOT / "config.example.json")
         self.temp_config_path = PROJECT_ROOT / "data" / "test-ui-config.json"
+        self.temp_csv_path = PROJECT_ROOT / "data" / "test-ui-candles.csv"
         self.csv_path = str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv")
         self.state_path = PROJECT_ROOT / "data" / "test-ui-state.json"
         if self.state_path.exists():
             self.state_path.unlink()
         if self.temp_config_path.exists():
             self.temp_config_path.unlink()
+        if self.temp_csv_path.exists():
+            self.temp_csv_path.unlink()
         shutil.copyfile(self.config_path, self.temp_config_path)
 
         config = load_config(self.config_path)
@@ -99,6 +103,8 @@ class UiTests(unittest.TestCase):
             self.state_path.unlink()
         if self.temp_config_path.exists():
             self.temp_config_path.unlink()
+        if self.temp_csv_path.exists():
+            self.temp_csv_path.unlink()
 
     def test_build_dashboard_payload_contains_summary_and_signal(self):
         payload = build_dashboard_payload(
@@ -154,6 +160,18 @@ class UiTests(unittest.TestCase):
         self.assertNotEqual(before["strategy.buy_threshold"], after["strategy.buy_threshold"])
         self.assertEqual(result["current"]["strategy.buy_threshold"], 70.0)
         self.assertEqual(result["current"]["selector.max_markets"], 7)
+
+    def test_sync_candles_action_writes_csv(self):
+        broker = FakeUiBroker()
+        result = run_sync_candles_action(
+            config_path=self.config_path,
+            csv_path=str(self.temp_csv_path),
+            count=50,
+            broker=broker,
+        )
+
+        self.assertTrue(self.temp_csv_path.exists())
+        self.assertEqual(result["rows_written"], 44)
 
 
 if __name__ == "__main__":

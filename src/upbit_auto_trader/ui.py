@@ -8,6 +8,7 @@ from .backtest import Backtester
 from .brokers.upbit import UpbitBroker
 from .config import load_config
 from .datafeed import load_csv_candles
+from .datafeed import merge_candles, upbit_candles_to_internal, write_csv_candles
 from .optimizer import run_grid_search
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
@@ -138,6 +139,38 @@ def run_scan_action(
             }
             for item in results[: max_markets]
         ],
+    }
+
+
+def run_sync_candles_action(
+    config_path: str,
+    csv_path: str,
+    count: Optional[int] = None,
+    market: Optional[str] = None,
+    broker: Optional[UpbitBroker] = None,
+) -> Dict[str, Any]:
+    config = load_config(config_path)
+    if market:
+        config.market = market
+        config.upbit.market = market
+    broker = broker or UpbitBroker(config.upbit)
+    fetch_count = count or config.upbit.candle_count
+    payload = broker.get_minute_candles(
+        market=config.market,
+        unit=config.upbit.candle_unit,
+        count=fetch_count,
+    )
+    incoming = upbit_candles_to_internal(payload)
+    existing = load_csv_candles(csv_path) if Path(csv_path).exists() else []
+    keep_rows = max(config.runtime.max_history, len(existing) + len(incoming), fetch_count)
+    merged = merge_candles(existing, incoming, max_history=keep_rows)
+    write_csv_candles(csv_path, merged)
+    return {
+        "market": config.market,
+        "csv_path": csv_path,
+        "rows_written": len(merged),
+        "first_timestamp": merged[0].timestamp if merged else "",
+        "last_timestamp": merged[-1].timestamp if merged else "",
     }
 
 
@@ -335,6 +368,16 @@ def _build_handler(
                         config_path=config_path,
                         state_path=body.get("state_path") or state_path,
                         mode=body.get("mode") or mode,
+                        market=body.get("market"),
+                    )
+                )
+                return
+            if self.path == "/api/sync-candles":
+                self._write_json(
+                    run_sync_candles_action(
+                        config_path=config_path,
+                        csv_path=body.get("csv_path") or csv_path or "",
+                        count=int(body.get("count", 0)) or None,
                         market=body.get("market"),
                     )
                 )

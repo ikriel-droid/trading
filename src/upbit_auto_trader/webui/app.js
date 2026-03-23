@@ -22,6 +22,7 @@ const ids = {
   optimizeTop: document.getElementById("optimize-top-input"),
   scanMaxMarkets: document.getElementById("scan-max-markets-input"),
   quoteCurrency: document.getElementById("quote-currency-input"),
+  syncCount: document.getElementById("sync-count-input"),
   cfgBuyThreshold: document.getElementById("cfg-buy-threshold"),
   cfgSellThreshold: document.getElementById("cfg-sell-threshold"),
   cfgMinAdx: document.getElementById("cfg-min-adx"),
@@ -53,6 +54,7 @@ function currentInputs() {
     top: Number(ids.optimizeTop.value || "5"),
     max_markets: Number(ids.scanMaxMarkets.value || "10"),
     quote_currency: ids.quoteCurrency.value.trim() || "KRW",
+    sync_count: Number(ids.syncCount.value || "200"),
   };
 }
 
@@ -236,6 +238,22 @@ async function runReconcile() {
   }
 }
 
+async function runSyncCandles() {
+  try {
+    ids.paths.textContent = "Syncing candles...";
+    const inputs = currentInputs();
+    const payload = await postJson("/api/sync-candles", {
+      csv_path: inputs.csv_path,
+      count: inputs.sync_count,
+      market: dashboardState.app.market || undefined,
+    });
+    ids.paths.textContent = pretty(payload);
+    await refreshDashboard();
+  } catch (error) {
+    ids.paths.textContent = `sync error: ${error.message}`;
+  }
+}
+
 async function saveConfig() {
   try {
     ids.config.textContent = "Saving config...";
@@ -272,6 +290,7 @@ document.getElementById("run-backtest").addEventListener("click", runBacktest);
 document.getElementById("run-optimize").addEventListener("click", runOptimize);
 document.getElementById("run-scan").addEventListener("click", runScan);
 document.getElementById("run-reconcile").addEventListener("click", runReconcile);
+document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
 document.getElementById("save-config").addEventListener("click", saveConfig);
 ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 

@@ -49,6 +49,10 @@
           <span>Quote</span>
           <input id="quote-currency-input" type="text" value="KRW">
         </label>
+        <label class="field short">
+          <span>Sync Count</span>
+          <input id="sync-count-input" type="number" min="10" max="500" value="200">
+        </label>
       </section>
 
       <section class="status-grid">
@@ -208,6 +212,7 @@
               <p class="panel-eyebrow">Paths</p>
               <h2>Workspace Inputs</h2>
             </div>
+            <button id="run-sync-candles" class="ghost-button">Sync Candles</button>
           </div>
           <pre id="paths-json" class="code-block">Loading...</pre>
         </article>
