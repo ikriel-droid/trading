@@ -251,6 +251,14 @@ The `selector` section controls multi-market behavior:
 - `skip_warning_markets`: skip Upbit warning-marked symbols
 - `states_dir`: per-market runtime state directory used by `run-selector`
 
+The `upbit` section also includes request-layer safety controls:
+
+- `request_timeout_seconds`: per-request timeout for REST calls
+- `max_retries`: automatic retry count for transient `GET` failures such as `429`, `500`, `502`, `503`, `504`, or network timeouts
+- `retry_backoff_seconds`: exponential backoff base between retry attempts
+
+The broker only auto-retries `GET` requests. It does not auto-retry `POST` or `DELETE` order-changing calls because that would risk duplicate submissions or repeated cancels after an ambiguous network failure.
+
 In `live` mode, the runtime now checks `주문 가능 정보 조회` before placing orders:
 
 The runtime uses Upbit available order information and order polling before new live submissions.

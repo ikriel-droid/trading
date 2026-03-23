@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 import uuid
 from typing import Any, Dict, Iterable, List, Optional
 from urllib import error, parse, request
@@ -22,9 +23,14 @@ class LiveTradingDisabledError(UpbitError):
     pass
 
 
+class UpbitRateLimitError(UpbitError):
+    pass
+
+
 class UpbitBroker:
     def __init__(self, config: UpbitConfig) -> None:
         self.config = config
+        self.last_rate_limit: Dict[str, Any] = {}
 
     def readiness_report(self) -> Dict[str, Any]:
         public_issues = []
@@ -46,6 +52,10 @@ class UpbitBroker:
             "private_ready": len(public_issues) == 0 and len(private_issues) == 0,
             "public_issues": public_issues,
             "private_issues": private_issues,
+            "request_timeout_seconds": self.config.request_timeout_seconds,
+            "max_retries": self.config.max_retries,
+            "retry_backoff_seconds": self.config.retry_backoff_seconds,
+            "last_rate_limit": self.last_rate_limit,
         }
 
     def list_markets(self, is_details: bool = True) -> List[dict]:
@@ -277,15 +287,37 @@ class UpbitBroker:
             headers["Authorization"] = self.build_authorization_header(params or body)
 
         req = request.Request(url=url, data=raw_body, method=method, headers=headers)
-        try:
-            with request.urlopen(req, timeout=10) as response:
-                raw = response.read().decode("utf-8")
-                return json.loads(raw) if raw else {}
-        except error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            raise UpbitError("upbit http error: {0} {1} {2}".format(exc.code, exc.reason, detail))
-        except error.URLError as exc:
-            raise UpbitError("upbit url error: {0}".format(exc.reason))
+        retryable = self._is_retryable_request(method=method, body=body)
+        max_attempts = 1 + max(0, int(self.config.max_retries))
+
+        for attempt in range(max_attempts):
+            try:
+                with request.urlopen(req, timeout=self.config.request_timeout_seconds) as response:
+                    self.last_rate_limit = self._parse_remaining_req(response.headers)
+                    raw = response.read().decode("utf-8")
+                    return json.loads(raw) if raw else {}
+            except error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="ignore")
+                headers = getattr(exc, "headers", {}) or {}
+                self.last_rate_limit = self._parse_remaining_req(headers)
+                is_rate_limited = exc.code == 429
+                can_retry = retryable and self._is_retryable_status(exc.code) and attempt < (max_attempts - 1)
+                if can_retry:
+                    time.sleep(self._retry_delay(attempt, headers))
+                    continue
+                if is_rate_limited:
+                    raise UpbitRateLimitError(
+                        "upbit rate limited: retry_after={0} detail={1}".format(
+                            self._retry_after(headers),
+                            detail or exc.reason,
+                        )
+                    )
+                raise UpbitError("upbit http error: {0} {1} {2}".format(exc.code, exc.reason, detail))
+            except error.URLError as exc:
+                if retryable and attempt < (max_attempts - 1):
+                    time.sleep(self._retry_delay(attempt, None))
+                    continue
+                raise UpbitError("upbit url error: {0}".format(exc.reason))
 
     def _build_url(self, path: str) -> str:
         if not self.config.base_url:
@@ -335,6 +367,55 @@ class UpbitBroker:
 
     def _base64url_encode(self, value: bytes) -> str:
         return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+    def _is_retryable_request(self, method: str, body: Optional[Dict[str, Any]]) -> bool:
+        return method.upper() == "GET" and body is None
+
+    def _is_retryable_status(self, status_code: int) -> bool:
+        return status_code in (429, 500, 502, 503, 504)
+
+    def _retry_delay(self, attempt: int, headers: Optional[Any]) -> float:
+        retry_after = self._retry_after(headers or {})
+        if retry_after is not None:
+            return max(0.0, retry_after)
+        base = max(0.0, float(self.config.retry_backoff_seconds))
+        return base * (2**attempt)
+
+    def _retry_after(self, headers: Any) -> Optional[float]:
+        value = ""
+        if hasattr(headers, "get"):
+            value = str(headers.get("Retry-After", "")).strip()
+        if not value:
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            return None
+
+    def _parse_remaining_req(self, headers: Any) -> Dict[str, Any]:
+        if not hasattr(headers, "get"):
+            return {}
+
+        raw_value = str(headers.get("Remaining-Req", "")).strip()
+        if not raw_value:
+            return {}
+
+        parsed: Dict[str, Any] = {"raw": raw_value}
+        for segment in raw_value.split(";"):
+            part = segment.strip()
+            if not part or "=" not in part:
+                continue
+            key, value = part.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if key in ("min", "sec"):
+                try:
+                    parsed[key] = int(value)
+                except ValueError:
+                    parsed[key] = value
+            else:
+                parsed[key] = value
+        return parsed
 
     def _validate_live_trading_enabled(self) -> None:
         if not self.config.live_enabled:

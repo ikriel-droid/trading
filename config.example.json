@@ -69,6 +69,9 @@
     "secret_key": "${UPBIT_SECRET_KEY}",
     "candle_unit": 15,
     "candle_count": 200,
+    "request_timeout_seconds": 10.0,
+    "max_retries": 2,
+    "retry_backoff_seconds": 0.5,
     "live_enabled": false
   }
 }

@@ -83,6 +83,9 @@ class UpbitConfig:
     secret_key: str = ""
     candle_unit: int = 15
     candle_count: int = 200
+    request_timeout_seconds: float = 10.0
+    max_retries: int = 2
+    retry_backoff_seconds: float = 0.5
     live_enabled: bool = False
 
 
