@@ -3,6 +3,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import parse_qs, urlparse
 
 from .backtest import Backtester
 from .brokers.upbit import UpbitBroker
@@ -41,6 +42,30 @@ def _default_selector_state_path(config_path: str) -> str:
 
 def _resolve_selector_state_path(config_path: str, selector_state_path: Optional[str]) -> str:
     return selector_state_path or _default_selector_state_path(config_path)
+
+
+def _project_root(config_path: str) -> Path:
+    return Path(config_path).resolve().parent
+
+
+def _resolve_project_path(config_path: str, value: str) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        return str(path)
+    return str(_project_root(config_path) / path)
+
+
+def _override_market(config: Any, market: Optional[str]) -> Any:
+    if market:
+        config.market = market
+        if hasattr(config, "upbit"):
+            config.upbit.market = market
+    return config
+
+
+def _default_market_csv_path(config_path: str, market: str, candle_unit: int) -> str:
+    filename = "{0}_{1}m.csv".format(market.lower().replace("-", "_"), candle_unit)
+    return str(_project_root(config_path) / "data" / filename)
 
 
 def _load_raw_config(config_path: str) -> Dict[str, Any]:
@@ -96,11 +121,15 @@ def update_editable_config(config_path: str, values: Dict[str, Any]) -> Dict[str
 
 
 def _load_runtime_for_dashboard(config_path: str, state_path: Optional[str], mode: str) -> Optional[TradingRuntime]:
-    if not state_path or not Path(state_path).exists():
+    if not state_path:
+        return None
+
+    resolved_state_path = _resolve_project_path(config_path, state_path)
+    if not Path(resolved_state_path).exists():
         return None
 
     config = load_config(config_path)
-    runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
+    runtime = TradingRuntime(config=config, mode="paper", state_path=resolved_state_path)
     state = runtime._load_state()  # noqa: SLF001
     if state is None:
         return None
@@ -236,12 +265,15 @@ def load_selector_summary(config_path: str, selector_state_path: Optional[str]) 
             "selector_state_path": resolved_state_path,
             "exists": False,
             "active_market": "",
+            "active_market_state_path": "",
             "cycle_count": 0,
             "last_selected_market": "",
             "last_selected_score": 0.0,
             "last_scan_timestamp": "",
             "last_scan_results": [],
             "active_market_summary": None,
+            "active_market_activity": {"recent_events": [], "recent_trades": []},
+            "active_market_chart": {"points": [], "markers": []},
         }
 
     with open(resolved_state_path, "r", encoding="utf-8") as handle:
@@ -273,9 +305,9 @@ def load_selector_summary(config_path: str, selector_state_path: Optional[str]) 
     }
 
 
-def run_signal_action(config_path: str, csv_path: str) -> Dict[str, Any]:
-    config = load_config(config_path)
-    candles = load_csv_candles(csv_path)
+def run_signal_action(config_path: str, csv_path: str, market: Optional[str] = None) -> Dict[str, Any]:
+    config = _override_market(load_config(config_path), market)
+    candles = load_csv_candles(_resolve_project_path(config_path, csv_path))
     signal = ProfessionalCryptoStrategy(config.strategy).evaluate(candles, None)
     return {
         "market": config.market,
@@ -333,6 +365,7 @@ def run_sync_candles_action(
     if market:
         config.market = market
         config.upbit.market = market
+    resolved_csv_path = _resolve_project_path(config_path, csv_path)
     broker = broker or UpbitBroker(config.upbit)
     fetch_count = count or config.upbit.candle_count
     payload = broker.get_minute_candles(
@@ -341,26 +374,27 @@ def run_sync_candles_action(
         count=fetch_count,
     )
     incoming = upbit_candles_to_internal(payload)
-    existing = load_csv_candles(csv_path) if Path(csv_path).exists() else []
+    existing = load_csv_candles(resolved_csv_path) if Path(resolved_csv_path).exists() else []
     keep_rows = max(config.runtime.max_history, len(existing) + len(incoming), fetch_count)
     merged = merge_candles(existing, incoming, max_history=keep_rows)
-    write_csv_candles(csv_path, merged)
+    write_csv_candles(resolved_csv_path, merged)
     return {
         "market": config.market,
-        "csv_path": csv_path,
+        "csv_path": resolved_csv_path,
         "rows_written": len(merged),
         "first_timestamp": merged[0].timestamp if merged else "",
         "last_timestamp": merged[-1].timestamp if merged else "",
     }
 
 
-def run_backtest_action(config_path: str, csv_path: str) -> Dict[str, Any]:
-    config = load_config(config_path)
-    candles = load_csv_candles(csv_path)
+def run_backtest_action(config_path: str, csv_path: str, market: Optional[str] = None) -> Dict[str, Any]:
+    config = _override_market(load_config(config_path), market)
+    resolved_csv_path = _resolve_project_path(config_path, csv_path)
+    candles = load_csv_candles(resolved_csv_path)
     result = Backtester(config).run(candles)
     return {
         "market": config.market,
-        "csv_path": csv_path,
+        "csv_path": resolved_csv_path,
         "final_equity": round(result.final_equity, 2),
         "total_return_pct": round(result.total_return_pct, 4),
         "max_drawdown_pct": round(result.max_drawdown_pct, 4),
@@ -370,9 +404,15 @@ def run_backtest_action(config_path: str, csv_path: str) -> Dict[str, Any]:
     }
 
 
-def run_optimize_action(config_path: str, csv_path: str, top: int = 5) -> Dict[str, Any]:
-    config = load_config(config_path)
-    candles = load_csv_candles(csv_path)
+def run_optimize_action(
+    config_path: str,
+    csv_path: str,
+    top: int = 5,
+    market: Optional[str] = None,
+) -> Dict[str, Any]:
+    config = _override_market(load_config(config_path), market)
+    resolved_csv_path = _resolve_project_path(config_path, csv_path)
+    candles = load_csv_candles(resolved_csv_path)
     results = run_grid_search(
         config=config,
         candles=candles,
@@ -384,7 +424,7 @@ def run_optimize_action(config_path: str, csv_path: str, top: int = 5) -> Dict[s
     )
     return {
         "market": config.market,
-        "csv_path": csv_path,
+        "csv_path": resolved_csv_path,
         "tested": len(results),
         "top": [
             {
@@ -411,18 +451,22 @@ def run_live_reconcile_action(
     market: Optional[str] = None,
     broker: Optional[UpbitBroker] = None,
 ) -> Dict[str, Any]:
-    if not state_path or not Path(state_path).exists():
+    if not state_path:
         return {
             "error": "state file not found",
             "state_path": state_path or "",
         }
 
-    config = load_config(config_path)
-    if market:
-        config.market = market
-        config.upbit.market = market
+    resolved_state_path = _resolve_project_path(config_path, state_path)
+    if not Path(resolved_state_path).exists():
+        return {
+            "error": "state file not found",
+            "state_path": resolved_state_path,
+        }
+
+    config = _override_market(load_config(config_path), market)
     broker = broker or UpbitBroker(config.upbit)
-    runtime = TradingRuntime(config=config, mode="live", state_path=state_path, broker=broker)
+    runtime = TradingRuntime(config=config, mode="live", state_path=resolved_state_path, broker=broker)
     runtime.bootstrap([])
     return runtime.reconcile_live_snapshot()
 
@@ -433,25 +477,33 @@ def build_dashboard_payload(
     selector_state_path: Optional[str],
     csv_path: Optional[str],
     mode: str,
+    focus_market: Optional[str] = None,
     job_manager: Optional[BackgroundJobManager] = None,
 ) -> Dict[str, Any]:
-    config = load_config(config_path)
+    config = _override_market(load_config(config_path), focus_market)
     broker = UpbitBroker(config.upbit)
     job_manager = job_manager or JOB_MANAGER
     runtime = _load_runtime_for_dashboard(config_path, state_path, mode)
     resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
+    suggested_market_csv_path = _default_market_csv_path(config_path, config.market, config.upbit.candle_unit)
+    effective_csv_path = _resolve_project_path(
+        config_path,
+        csv_path or suggested_market_csv_path,
+    )
     payload: Dict[str, Any] = {
         "paths": {
             "config_path": config_path,
             "state_path": state_path or "",
             "selector_state_path": resolved_selector_state_path,
-            "csv_path": csv_path or "",
+            "csv_path": effective_csv_path,
+            "suggested_market_csv_path": suggested_market_csv_path,
         },
         "app": {
             "market": config.market,
             "mode": mode,
             "poll_seconds": config.runtime.poll_seconds,
             "selector_max_markets": config.selector.max_markets,
+            "candle_unit": config.upbit.candle_unit,
         },
         "broker_readiness": broker.readiness_report(),
         "state_summary": runtime.summary() if runtime is not None else None,
@@ -468,8 +520,8 @@ def build_dashboard_payload(
         },
     }
 
-    if csv_path and Path(csv_path).exists():
-        candles = load_csv_candles(csv_path)
+    if Path(effective_csv_path).exists():
+        candles = load_csv_candles(effective_csv_path)
         chart_points = _chart_points_from_candles(candles)
         payload["csv_info"] = {
             "rows": len(candles),
@@ -480,7 +532,7 @@ def build_dashboard_payload(
             "points": chart_points,
             "markers": _build_chart_markers(chart_points, runtime),
         }
-        payload["latest_signal"] = run_signal_action(config_path, csv_path)
+        payload["latest_signal"] = run_signal_action(config_path, effective_csv_path)
     else:
         payload["csv_info"] = None
         payload["chart"] = {"points": [], "markers": []}
@@ -562,28 +614,33 @@ def _build_handler(
 ):
     class RequestHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
-            if self.path in ("/", "/index.html"):
+            parsed = urlparse(self.path)
+            query = parse_qs(parsed.query)
+            if parsed.path in ("/", "/index.html"):
                 self._serve_asset("index.html", "text/html; charset=utf-8")
                 return
-            if self.path == "/styles.css":
+            if parsed.path == "/styles.css":
                 self._serve_asset("styles.css", "text/css; charset=utf-8")
                 return
-            if self.path == "/app.js":
+            if parsed.path == "/app.js":
                 self._serve_asset("app.js", "application/javascript; charset=utf-8")
                 return
-            if self.path == "/api/dashboard":
+            if parsed.path == "/api/dashboard":
                 self._write_json(
                     build_dashboard_payload(
                         config_path=config_path,
-                        state_path=state_path,
-                        selector_state_path=selector_state_path,
-                        csv_path=csv_path,
+                        state_path=query.get("state_path", [state_path or ""])[0] or state_path,
+                        selector_state_path=(
+                            query.get("selector_state_path", [selector_state_path or ""])[0] or selector_state_path
+                        ),
+                        csv_path=query.get("csv_path", [csv_path or ""])[0] or csv_path,
                         mode=mode,
+                        focus_market=query.get("focus_market", [""])[0] or None,
                         job_manager=JOB_MANAGER,
                     )
                 )
                 return
-            if self.path == "/api/jobs":
+            if parsed.path == "/api/jobs":
                 self._write_json({"jobs": JOB_MANAGER.list_jobs()})
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
@@ -591,10 +648,22 @@ def _build_handler(
         def do_POST(self) -> None:  # noqa: N802
             body = self._read_json_body()
             if self.path == "/api/signal":
-                self._write_json(run_signal_action(config_path, body.get("csv_path") or csv_path or ""))
+                self._write_json(
+                    run_signal_action(
+                        config_path,
+                        body.get("csv_path") or csv_path or "",
+                        market=body.get("market"),
+                    )
+                )
                 return
             if self.path == "/api/backtest":
-                self._write_json(run_backtest_action(config_path, body.get("csv_path") or csv_path or ""))
+                self._write_json(
+                    run_backtest_action(
+                        config_path,
+                        body.get("csv_path") or csv_path or "",
+                        market=body.get("market"),
+                    )
+                )
                 return
             if self.path == "/api/optimize":
                 self._write_json(
@@ -602,6 +671,7 @@ def _build_handler(
                         config_path,
                         body.get("csv_path") or csv_path or "",
                         top=int(body.get("top", 5)),
+                        market=body.get("market"),
                     )
                 )
                 return

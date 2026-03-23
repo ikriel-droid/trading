@@ -229,13 +229,31 @@ class UiTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["selector_summary"]["last_scan_results"]), 2)
         self.assertEqual(payload["jobs"], [])
 
+    def test_build_dashboard_payload_supports_focus_market(self):
+        payload = build_dashboard_payload(
+            config_path=self.config_path,
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=None,
+            mode="paper",
+            focus_market="KRW-XRP",
+            job_manager=BackgroundJobManager(),
+        )
+
+        self.assertEqual(payload["app"]["market"], "KRW-XRP")
+        self.assertTrue(payload["paths"]["suggested_market_csv_path"].endswith("krw_xrp_15m.csv"))
+        self.assertIsNone(payload["latest_signal"])
+        self.assertEqual(payload["chart"]["points"], [])
+
     def test_backtest_signal_and_optimize_actions_return_expected_keys(self):
-        signal = run_signal_action(self.config_path, self.csv_path)
-        backtest = run_backtest_action(self.config_path, self.csv_path)
-        optimize = run_optimize_action(self.config_path, self.csv_path, top=3)
+        signal = run_signal_action(self.config_path, self.csv_path, market="KRW-BTC")
+        backtest = run_backtest_action(self.config_path, self.csv_path, market="KRW-BTC")
+        optimize = run_optimize_action(self.config_path, self.csv_path, top=3, market="KRW-BTC")
 
         self.assertIn("action", signal)
+        self.assertEqual(signal["market"], "KRW-BTC")
         self.assertIn("final_equity", backtest)
+        self.assertEqual(backtest["market"], "KRW-BTC")
         self.assertEqual(len(optimize["top"]), 3)
 
     def test_scan_and_reconcile_actions_return_expected_keys(self):

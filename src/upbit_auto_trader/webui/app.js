@@ -136,6 +136,29 @@ function syncInputsFromDashboard(payload) {
   ids.config.textContent = pretty(editableConfig);
 }
 
+function defaultCsvPathForMarket(market) {
+  if (!market) {
+    return "";
+  }
+  const candleUnit = Number(dashboardState.app.candle_unit || 15);
+  return `data/${String(market).toLowerCase().replaceAll("-", "_")}_${candleUnit}m.csv`;
+}
+
+function setFocusMarket(market, statusElement, statusPrefix) {
+  if (!market) {
+    return;
+  }
+  ids.marketFocus.value = market;
+  const currentCsvPath = ids.csvPath.value.trim();
+  const previousFocus = dashboardState.app.market || "";
+  const previousDefault = defaultCsvPathForMarket(previousFocus);
+  const nextDefault = defaultCsvPathForMarket(market);
+  if (!currentCsvPath || currentCsvPath === previousDefault) {
+    ids.csvPath.value = nextDefault;
+  }
+  statusElement.textContent = `${statusPrefix} ${market}`;
+}
+
 function formatCompactNumber(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) {
@@ -161,6 +184,7 @@ function renderMarketCards(target, results, emptyMessage, options = {}) {
 
   target.innerHTML = results.map((item, index) => {
     const action = String(item.action || "HOLD").toLowerCase();
+    const normalizedReasons = (item.reasons || []).slice(0, 4).map((value) => escapeXml(value)).join(" | ");
     const reasons = (item.reasons || []).slice(0, 4).map((value) => escapeXml(value)).join(" · ");
     const warningChip = item.market_warning && item.market_warning !== "NONE"
       ? `<span class="chip warn">warning ${escapeXml(item.market_warning)}</span>`
@@ -207,7 +231,7 @@ function renderMarketCards(target, results, emptyMessage, options = {}) {
           ${warningChip}
           ${activeChip}
         </div>
-        <p class="scan-reasons">${reasons || "No reasons provided."}</p>
+        <p class="scan-reasons">${normalizedReasons || "No reasons provided."}</p>
         <div class="scan-actions">
           <button class="ghost-button small scan-use-button" data-market="${escapeXml(item.market)}">${escapeXml(buttonLabel)}</button>
         </div>
@@ -340,7 +364,14 @@ async function postJson(url, payload) {
 
 async function refreshDashboard() {
   try {
-    const payload = await getJson("/api/dashboard");
+    const inputs = currentInputs();
+    const query = new URLSearchParams({
+      state_path: inputs.state_path,
+      selector_state_path: inputs.selector_state_path,
+      csv_path: inputs.csv_path,
+      focus_market: inputs.market,
+    });
+    const payload = await getJson(`/api/dashboard?${query.toString()}`);
     syncInputsFromDashboard(payload);
     const summary = payload.state_summary || {};
     setMetric(ids.market, payload.app.market);
@@ -370,8 +401,10 @@ async function refreshDashboard() {
 async function runSignal() {
   try {
     ids.signal.textContent = "Running signal...";
+    const inputs = currentInputs();
     const payload = await postJson("/api/signal", {
-      csv_path: currentInputs().csv_path,
+      csv_path: inputs.csv_path,
+      market: inputs.market || dashboardState.app.market || undefined,
     });
     ids.signal.textContent = pretty(payload);
   } catch (error) {
@@ -382,8 +415,10 @@ async function runSignal() {
 async function runBacktest() {
   try {
     ids.backtest.textContent = "Running backtest...";
+    const inputs = currentInputs();
     const payload = await postJson("/api/backtest", {
-      csv_path: currentInputs().csv_path,
+      csv_path: inputs.csv_path,
+      market: inputs.market || dashboardState.app.market || undefined,
     });
     ids.backtest.textContent = pretty(payload);
   } catch (error) {
@@ -398,6 +433,7 @@ async function runOptimize() {
     const payload = await postJson("/api/optimize", {
       csv_path: inputs.csv_path,
       top: inputs.top,
+      market: inputs.market || dashboardState.app.market || undefined,
     });
     ids.optimize.textContent = pretty(payload);
   } catch (error) {
@@ -539,16 +575,16 @@ ids.scanCards.addEventListener("click", (event) => {
   if (!button) {
     return;
   }
-  ids.marketFocus.value = button.dataset.market || "";
-  ids.scan.textContent = `focus market set to ${ids.marketFocus.value}`;
+  setFocusMarket(button.dataset.market || "", ids.scan, "focus market set to");
+  refreshDashboard();
 });
 ids.selectorCards.addEventListener("click", (event) => {
   const button = event.target.closest("[data-market]");
   if (!button) {
     return;
   }
-  ids.marketFocus.value = button.dataset.market || "";
-  ids.selectorSummary.textContent = `focus market set to ${ids.marketFocus.value}`;
+  setFocusMarket(button.dataset.market || "", ids.selectorSummary, "focus market set to");
+  refreshDashboard();
 });
 document.getElementById("start-paper-loop").addEventListener("click", () => startJob("paper-loop"));
 document.getElementById("stop-paper-loop").addEventListener("click", () => stopJob("paper-loop"));
