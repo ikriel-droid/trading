@@ -39,6 +39,10 @@ def _default_selector_state_path(config_path: str) -> str:
     return str(Path(config_path).resolve().parent / "data" / "selector-state-ui.json")
 
 
+def _resolve_selector_state_path(config_path: str, selector_state_path: Optional[str]) -> str:
+    return selector_state_path or _default_selector_state_path(config_path)
+
+
 def _load_raw_config(config_path: str) -> Dict[str, Any]:
     with open(config_path, "r", encoding="utf-8") as handle:
         return json.load(handle)
@@ -190,6 +194,52 @@ def _build_chart_markers(chart_points: list[Dict[str, Any]], runtime: Optional[T
 
     markers.sort(key=lambda item: (item["timestamp"], item["kind"], item["price"]))
     return markers
+
+
+def _selector_market_state_path(config_path: str, selector_state_path: str, market: str) -> str:
+    config = load_config(config_path)
+    project_root = Path(config_path).resolve().parent
+    states_dir = Path(config.selector.states_dir)
+    if not states_dir.is_absolute():
+        states_dir = project_root / states_dir
+    return str(states_dir / (market.replace("-", "_") + ".json"))
+
+
+def load_selector_summary(config_path: str, selector_state_path: Optional[str]) -> Dict[str, Any]:
+    resolved_state_path = _resolve_selector_state_path(config_path, selector_state_path)
+    if not Path(resolved_state_path).exists():
+        return {
+            "selector_state_path": resolved_state_path,
+            "exists": False,
+            "active_market": "",
+            "cycle_count": 0,
+            "last_selected_market": "",
+            "last_selected_score": 0.0,
+            "last_scan_timestamp": "",
+            "last_scan_results": [],
+            "active_market_summary": None,
+        }
+
+    with open(resolved_state_path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+
+    active_market = payload.get("active_market", "")
+    active_market_summary = None
+    if active_market:
+        active_state_path = _selector_market_state_path(config_path, resolved_state_path, active_market)
+        active_market_summary = load_runtime_summary(config_path, active_state_path, mode="paper")
+
+    return {
+        "selector_state_path": resolved_state_path,
+        "exists": True,
+        "active_market": active_market,
+        "cycle_count": int(payload.get("cycle_count", 0)),
+        "last_selected_market": payload.get("last_selected_market", ""),
+        "last_selected_score": float(payload.get("last_selected_score", 0.0)),
+        "last_scan_timestamp": payload.get("last_scan_timestamp", ""),
+        "last_scan_results": list(payload.get("last_scan_results", []))[:6],
+        "active_market_summary": active_market_summary,
+    }
 
 
 def run_signal_action(config_path: str, csv_path: str) -> Dict[str, Any]:
@@ -349,6 +399,7 @@ def run_live_reconcile_action(
 def build_dashboard_payload(
     config_path: str,
     state_path: Optional[str],
+    selector_state_path: Optional[str],
     csv_path: Optional[str],
     mode: str,
     job_manager: Optional[BackgroundJobManager] = None,
@@ -357,11 +408,12 @@ def build_dashboard_payload(
     broker = UpbitBroker(config.upbit)
     job_manager = job_manager or JOB_MANAGER
     runtime = _load_runtime_for_dashboard(config_path, state_path, mode)
+    resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
     payload: Dict[str, Any] = {
         "paths": {
             "config_path": config_path,
             "state_path": state_path or "",
-            "selector_state_path": _default_selector_state_path(config_path),
+            "selector_state_path": resolved_selector_state_path,
             "csv_path": csv_path or "",
         },
         "app": {
@@ -372,6 +424,7 @@ def build_dashboard_payload(
         },
         "broker_readiness": broker.readiness_report(),
         "state_summary": runtime.summary() if runtime is not None else None,
+        "selector_summary": load_selector_summary(config_path, resolved_selector_state_path),
         "activity": _build_recent_activity(runtime),
         "editable_config": load_editable_config(config_path),
         "jobs": job_manager.list_jobs(),
@@ -431,6 +484,7 @@ def start_managed_job(
 ) -> Dict[str, Any]:
     job_manager = job_manager or JOB_MANAGER
     project_root = str(Path(config_path).resolve().parent)
+    resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
 
     if job_type == "paper-loop":
         command = build_paper_loop_command(
@@ -442,7 +496,7 @@ def start_managed_job(
     elif job_type == "paper-selector":
         command = build_paper_selector_command(
             config_path=config_path,
-            selector_state_path=selector_state_path or _default_selector_state_path(config_path),
+            selector_state_path=resolved_selector_state_path,
             poll_seconds=poll_seconds,
             quote_currency=quote_currency,
             max_markets=max_markets,
@@ -481,6 +535,7 @@ def stop_managed_job(job_name: str, job_manager: Optional[BackgroundJobManager] 
 def _build_handler(
     config_path: str,
     state_path: Optional[str],
+    selector_state_path: Optional[str],
     csv_path: Optional[str],
     mode: str,
 ):
@@ -500,6 +555,7 @@ def _build_handler(
                     build_dashboard_payload(
                         config_path=config_path,
                         state_path=state_path,
+                        selector_state_path=selector_state_path,
                         csv_path=csv_path,
                         mode=mode,
                         job_manager=JOB_MANAGER,
@@ -566,7 +622,7 @@ def _build_handler(
                         config_path=config_path,
                         job_type=body.get("job_type", ""),
                         state_path=body.get("state_path") or state_path,
-                        selector_state_path=body.get("selector_state_path"),
+                        selector_state_path=body.get("selector_state_path") or selector_state_path,
                         csv_path=body.get("csv_path") or csv_path,
                         poll_seconds=float(body["poll_seconds"]) if body.get("poll_seconds") not in (None, "") else None,
                         reconcile_every_loops=(
@@ -622,12 +678,19 @@ def _build_handler(
 def run_web_ui_server(
     config_path: str,
     state_path: Optional[str],
+    selector_state_path: Optional[str],
     csv_path: Optional[str],
     mode: str,
     host: str,
     port: int,
 ) -> None:
-    handler = _build_handler(config_path=config_path, state_path=state_path, csv_path=csv_path, mode=mode)
+    handler = _build_handler(
+        config_path=config_path,
+        state_path=state_path,
+        selector_state_path=selector_state_path,
+        csv_path=csv_path,
+        mode=mode,
+    )
     server = ThreadingHTTPServer((host, port), handler)
     print("Web UI listening on http://{0}:{1}".format(host, port))
     try:

@@ -1,6 +1,7 @@
 import shutil
 import pathlib
 import sys
+import json
 import unittest
 
 
@@ -98,8 +99,14 @@ class UiTests(unittest.TestCase):
         self.temp_csv_path = PROJECT_ROOT / "data" / "test-ui-candles.csv"
         self.csv_path = str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv")
         self.state_path = PROJECT_ROOT / "data" / "test-ui-state.json"
+        self.selector_state_path = PROJECT_ROOT / "data" / "test-ui-selector-state.json"
+        self.selector_market_state_path = PROJECT_ROOT / "data" / "selector-states" / "KRW_BTC.json"
         if self.state_path.exists():
             self.state_path.unlink()
+        if self.selector_state_path.exists():
+            self.selector_state_path.unlink()
+        if self.selector_market_state_path.exists():
+            self.selector_market_state_path.unlink()
         if self.temp_config_path.exists():
             self.temp_config_path.unlink()
         if self.temp_csv_path.exists():
@@ -141,10 +148,54 @@ class UiTests(unittest.TestCase):
             ]
         )
         runtime._save_state()  # noqa: SLF001
+        self.selector_market_state_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(self.state_path, self.selector_market_state_path)
+        with open(self.selector_state_path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "active_market": "KRW-BTC",
+                    "cycle_count": 7,
+                    "last_selected_market": "KRW-BTC",
+                    "last_selected_score": 72.5,
+                    "last_scan_timestamp": candles[-1].timestamp,
+                    "last_scan_results": [
+                        {
+                            "market": "KRW-BTC",
+                            "action": "BUY",
+                            "score": 72.5,
+                            "confidence": 0.82,
+                            "reasons": ["ema_trend", "volume_spike"],
+                            "timestamp": candles[-1].timestamp,
+                            "close": candles[-1].close,
+                            "market_warning": "NONE",
+                            "liquidity_24h": 15000000000.0,
+                            "liquidity_ok": True,
+                        },
+                        {
+                            "market": "KRW-XRP",
+                            "action": "HOLD",
+                            "score": 58.0,
+                            "confidence": 0.55,
+                            "reasons": ["macd_flat"],
+                            "timestamp": candles[-1].timestamp,
+                            "close": 850.0,
+                            "market_warning": "NONE",
+                            "liquidity_24h": 3000000000.0,
+                            "liquidity_ok": True,
+                        },
+                    ],
+                },
+                handle,
+                indent=2,
+            )
 
     def tearDown(self):
         if self.state_path.exists():
             self.state_path.unlink()
+        if self.selector_state_path.exists():
+            self.selector_state_path.unlink()
+        if self.selector_market_state_path.exists():
+            self.selector_market_state_path.unlink()
         if self.temp_config_path.exists():
             self.temp_config_path.unlink()
         if self.temp_csv_path.exists():
@@ -154,6 +205,7 @@ class UiTests(unittest.TestCase):
         payload = build_dashboard_payload(
             config_path=self.config_path,
             state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
             csv_path=self.csv_path,
             mode="paper",
             job_manager=BackgroundJobManager(),
@@ -164,11 +216,15 @@ class UiTests(unittest.TestCase):
         self.assertIsNotNone(payload["latest_signal"])
         self.assertTrue(payload["csv_info"]["rows"] > 0)
         self.assertEqual(payload["ui_defaults"]["scan_max_markets"], 10)
-        self.assertTrue(payload["paths"]["selector_state_path"].endswith("selector-state-ui.json"))
+        self.assertEqual(payload["paths"]["selector_state_path"], str(self.selector_state_path))
         self.assertTrue(len(payload["chart"]["points"]) > 0)
         self.assertGreaterEqual(len(payload["chart"]["markers"]), 2)
         self.assertGreaterEqual(len(payload["activity"]["recent_trades"]), 1)
         self.assertGreaterEqual(len(payload["activity"]["recent_events"]), 1)
+        self.assertEqual(payload["selector_summary"]["active_market"], "KRW-BTC")
+        self.assertEqual(payload["selector_summary"]["cycle_count"], 7)
+        self.assertIsNotNone(payload["selector_summary"]["active_market_summary"])
+        self.assertGreaterEqual(len(payload["selector_summary"]["last_scan_results"]), 2)
         self.assertEqual(payload["jobs"], [])
 
     def test_backtest_signal_and_optimize_actions_return_expected_keys(self):

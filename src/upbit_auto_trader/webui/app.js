@@ -18,6 +18,8 @@ const ids = {
   readiness: document.getElementById("readiness-json"),
   recentTrades: document.getElementById("recent-trades-json"),
   recentEvents: document.getElementById("recent-events-json"),
+  selectorSummary: document.getElementById("selector-summary-json"),
+  selectorCards: document.getElementById("selector-cards"),
   chart: document.getElementById("price-chart"),
   chartMeta: document.getElementById("chart-meta"),
   csvPath: document.getElementById("csv-path-input"),
@@ -144,14 +146,16 @@ function formatCompactNumber(value) {
   return numeric.toFixed(2);
 }
 
-function renderScanCards(scanPayload) {
-  const results = scanPayload?.scan_results || [];
+function renderMarketCards(target, results, emptyMessage, options = {}) {
   if (!results.length) {
-    ids.scanCards.innerHTML = '<div class="empty-state">Run a scan to load ranked markets.</div>';
+    target.innerHTML = `<div class="empty-state">${escapeXml(emptyMessage)}</div>`;
     return;
   }
 
-  ids.scanCards.innerHTML = results.map((item, index) => {
+  const activeMarket = options.activeMarket || "";
+  const buttonLabel = options.buttonLabel || "Use Market";
+
+  target.innerHTML = results.map((item, index) => {
     const action = String(item.action || "HOLD").toLowerCase();
     const reasons = (item.reasons || []).slice(0, 4).map((value) => escapeXml(value)).join(" · ");
     const warningChip = item.market_warning && item.market_warning !== "NONE"
@@ -160,6 +164,9 @@ function renderScanCards(scanPayload) {
     const liquidityChip = item.liquidity_ok
       ? '<span class="chip good">liquidity ok</span>'
       : '<span class="chip warn">liquidity low</span>';
+    const activeChip = item.market === activeMarket
+      ? '<span class="chip active">active</span>'
+      : "";
     return `
       <article class="scan-card">
         <div class="scan-card-head">
@@ -194,14 +201,35 @@ function renderScanCards(scanPayload) {
         <div class="chip-row">
           ${liquidityChip}
           ${warningChip}
+          ${activeChip}
         </div>
         <p class="scan-reasons">${reasons || "No reasons provided."}</p>
         <div class="scan-actions">
-          <button class="ghost-button small scan-use-button" data-market="${escapeXml(item.market)}">Use Market</button>
+          <button class="ghost-button small scan-use-button" data-market="${escapeXml(item.market)}">${escapeXml(buttonLabel)}</button>
         </div>
       </article>
     `;
   }).join("");
+}
+
+function renderScanCards(scanPayload) {
+  renderMarketCards(
+    ids.scanCards,
+    scanPayload?.scan_results || [],
+    "Run a scan to load ranked markets.",
+  );
+}
+
+function renderSelectorCards(selectorPayload) {
+  renderMarketCards(
+    ids.selectorCards,
+    selectorPayload?.last_scan_results || [],
+    "Selector state not loaded yet.",
+    {
+      activeMarket: selectorPayload?.active_market || "",
+      buttonLabel: "Focus Market",
+    },
+  );
 }
 
 function renderPriceChart(chartPayload) {
@@ -318,6 +346,8 @@ async function refreshDashboard() {
     ids.readiness.textContent = pretty(payload.broker_readiness);
     ids.recentTrades.textContent = pretty(payload.activity?.recent_trades || []);
     ids.recentEvents.textContent = pretty(payload.activity?.recent_events || []);
+    ids.selectorSummary.textContent = pretty(payload.selector_summary || {});
+    renderSelectorCards(payload.selector_summary || null);
     renderJobs(payload.jobs);
     renderPriceChart(payload.chart);
   } catch (error) {
@@ -500,6 +530,14 @@ ids.scanCards.addEventListener("click", (event) => {
   ids.marketFocus.value = button.dataset.market || "";
   ids.scan.textContent = `focus market set to ${ids.marketFocus.value}`;
 });
+ids.selectorCards.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-market]");
+  if (!button) {
+    return;
+  }
+  ids.marketFocus.value = button.dataset.market || "";
+  ids.selectorSummary.textContent = `focus market set to ${ids.marketFocus.value}`;
+});
 document.getElementById("start-paper-loop").addEventListener("click", () => startJob("paper-loop"));
 document.getElementById("stop-paper-loop").addEventListener("click", () => stopJob("paper-loop"));
 document.getElementById("start-paper-selector").addEventListener("click", () => startJob("paper-selector"));
@@ -511,5 +549,6 @@ document.getElementById("stop-live-supervisor").addEventListener("click", () => 
 ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 
 renderScanCards(null);
+renderSelectorCards(null);
 refreshDashboard();
 resetAutoRefresh();

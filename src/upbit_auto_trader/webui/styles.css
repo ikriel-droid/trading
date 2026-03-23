@@ -360,6 +360,11 @@ body {
   color: #8f2f28;
 }
 
+.chip.active {
+  background: rgba(199, 92, 42, 0.16);
+  color: var(--accent-deep);
+}
+
 .scan-badge {
   font-weight: 700;
 }

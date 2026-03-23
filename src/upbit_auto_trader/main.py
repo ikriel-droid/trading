@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     web_ui_parser = subparsers.add_parser("web-ui")
     web_ui_parser.add_argument("--config", required=True)
     web_ui_parser.add_argument("--state")
+    web_ui_parser.add_argument("--selector-state")
     web_ui_parser.add_argument("--csv")
     web_ui_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
     web_ui_parser.add_argument("--host", default="127.0.0.1")
@@ -656,6 +657,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             run_web_ui_server(
                 config_path=args.config,
                 state_path=args.state,
+                selector_state_path=args.selector_state,
                 csv_path=args.csv,
                 mode=args.mode,
                 host=args.host,
