@@ -97,7 +97,7 @@ Start the browser-based control room UI:
 .venv\Scripts\python.exe -m upbit_auto_trader.main web-ui --config config.example.json --state data\paper-state.json --csv data/demo_krw_btc_15m.csv --mode paper --port 8765
 ```
 
-The UI now includes runtime cards, price chart, signal and backtest actions, candle sync, market scan, live reconcile, and an editable config panel for key strategy fields.
+The UI now includes runtime cards, price chart, signal and backtest actions, candle sync, market scan, live reconcile, key config editing, and start or stop controls for background paper or live jobs.
 
 Preview a market buy order request:
 

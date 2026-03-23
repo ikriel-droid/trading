@@ -12,6 +12,8 @@ const ids = {
   scan: document.getElementById("scan-json"),
   reconcile: document.getElementById("reconcile-json"),
   config: document.getElementById("config-json"),
+  jobs: document.getElementById("jobs-json"),
+  logs: document.getElementById("logs-json"),
   paths: document.getElementById("paths-json"),
   readiness: document.getElementById("readiness-json"),
   chart: document.getElementById("price-chart"),
@@ -56,6 +58,15 @@ function currentInputs() {
     quote_currency: ids.quoteCurrency.value.trim() || "KRW",
     sync_count: Number(ids.syncCount.value || "200"),
   };
+}
+
+function renderJobs(jobs) {
+  ids.jobs.textContent = pretty(jobs || []);
+  const tails = (jobs || [])
+    .map((job) => `# ${job.name}\n${job.log_tail || ""}`.trim())
+    .filter(Boolean)
+    .join("\n\n");
+  ids.logs.textContent = tails || "No active job logs";
 }
 
 function syncInputsFromDashboard(payload) {
@@ -165,6 +176,7 @@ async function refreshDashboard() {
     ids.signal.textContent = pretty(payload.latest_signal);
     ids.paths.textContent = pretty(payload.paths);
     ids.readiness.textContent = pretty(payload.broker_readiness);
+    renderJobs(payload.jobs);
     renderPriceChart(payload.chart);
   } catch (error) {
     ids.summary.textContent = `dashboard error: ${error.message}`;
@@ -254,6 +266,44 @@ async function runSyncCandles() {
   }
 }
 
+async function refreshJobs() {
+  try {
+    const payload = await getJson("/api/jobs");
+    renderJobs(payload.jobs);
+  } catch (error) {
+    ids.jobs.textContent = `jobs error: ${error.message}`;
+  }
+}
+
+async function startJob(jobType) {
+  try {
+    ids.jobs.textContent = `Starting ${jobType}...`;
+    const inputs = currentInputs();
+    const payload = await postJson("/api/jobs-start", {
+      job_type: jobType,
+      state_path: inputs.state_path,
+      csv_path: inputs.csv_path,
+      poll_seconds: Number(ids.cfgPollSeconds.value || dashboardState.app.poll_seconds || "10"),
+      reconcile_every_loops: 3,
+    });
+    ids.jobs.textContent = pretty(payload);
+    await refreshJobs();
+  } catch (error) {
+    ids.jobs.textContent = `start job error: ${error.message}`;
+  }
+}
+
+async function stopJob(jobName) {
+  try {
+    ids.jobs.textContent = `Stopping ${jobName}...`;
+    const payload = await postJson("/api/jobs-stop", { job_name: jobName });
+    ids.jobs.textContent = pretty(payload);
+    await refreshJobs();
+  } catch (error) {
+    ids.jobs.textContent = `stop job error: ${error.message}`;
+  }
+}
+
 async function saveConfig() {
   try {
     ids.config.textContent = "Saving config...";
@@ -292,6 +342,11 @@ document.getElementById("run-scan").addEventListener("click", runScan);
 document.getElementById("run-reconcile").addEventListener("click", runReconcile);
 document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
 document.getElementById("save-config").addEventListener("click", saveConfig);
+document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);
+document.getElementById("start-paper-loop").addEventListener("click", () => startJob("paper-loop"));
+document.getElementById("stop-paper-loop").addEventListener("click", () => stopJob("paper-loop"));
+document.getElementById("start-live-daemon").addEventListener("click", () => startJob("live-daemon"));
+document.getElementById("stop-live-daemon").addEventListener("click", () => stopJob("live-daemon"));
 ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 
 refreshDashboard();

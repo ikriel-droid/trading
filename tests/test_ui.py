@@ -9,6 +9,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
 from upbit_auto_trader.datafeed import load_csv_candles  # noqa: E402
+from upbit_auto_trader.jobs import BackgroundJobManager  # noqa: E402
 from upbit_auto_trader.models import Balance  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.ui import (  # noqa: E402
@@ -112,6 +113,7 @@ class UiTests(unittest.TestCase):
             state_path=str(self.state_path),
             csv_path=self.csv_path,
             mode="paper",
+            job_manager=BackgroundJobManager(),
         )
 
         self.assertEqual(payload["app"]["market"], "KRW-BTC")
@@ -120,6 +122,7 @@ class UiTests(unittest.TestCase):
         self.assertTrue(payload["csv_info"]["rows"] > 0)
         self.assertEqual(payload["ui_defaults"]["scan_max_markets"], 10)
         self.assertTrue(len(payload["chart"]["points"]) > 0)
+        self.assertEqual(payload["jobs"], [])
 
     def test_backtest_signal_and_optimize_actions_return_expected_keys(self):
         signal = run_signal_action(self.config_path, self.csv_path)

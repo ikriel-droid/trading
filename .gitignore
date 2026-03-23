@@ -9,3 +9,5 @@ dist/
 *.egg-info/
 data/*.json
 data/*.jsonl
+data/*.log
+data/webui-jobs/

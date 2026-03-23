@@ -9,6 +9,7 @@ from .brokers.upbit import UpbitBroker
 from .config import load_config
 from .datafeed import load_csv_candles
 from .datafeed import merge_candles, upbit_candles_to_internal, write_csv_candles
+from .jobs import BackgroundJobManager, build_live_daemon_command, build_paper_loop_command
 from .optimizer import run_grid_search
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
@@ -16,6 +17,7 @@ from .strategy import ProfessionalCryptoStrategy
 
 
 WEBUI_DIR = Path(__file__).with_name("webui")
+JOB_MANAGER = BackgroundJobManager()
 EDITABLE_CONFIG_FIELDS = {
     "strategy.buy_threshold": float,
     "strategy.sell_threshold": float,
@@ -252,9 +254,11 @@ def build_dashboard_payload(
     state_path: Optional[str],
     csv_path: Optional[str],
     mode: str,
+    job_manager: Optional[BackgroundJobManager] = None,
 ) -> Dict[str, Any]:
     config = load_config(config_path)
     broker = UpbitBroker(config.upbit)
+    job_manager = job_manager or JOB_MANAGER
     payload: Dict[str, Any] = {
         "paths": {
             "config_path": config_path,
@@ -270,6 +274,7 @@ def build_dashboard_payload(
         "broker_readiness": broker.readiness_report(),
         "state_summary": load_runtime_summary(config_path, state_path, mode),
         "editable_config": load_editable_config(config_path),
+        "jobs": job_manager.list_jobs(),
         "ui_defaults": {
             "refresh_seconds": 5,
             "optimize_top": 5,
@@ -307,6 +312,49 @@ def build_dashboard_payload(
     return payload
 
 
+def start_managed_job(
+    config_path: str,
+    job_type: str,
+    state_path: Optional[str],
+    csv_path: Optional[str],
+    poll_seconds: Optional[float],
+    reconcile_every_loops: Optional[int],
+    job_manager: Optional[BackgroundJobManager] = None,
+) -> Dict[str, Any]:
+    job_manager = job_manager or JOB_MANAGER
+    project_root = str(Path(config_path).resolve().parent)
+
+    if job_type == "paper-loop":
+        command = build_paper_loop_command(
+            config_path=config_path,
+            state_path=state_path or "data/paper-state-ui.json",
+            warmup_csv=csv_path,
+            poll_seconds=poll_seconds,
+        )
+    elif job_type == "live-daemon":
+        command = build_live_daemon_command(
+            config_path=config_path,
+            state_path=state_path or "data/live-state-ui.json",
+            warmup_csv=csv_path,
+            poll_seconds=poll_seconds,
+            reconcile_every_loops=reconcile_every_loops,
+        )
+    else:
+        return {"error": "unsupported job type", "job_type": job_type}
+
+    return job_manager.start_job(
+        name=job_type,
+        kind=job_type,
+        command=command,
+        cwd=project_root,
+    )
+
+
+def stop_managed_job(job_name: str, job_manager: Optional[BackgroundJobManager] = None) -> Dict[str, Any]:
+    job_manager = job_manager or JOB_MANAGER
+    return job_manager.stop_job(job_name)
+
+
 def _build_handler(
     config_path: str,
     state_path: Optional[str],
@@ -331,8 +379,12 @@ def _build_handler(
                         state_path=state_path,
                         csv_path=csv_path,
                         mode=mode,
+                        job_manager=JOB_MANAGER,
                     )
                 )
+                return
+            if self.path == "/api/jobs":
+                self._write_json({"jobs": JOB_MANAGER.list_jobs()})
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -384,6 +436,25 @@ def _build_handler(
                 return
             if self.path == "/api/config-save":
                 self._write_json(update_editable_config(config_path, body))
+                return
+            if self.path == "/api/jobs-start":
+                self._write_json(
+                    start_managed_job(
+                        config_path=config_path,
+                        job_type=body.get("job_type", ""),
+                        state_path=body.get("state_path") or state_path,
+                        csv_path=body.get("csv_path") or csv_path,
+                        poll_seconds=float(body["poll_seconds"]) if body.get("poll_seconds") not in (None, "") else None,
+                        reconcile_every_loops=(
+                            int(body["reconcile_every_loops"])
+                            if body.get("reconcile_every_loops") not in (None, "")
+                            else None
+                        ),
+                    )
+                )
+                return
+            if self.path == "/api/jobs-stop":
+                self._write_json(stop_managed_job(body.get("job_name", "")))
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
 
