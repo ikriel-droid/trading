@@ -168,3 +168,54 @@ def build_live_daemon_command(
     if reconcile_every_loops is not None:
         command.extend(["--reconcile-every-loops", str(reconcile_every_loops)])
     return command
+
+
+def build_paper_selector_command(
+    config_path: str,
+    selector_state_path: str,
+    poll_seconds: Optional[float] = None,
+    quote_currency: Optional[str] = None,
+    max_markets: Optional[int] = None,
+) -> List[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "upbit_auto_trader.main",
+        "run-selector",
+        "--config",
+        config_path,
+        "--mode",
+        "paper",
+        "--selector-state",
+        selector_state_path,
+    ]
+    if quote_currency:
+        command.extend(["--quote-currency", quote_currency])
+    if max_markets is not None:
+        command.extend(["--max-markets", str(max_markets)])
+    if poll_seconds is not None:
+        command.extend(["--poll-seconds", str(poll_seconds)])
+    return command
+
+
+def build_live_supervisor_command(
+    config_path: str,
+    state_path: str,
+    market: Optional[str] = None,
+    reconcile_every: Optional[int] = None,
+) -> List[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "upbit_auto_trader.main",
+        "run-live-supervisor",
+        "--config",
+        config_path,
+        "--state",
+        state_path,
+    ]
+    if market:
+        command.extend(["--market", market])
+    if reconcile_every is not None:
+        command.extend(["--reconcile-every", str(reconcile_every)])
+    return command

@@ -21,6 +21,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_sync_candles_action,
     run_optimize_action,
     run_signal_action,
+    start_managed_job,
     update_editable_config,
 )
 
@@ -75,6 +76,21 @@ class FakeUiBroker:
         return [{"uuid": "open-1", "market": "KRW-BTC", "state": "wait"}]
 
 
+class RecordingJobManager:
+    def __init__(self):
+        self.calls = []
+
+    def start_job(self, name, kind, command, cwd=None):
+        payload = {
+            "name": name,
+            "kind": kind,
+            "command": command,
+            "cwd": cwd,
+        }
+        self.calls.append(payload)
+        return payload
+
+
 class UiTests(unittest.TestCase):
     def setUp(self):
         self.config_path = str(PROJECT_ROOT / "config.example.json")
@@ -121,6 +137,7 @@ class UiTests(unittest.TestCase):
         self.assertIsNotNone(payload["latest_signal"])
         self.assertTrue(payload["csv_info"]["rows"] > 0)
         self.assertEqual(payload["ui_defaults"]["scan_max_markets"], 10)
+        self.assertTrue(payload["paths"]["selector_state_path"].endswith("selector-state-ui.json"))
         self.assertTrue(len(payload["chart"]["points"]) > 0)
         self.assertEqual(payload["jobs"], [])
 
@@ -175,6 +192,44 @@ class UiTests(unittest.TestCase):
 
         self.assertTrue(self.temp_csv_path.exists())
         self.assertEqual(result["rows_written"], 44)
+
+    def test_start_managed_job_supports_selector_and_supervisor(self):
+        manager = RecordingJobManager()
+
+        selector_job = start_managed_job(
+            config_path=self.config_path,
+            job_type="paper-selector",
+            state_path=str(self.state_path),
+            selector_state_path="data/test-selector-state.json",
+            csv_path=self.csv_path,
+            poll_seconds=6.0,
+            reconcile_every_loops=3,
+            reconcile_every=11,
+            market="KRW-BTC",
+            quote_currency="KRW",
+            max_markets=9,
+            job_manager=manager,
+        )
+        supervisor_job = start_managed_job(
+            config_path=self.config_path,
+            job_type="live-supervisor",
+            state_path=str(self.state_path),
+            selector_state_path="data/test-selector-state.json",
+            csv_path=self.csv_path,
+            poll_seconds=6.0,
+            reconcile_every_loops=3,
+            reconcile_every=11,
+            market="KRW-BTC",
+            quote_currency="KRW",
+            max_markets=9,
+            job_manager=manager,
+        )
+
+        self.assertIn("run-selector", selector_job["command"])
+        self.assertIn("data/test-selector-state.json", selector_job["command"])
+        self.assertIn("9", selector_job["command"])
+        self.assertIn("run-live-supervisor", supervisor_job["command"])
+        self.assertIn("11", supervisor_job["command"])
 
 
 if __name__ == "__main__":

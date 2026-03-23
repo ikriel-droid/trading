@@ -9,7 +9,13 @@ from .brokers.upbit import UpbitBroker
 from .config import load_config
 from .datafeed import load_csv_candles
 from .datafeed import merge_candles, upbit_candles_to_internal, write_csv_candles
-from .jobs import BackgroundJobManager, build_live_daemon_command, build_paper_loop_command
+from .jobs import (
+    BackgroundJobManager,
+    build_live_daemon_command,
+    build_live_supervisor_command,
+    build_paper_loop_command,
+    build_paper_selector_command,
+)
 from .optimizer import run_grid_search
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
@@ -27,6 +33,10 @@ EDITABLE_CONFIG_FIELDS = {
     "runtime.poll_seconds": float,
     "selector.max_markets": int,
 }
+
+
+def _default_selector_state_path(config_path: str) -> str:
+    return str(Path(config_path).resolve().parent / "data" / "selector-state-ui.json")
 
 
 def _load_raw_config(config_path: str) -> Dict[str, Any]:
@@ -263,6 +273,7 @@ def build_dashboard_payload(
         "paths": {
             "config_path": config_path,
             "state_path": state_path or "",
+            "selector_state_path": _default_selector_state_path(config_path),
             "csv_path": csv_path or "",
         },
         "app": {
@@ -280,6 +291,7 @@ def build_dashboard_payload(
             "optimize_top": 5,
             "scan_max_markets": min(10, config.selector.max_markets),
             "quote_currency": config.selector.quote_currency,
+            "reconcile_every": 10,
         },
     }
 
@@ -316,9 +328,14 @@ def start_managed_job(
     config_path: str,
     job_type: str,
     state_path: Optional[str],
+    selector_state_path: Optional[str],
     csv_path: Optional[str],
     poll_seconds: Optional[float],
     reconcile_every_loops: Optional[int],
+    reconcile_every: Optional[int],
+    market: Optional[str],
+    quote_currency: Optional[str],
+    max_markets: Optional[int],
     job_manager: Optional[BackgroundJobManager] = None,
 ) -> Dict[str, Any]:
     job_manager = job_manager or JOB_MANAGER
@@ -331,6 +348,14 @@ def start_managed_job(
             warmup_csv=csv_path,
             poll_seconds=poll_seconds,
         )
+    elif job_type == "paper-selector":
+        command = build_paper_selector_command(
+            config_path=config_path,
+            selector_state_path=selector_state_path or _default_selector_state_path(config_path),
+            poll_seconds=poll_seconds,
+            quote_currency=quote_currency,
+            max_markets=max_markets,
+        )
     elif job_type == "live-daemon":
         command = build_live_daemon_command(
             config_path=config_path,
@@ -338,6 +363,13 @@ def start_managed_job(
             warmup_csv=csv_path,
             poll_seconds=poll_seconds,
             reconcile_every_loops=reconcile_every_loops,
+        )
+    elif job_type == "live-supervisor":
+        command = build_live_supervisor_command(
+            config_path=config_path,
+            state_path=state_path or "data/live-state-ui.json",
+            market=market,
+            reconcile_every=reconcile_every,
         )
     else:
         return {"error": "unsupported job type", "job_type": job_type}
@@ -443,6 +475,7 @@ def _build_handler(
                         config_path=config_path,
                         job_type=body.get("job_type", ""),
                         state_path=body.get("state_path") or state_path,
+                        selector_state_path=body.get("selector_state_path"),
                         csv_path=body.get("csv_path") or csv_path,
                         poll_seconds=float(body["poll_seconds"]) if body.get("poll_seconds") not in (None, "") else None,
                         reconcile_every_loops=(
@@ -450,6 +483,14 @@ def _build_handler(
                             if body.get("reconcile_every_loops") not in (None, "")
                             else None
                         ),
+                        reconcile_every=(
+                            int(body["reconcile_every"])
+                            if body.get("reconcile_every") not in (None, "")
+                            else None
+                        ),
+                        market=body.get("market"),
+                        quote_currency=body.get("quote_currency"),
+                        max_markets=int(body["max_markets"]) if body.get("max_markets") not in (None, "") else None,
                     )
                 )
                 return

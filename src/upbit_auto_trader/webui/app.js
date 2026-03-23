@@ -20,11 +20,13 @@ const ids = {
   chartMeta: document.getElementById("chart-meta"),
   csvPath: document.getElementById("csv-path-input"),
   statePath: document.getElementById("state-path-input"),
+  selectorStatePath: document.getElementById("selector-state-path-input"),
   refreshSeconds: document.getElementById("refresh-seconds"),
   optimizeTop: document.getElementById("optimize-top-input"),
   scanMaxMarkets: document.getElementById("scan-max-markets-input"),
   quoteCurrency: document.getElementById("quote-currency-input"),
   syncCount: document.getElementById("sync-count-input"),
+  reconcileEvery: document.getElementById("reconcile-every-input"),
   cfgBuyThreshold: document.getElementById("cfg-buy-threshold"),
   cfgSellThreshold: document.getElementById("cfg-sell-threshold"),
   cfgMinAdx: document.getElementById("cfg-min-adx"),
@@ -53,10 +55,12 @@ function currentInputs() {
   return {
     csv_path: ids.csvPath.value.trim(),
     state_path: ids.statePath.value.trim(),
+    selector_state_path: ids.selectorStatePath.value.trim(),
     top: Number(ids.optimizeTop.value || "5"),
     max_markets: Number(ids.scanMaxMarkets.value || "10"),
     quote_currency: ids.quoteCurrency.value.trim() || "KRW",
     sync_count: Number(ids.syncCount.value || "200"),
+    reconcile_every: Number(ids.reconcileEvery.value || "10"),
   };
 }
 
@@ -82,6 +86,9 @@ function syncInputsFromDashboard(payload) {
   if (!ids.statePath.value && payload.paths?.state_path) {
     ids.statePath.value = payload.paths.state_path;
   }
+  if (!ids.selectorStatePath.value && payload.paths?.selector_state_path) {
+    ids.selectorStatePath.value = payload.paths.selector_state_path;
+  }
   if (!ids.optimizeTop.value && payload.ui_defaults?.optimize_top) {
     ids.optimizeTop.value = payload.ui_defaults.optimize_top;
   }
@@ -90,6 +97,9 @@ function syncInputsFromDashboard(payload) {
   }
   if (!ids.quoteCurrency.value && payload.ui_defaults?.quote_currency) {
     ids.quoteCurrency.value = payload.ui_defaults.quote_currency;
+  }
+  if (!ids.reconcileEvery.value && payload.ui_defaults?.reconcile_every) {
+    ids.reconcileEvery.value = payload.ui_defaults.reconcile_every;
   }
 
   const editableConfig = payload.editable_config || {};
@@ -282,8 +292,13 @@ async function startJob(jobType) {
     const payload = await postJson("/api/jobs-start", {
       job_type: jobType,
       state_path: inputs.state_path,
+      selector_state_path: inputs.selector_state_path,
       csv_path: inputs.csv_path,
+      market: dashboardState.app.market || undefined,
+      max_markets: inputs.max_markets,
+      quote_currency: inputs.quote_currency,
       poll_seconds: Number(ids.cfgPollSeconds.value || dashboardState.app.poll_seconds || "10"),
+      reconcile_every: inputs.reconcile_every,
       reconcile_every_loops: 3,
     });
     ids.jobs.textContent = pretty(payload);
@@ -345,8 +360,12 @@ document.getElementById("save-config").addEventListener("click", saveConfig);
 document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);
 document.getElementById("start-paper-loop").addEventListener("click", () => startJob("paper-loop"));
 document.getElementById("stop-paper-loop").addEventListener("click", () => stopJob("paper-loop"));
+document.getElementById("start-paper-selector").addEventListener("click", () => startJob("paper-selector"));
+document.getElementById("stop-paper-selector").addEventListener("click", () => stopJob("paper-selector"));
 document.getElementById("start-live-daemon").addEventListener("click", () => startJob("live-daemon"));
 document.getElementById("stop-live-daemon").addEventListener("click", () => stopJob("live-daemon"));
+document.getElementById("start-live-supervisor").addEventListener("click", () => startJob("live-supervisor"));
+document.getElementById("stop-live-supervisor").addEventListener("click", () => stopJob("live-supervisor"));
 ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 
 refreshDashboard();

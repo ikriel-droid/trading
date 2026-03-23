@@ -28,6 +28,10 @@
           <span>State Path</span>
           <input id="state-path-input" type="text" placeholder="data/paper-state.json">
         </label>
+        <label class="field">
+          <span>Selector State</span>
+          <input id="selector-state-path-input" type="text" placeholder="data/selector-state.json">
+        </label>
         <label class="field short">
           <span>Refresh</span>
           <select id="refresh-seconds">
@@ -52,6 +56,10 @@
         <label class="field short">
           <span>Sync Count</span>
           <input id="sync-count-input" type="number" min="10" max="500" value="200">
+        </label>
+        <label class="field short">
+          <span>Reconcile Every</span>
+          <input id="reconcile-every-input" type="number" min="1" max="1000" value="10">
         </label>
       </section>
 
@@ -106,8 +114,12 @@
           <div class="button-row">
             <button id="start-paper-loop" class="ghost-button">Start Paper Loop</button>
             <button id="stop-paper-loop" class="ghost-button">Stop Paper Loop</button>
+            <button id="start-paper-selector" class="ghost-button">Start Paper Selector</button>
+            <button id="stop-paper-selector" class="ghost-button">Stop Paper Selector</button>
             <button id="start-live-daemon" class="ghost-button">Start Live Daemon</button>
             <button id="stop-live-daemon" class="ghost-button">Stop Live Daemon</button>
+            <button id="start-live-supervisor" class="ghost-button">Start Live Supervisor</button>
+            <button id="stop-live-supervisor" class="ghost-button">Stop Live Supervisor</button>
             <button id="refresh-jobs" class="ghost-button">Refresh Jobs</button>
           </div>
           <pre id="jobs-json" class="code-block">Idle</pre>
