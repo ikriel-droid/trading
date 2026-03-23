@@ -1,4 +1,6 @@
 import json
+from collections import deque
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -33,6 +35,33 @@ EDITABLE_CONFIG_FIELDS = {
     "strategy.volume_spike_multiplier": float,
     "runtime.poll_seconds": float,
     "selector.max_markets": int,
+}
+ALERT_HEADLINES = {
+    "blocked": "Blocked Entry",
+    "buy": "Paper Buy",
+    "sell": "Paper Sell",
+    "buy_submitted": "Order Submitted",
+    "buy_fill": "Buy Fill",
+    "sell_fill": "Sell Fill",
+    "myorder_done": "Order Update",
+    "pending_order_cancel_requested": "Cancel Requested",
+    "myasset_sync": "Asset Sync",
+}
+ALERT_LEVELS = {
+    "error": 0,
+    "warning": 1,
+    "success": 2,
+    "info": 3,
+}
+JOURNAL_ALERT_TYPES = {
+    "blocked",
+    "buy",
+    "sell",
+    "buy_submitted",
+    "buy_fill",
+    "sell_fill",
+    "myorder_done",
+    "pending_order_cancel_requested",
 }
 
 
@@ -174,6 +203,278 @@ def _build_recent_activity(runtime: Optional[TradingRuntime]) -> Dict[str, Any]:
     return {
         "recent_events": recent_events,
         "recent_trades": recent_trades,
+    }
+
+
+def _extract_timestamp_from_event(message: str) -> str:
+    if not message:
+        return ""
+    first_token = message.strip().split(" ", 1)[0]
+    if "T" in first_token and ":" in first_token:
+        return first_token
+    return ""
+
+
+def _alert_headline(message: str, event_type: str = "") -> str:
+    if event_type in ALERT_HEADLINES:
+        return ALERT_HEADLINES[event_type]
+
+    normalized = message.upper()
+    if "BLOCKED" in normalized:
+        return "Blocked Entry"
+    if "BUY_FILL" in normalized:
+        return "Buy Fill"
+    if "SELL_FILL" in normalized:
+        return "Sell Fill"
+    if "ORDER_SUBMITTED" in normalized:
+        return "Order Submitted"
+    if "CANCEL" in normalized:
+        return "Cancel Requested"
+    if "WARNING" in normalized:
+        return "Warning"
+    if "NOTICE" in normalized:
+        return "Notice"
+    if "PAPER BUY" in normalized:
+        return "Paper Buy"
+    if "PAPER SELL" in normalized:
+        return "Paper Sell"
+    return "Runtime Event"
+
+
+def _alert_level(message: str, event_type: str = "") -> str:
+    normalized = "{0} {1}".format(event_type, message).lower()
+    if "error" in normalized or "failed" in normalized:
+        return "error"
+    if any(keyword in normalized for keyword in ("warning", "blocked", "mismatch", "cancel", "missing")):
+        return "warning"
+    if any(keyword in normalized for keyword in ("buy_fill", "sell_fill", "paper buy", "paper sell")):
+        return "success"
+    return "info"
+
+
+def _append_alert_item(items: list[Dict[str, Any]], seen: set[str], payload: Dict[str, Any]) -> None:
+    dedupe_key = "{0}|{1}|{2}".format(
+        payload.get("timestamp", ""),
+        payload.get("market", ""),
+        payload.get("headline", ""),
+    )
+    if dedupe_key in seen:
+        return
+    seen.add(dedupe_key)
+    items.append(payload)
+
+
+def _event_to_alert(message: str, source: str, market: str) -> Dict[str, Any]:
+    return {
+        "source": source,
+        "level": _alert_level(message),
+        "headline": _alert_headline(message),
+        "message": message,
+        "market": market,
+        "timestamp": _extract_timestamp_from_event(message),
+    }
+
+
+def _journal_path(config_path: str, config: Any) -> str:
+    if not config.runtime.journal_path:
+        return ""
+    return _resolve_project_path(config_path, config.runtime.journal_path)
+
+
+def _load_recent_journal_records(config_path: str, config: Any, limit: int = 20) -> list[Dict[str, Any]]:
+    journal_path = _journal_path(config_path, config)
+    if not journal_path or not Path(journal_path).exists():
+        return []
+
+    with open(journal_path, "r", encoding="utf-8", errors="replace") as handle:
+        lines = list(deque(handle, maxlen=limit))
+
+    records = []
+    for raw_line in reversed(lines):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            records.append({"event_type": "journal_line", "message": line})
+    return records
+
+
+def _journal_message(record: Dict[str, Any]) -> str:
+    event_type = str(record.get("event_type", ""))
+    market = str(record.get("market", ""))
+    if event_type == "blocked":
+        return "Blocked {0} reason={1}".format(market, record.get("reason", "unknown"))
+    if event_type == "buy":
+        return "Paper buy {0} qty={1} price={2}".format(market, record.get("quantity", 0), record.get("price", 0))
+    if event_type == "sell":
+        return "Paper sell {0} qty={1} price={2} pnl={3}".format(
+            market,
+            record.get("quantity", 0),
+            record.get("price", 0),
+            record.get("pnl", 0),
+        )
+    if event_type == "buy_submitted":
+        return "Order submitted {0} uuid={1} budget={2}".format(
+            market,
+            record.get("uuid", ""),
+            record.get("budget", 0),
+        )
+    if event_type == "buy_fill":
+        return "Buy fill {0} qty={1} price={2}".format(
+            market,
+            record.get("quantity", 0),
+            record.get("price", 0),
+        )
+    if event_type == "sell_fill":
+        return "Sell fill {0} qty={1} price={2} pnl={3}".format(
+            market,
+            record.get("quantity", 0),
+            record.get("price", 0),
+            record.get("pnl", 0),
+        )
+    if event_type == "myorder_done":
+        return "Order update {0} side={1} state={2}".format(
+            market,
+            record.get("side", ""),
+            record.get("state", ""),
+        )
+    if event_type == "pending_order_cancel_requested":
+        return "Cancel requested {0} uuid={1} age_bars={2}".format(
+            market,
+            record.get("uuid", ""),
+            record.get("age_bars", 0),
+        )
+    if event_type == "myasset_sync":
+        return "Asset sync {0} quote_balance={1} base_total={2}".format(
+            market,
+            record.get("quote_balance", 0),
+            record.get("base_total", 0),
+        )
+    return str(record.get("message") or json.dumps(record, ensure_ascii=False))
+
+
+def _journal_record_to_alert(record: Dict[str, Any]) -> Dict[str, Any]:
+    event_type = str(record.get("event_type", ""))
+    message = _journal_message(record)
+    return {
+        "source": "journal",
+        "level": _alert_level(message, event_type=event_type),
+        "headline": _alert_headline(message, event_type=event_type),
+        "message": message,
+        "market": str(record.get("market", "")),
+        "timestamp": str(record.get("timestamp") or record.get("saved_at") or ""),
+    }
+
+
+def _job_to_alert(job: Dict[str, Any]) -> Dict[str, Any]:
+    running = bool(job.get("running"))
+    returncode = job.get("returncode")
+    timestamp = ""
+    started_at = job.get("started_at")
+    if isinstance(started_at, (int, float)):
+        timestamp = datetime.fromtimestamp(started_at, tz=timezone.utc).isoformat()
+
+    if running:
+        return {
+            "source": "job",
+            "level": "info",
+            "headline": "Job Running",
+            "message": "{0} active pid={1}".format(job.get("name", ""), job.get("pid", "")),
+            "market": "",
+            "timestamp": timestamp,
+        }
+
+    if returncode not in (None, 0):
+        return {
+            "source": "job",
+            "level": "error",
+            "headline": "Job Failed",
+            "message": "{0} exited rc={1}".format(job.get("name", ""), returncode),
+            "market": "",
+            "timestamp": timestamp,
+        }
+
+    return {
+        "source": "job",
+        "level": "warning",
+        "headline": "Job Stopped",
+        "message": "{0} is not running".format(job.get("name", "")),
+        "market": "",
+        "timestamp": timestamp,
+    }
+
+
+def _build_alert_feed(
+    config_path: str,
+    config: Any,
+    runtime: Optional[TradingRuntime],
+    selector_summary: Dict[str, Any],
+    jobs: list[Dict[str, Any]],
+    broker_readiness: Dict[str, Any],
+    mode: str,
+    limit: int = 14,
+) -> Dict[str, Any]:
+    items: list[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for job in jobs:
+        _append_alert_item(items, seen, _job_to_alert(job))
+
+    live_context = mode == "live" or any(
+        job.get("kind", "").startswith("live") or job.get("name", "").startswith("live")
+        for job in jobs
+    )
+    if live_context and not broker_readiness.get("private_ready", False):
+        _append_alert_item(
+            items,
+            seen,
+            {
+                "source": "broker",
+                "level": "warning",
+                "headline": "Live Not Ready",
+                "message": "private trading blocked: {0}".format(
+                    ", ".join(broker_readiness.get("private_issues", [])) or "unknown"
+                ),
+                "market": config.market,
+                "timestamp": "",
+            },
+        )
+
+    if runtime is not None and runtime.state is not None:
+        for event in reversed(runtime.state.events[-10:]):
+            _append_alert_item(items, seen, _event_to_alert(event, "runtime", runtime.state.market))
+
+    active_market = str(selector_summary.get("active_market", ""))
+    selector_events = selector_summary.get("active_market_activity", {}).get("recent_events", [])
+    for event in selector_events[:6]:
+        _append_alert_item(items, seen, _event_to_alert(str(event), "selector", active_market))
+
+    for record in _load_recent_journal_records(config_path, config, limit=10):
+        if str(record.get("event_type", "")) not in JOURNAL_ALERT_TYPES:
+            continue
+        _append_alert_item(items, seen, _journal_record_to_alert(record))
+
+    counts = {level: 0 for level in ALERT_LEVELS}
+    for item in items:
+        counts[item["level"]] = counts.get(item["level"], 0) + 1
+
+    items.sort(
+        key=lambda item: (
+            ALERT_LEVELS.get(str(item.get("level", "info")), 99),
+            "" if item.get("timestamp") else "Z",
+            str(item.get("timestamp", "")),
+        )
+    )
+
+    return {
+        "summary": {
+            **counts,
+            "requires_attention": counts["error"] + counts["warning"],
+            "journal_path": _journal_path(config_path, config),
+        },
+        "items": items[:limit],
     }
 
 
@@ -485,6 +786,9 @@ def build_dashboard_payload(
     job_manager = job_manager or JOB_MANAGER
     runtime = _load_runtime_for_dashboard(config_path, state_path, mode)
     resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
+    selector_summary = load_selector_summary(config_path, resolved_selector_state_path)
+    jobs = job_manager.list_jobs()
+    broker_readiness = broker.readiness_report()
     suggested_market_csv_path = _default_market_csv_path(config_path, config.market, config.upbit.candle_unit)
     effective_csv_path = _resolve_project_path(
         config_path,
@@ -505,12 +809,21 @@ def build_dashboard_payload(
             "selector_max_markets": config.selector.max_markets,
             "candle_unit": config.upbit.candle_unit,
         },
-        "broker_readiness": broker.readiness_report(),
+        "broker_readiness": broker_readiness,
         "state_summary": runtime.summary() if runtime is not None else None,
-        "selector_summary": load_selector_summary(config_path, resolved_selector_state_path),
+        "selector_summary": selector_summary,
         "activity": _build_recent_activity(runtime),
         "editable_config": load_editable_config(config_path),
-        "jobs": job_manager.list_jobs(),
+        "jobs": jobs,
+        "alerts": _build_alert_feed(
+            config_path=config_path,
+            config=config,
+            runtime=runtime,
+            selector_summary=selector_summary,
+            jobs=jobs,
+            broker_readiness=broker_readiness,
+            mode=mode,
+        ),
         "ui_defaults": {
             "refresh_seconds": 5,
             "optimize_top": 5,
@@ -532,7 +845,7 @@ def build_dashboard_payload(
             "points": chart_points,
             "markers": _build_chart_markers(chart_points, runtime),
         }
-        payload["latest_signal"] = run_signal_action(config_path, effective_csv_path)
+        payload["latest_signal"] = run_signal_action(config_path, effective_csv_path, market=config.market)
     else:
         payload["csv_info"] = None
         payload["chart"] = {"points": [], "markers": []}

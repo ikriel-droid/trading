@@ -214,6 +214,116 @@ body {
   font-size: 13px;
 }
 
+.alert-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.alerts-feed {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.alert-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.alert-pill.danger,
+.alert-pill.error,
+.chip.error {
+  background: rgba(176, 57, 46, 0.14);
+  color: #8f2f28;
+}
+
+.alert-pill.warn,
+.chip.warning {
+  background: rgba(209, 138, 31, 0.16);
+  color: #9a6413;
+}
+
+.alert-pill.success,
+.chip.success {
+  background: rgba(15, 155, 98, 0.12);
+  color: #0f7f55;
+}
+
+.alert-pill.info,
+.chip.info {
+  background: rgba(31, 31, 31, 0.06);
+  color: var(--muted);
+}
+
+.alert-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(249, 242, 233, 0.9));
+  box-shadow: inset 4px 0 0 rgba(101, 95, 86, 0.4);
+}
+
+.alert-card.error {
+  box-shadow: inset 4px 0 0 rgba(176, 57, 46, 0.72);
+}
+
+.alert-card.warning {
+  box-shadow: inset 4px 0 0 rgba(209, 138, 31, 0.82);
+}
+
+.alert-card.success {
+  box-shadow: inset 4px 0 0 rgba(15, 155, 98, 0.72);
+}
+
+.alert-card.info {
+  box-shadow: inset 4px 0 0 rgba(101, 95, 86, 0.4);
+}
+
+.alert-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.alert-card h3,
+.alert-card p {
+  margin: 0;
+}
+
+.alert-card h3 {
+  margin-top: 14px;
+  font-family: var(--font-display);
+  font-size: 20px;
+}
+
+.alert-card p {
+  margin-top: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.alert-source,
+.alert-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.alert-meta {
+  margin-top: 12px;
+}
+
 .price-chart {
   display: block;
   width: 100%;
@@ -443,6 +553,7 @@ body {
   }
 
   .scan-grid,
+  .alerts-feed,
   .form-grid {
     grid-template-columns: 1fr;
   }

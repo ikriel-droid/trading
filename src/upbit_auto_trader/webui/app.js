@@ -16,6 +16,8 @@ const ids = {
   logs: document.getElementById("logs-json"),
   paths: document.getElementById("paths-json"),
   readiness: document.getElementById("readiness-json"),
+  alertsSummary: document.getElementById("alerts-summary"),
+  alertsFeed: document.getElementById("alerts-feed"),
   recentTrades: document.getElementById("recent-trades-json"),
   recentEvents: document.getElementById("recent-events-json"),
   selectorSummary: document.getElementById("selector-summary-json"),
@@ -91,6 +93,35 @@ function renderJobs(jobs) {
     .filter(Boolean)
     .join("\n\n");
   ids.logs.textContent = tails || "No active job logs";
+}
+
+function renderAlerts(alertPayload) {
+  const summary = alertPayload?.summary || {};
+  const items = alertPayload?.items || [];
+  ids.alertsSummary.innerHTML = `
+    <span class="alert-pill danger">attention ${Number(summary.requires_attention || 0)}</span>
+    <span class="alert-pill warn">warning ${Number(summary.warning || 0)}</span>
+    <span class="alert-pill error">error ${Number(summary.error || 0)}</span>
+    <span class="alert-pill success">success ${Number(summary.success || 0)}</span>
+    <span class="alert-pill info">info ${Number(summary.info || 0)}</span>
+  `;
+
+  if (!items.length) {
+    ids.alertsFeed.innerHTML = '<div class="empty-state">No recent alerts.</div>';
+    return;
+  }
+
+  ids.alertsFeed.innerHTML = items.map((item) => `
+    <article class="alert-card ${escapeXml(item.level || "info")}">
+      <div class="alert-card-head">
+        <span class="chip ${escapeXml(item.level || "info")}">${escapeXml(item.level || "info")}</span>
+        <span class="alert-source">${escapeXml(item.source || "runtime")}${item.market ? ` • ${escapeXml(item.market)}` : ""}</span>
+      </div>
+      <h3>${escapeXml(item.headline || "Alert")}</h3>
+      <p>${escapeXml(item.message || "")}</p>
+      <div class="alert-meta">${escapeXml(item.timestamp || "timestamp unavailable")}</div>
+    </article>
+  `).join("");
 }
 
 function syncInputsFromDashboard(payload) {
@@ -384,6 +415,7 @@ async function refreshDashboard() {
     ids.signal.textContent = pretty(payload.latest_signal);
     ids.paths.textContent = pretty(payload.paths);
     ids.readiness.textContent = pretty(payload.broker_readiness);
+    renderAlerts(payload.alerts || null);
     ids.recentTrades.textContent = pretty(payload.activity?.recent_trades || []);
     ids.recentEvents.textContent = pretty(payload.activity?.recent_events || []);
     ids.selectorSummary.textContent = pretty(payload.selector_summary || {});

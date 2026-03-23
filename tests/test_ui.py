@@ -92,11 +92,20 @@ class RecordingJobManager:
         return payload
 
 
+class StaticJobManager:
+    def __init__(self, jobs):
+        self.jobs = list(jobs)
+
+    def list_jobs(self):
+        return list(self.jobs)
+
+
 class UiTests(unittest.TestCase):
     def setUp(self):
         self.config_path = str(PROJECT_ROOT / "config.example.json")
-        self.temp_config_path = PROJECT_ROOT / "data" / "test-ui-config.json"
+        self.temp_config_path = PROJECT_ROOT / "test-ui-config.json"
         self.temp_csv_path = PROJECT_ROOT / "data" / "test-ui-candles.csv"
+        self.alert_journal_path = PROJECT_ROOT / "data" / "test-ui-alerts.jsonl"
         self.csv_path = str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv")
         self.state_path = PROJECT_ROOT / "data" / "test-ui-state.json"
         self.selector_state_path = PROJECT_ROOT / "data" / "test-ui-selector-state.json"
@@ -111,7 +120,15 @@ class UiTests(unittest.TestCase):
             self.temp_config_path.unlink()
         if self.temp_csv_path.exists():
             self.temp_csv_path.unlink()
+        if self.alert_journal_path.exists():
+            self.alert_journal_path.unlink()
         shutil.copyfile(self.config_path, self.temp_config_path)
+        with open(self.temp_config_path, "r", encoding="utf-8") as handle:
+            temp_config = json.load(handle)
+        temp_config["runtime"]["journal_path"] = "data/test-ui-alerts.jsonl"
+        with open(self.temp_config_path, "w", encoding="utf-8") as handle:
+            json.dump(temp_config, handle, indent=2)
+            handle.write("\n")
 
         config = load_config(self.config_path)
         config.runtime.journal_path = ""
@@ -145,6 +162,7 @@ class UiTests(unittest.TestCase):
                     candles[-2].timestamp,
                     candles[-2].close,
                 ),
+                "{0} BLOCKED KRW-BTC reason=minimum_order_bid".format(candles[-1].timestamp),
             ]
         )
         runtime._save_state()  # noqa: SLF001
@@ -200,6 +218,8 @@ class UiTests(unittest.TestCase):
             self.temp_config_path.unlink()
         if self.temp_csv_path.exists():
             self.temp_csv_path.unlink()
+        if self.alert_journal_path.exists():
+            self.alert_journal_path.unlink()
 
     def test_build_dashboard_payload_contains_summary_and_signal(self):
         payload = build_dashboard_payload(
@@ -244,6 +264,65 @@ class UiTests(unittest.TestCase):
         self.assertTrue(payload["paths"]["suggested_market_csv_path"].endswith("krw_xrp_15m.csv"))
         self.assertIsNone(payload["latest_signal"])
         self.assertEqual(payload["chart"]["points"], [])
+
+    def test_build_dashboard_payload_exposes_alerts(self):
+        with open(self.alert_journal_path, "w", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "event_type": "blocked",
+                        "timestamp": "2026-03-23T00:00:00+00:00",
+                        "market": "KRW-BTC",
+                        "reason": "daily_loss_limit",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+            handle.write(
+                json.dumps(
+                    {
+                        "event_type": "buy_fill",
+                        "timestamp": "2026-03-23T00:05:00+00:00",
+                        "market": "KRW-BTC",
+                        "quantity": 0.01,
+                        "price": 100000000.0,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+
+        payload = build_dashboard_payload(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="live",
+            job_manager=StaticJobManager(
+                [
+                    {
+                        "name": "live-daemon",
+                        "kind": "live-daemon",
+                        "pid": 4321,
+                        "running": False,
+                        "returncode": 1,
+                        "started_at": 1760000000.0,
+                        "command": ["python", "-m", "upbit_auto_trader.main"],
+                        "cwd": str(PROJECT_ROOT),
+                        "log_path": "data/webui-jobs/live-daemon.log",
+                        "log_tail": "boom",
+                    }
+                ]
+            ),
+        )
+
+        self.assertGreaterEqual(payload["alerts"]["summary"]["requires_attention"], 1)
+        self.assertGreaterEqual(payload["alerts"]["summary"]["error"], 1)
+        self.assertGreaterEqual(payload["alerts"]["summary"]["warning"], 1)
+        self.assertTrue(any(item["headline"] == "Job Failed" for item in payload["alerts"]["items"]))
+        self.assertTrue(any(item["headline"] == "Blocked Entry" for item in payload["alerts"]["items"]))
+        self.assertTrue(any(item["source"] == "journal" for item in payload["alerts"]["items"]))
 
     def test_backtest_signal_and_optimize_actions_return_expected_keys(self):
         signal = run_signal_action(self.config_path, self.csv_path, market="KRW-BTC")
