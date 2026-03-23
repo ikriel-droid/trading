@@ -23,12 +23,14 @@ const ids = {
   csvPath: document.getElementById("csv-path-input"),
   statePath: document.getElementById("state-path-input"),
   selectorStatePath: document.getElementById("selector-state-path-input"),
+  marketFocus: document.getElementById("market-focus-input"),
   refreshSeconds: document.getElementById("refresh-seconds"),
   optimizeTop: document.getElementById("optimize-top-input"),
   scanMaxMarkets: document.getElementById("scan-max-markets-input"),
   quoteCurrency: document.getElementById("quote-currency-input"),
   syncCount: document.getElementById("sync-count-input"),
   reconcileEvery: document.getElementById("reconcile-every-input"),
+  scanCards: document.getElementById("scan-cards"),
   cfgBuyThreshold: document.getElementById("cfg-buy-threshold"),
   cfgSellThreshold: document.getElementById("cfg-sell-threshold"),
   cfgMinAdx: document.getElementById("cfg-min-adx"),
@@ -67,6 +69,7 @@ function currentInputs() {
     csv_path: ids.csvPath.value.trim(),
     state_path: ids.statePath.value.trim(),
     selector_state_path: ids.selectorStatePath.value.trim(),
+    market: ids.marketFocus.value.trim(),
     top: Number(ids.optimizeTop.value || "5"),
     max_markets: Number(ids.scanMaxMarkets.value || "10"),
     quote_currency: ids.quoteCurrency.value.trim() || "KRW",
@@ -100,6 +103,9 @@ function syncInputsFromDashboard(payload) {
   if (!ids.selectorStatePath.value && payload.paths?.selector_state_path) {
     ids.selectorStatePath.value = payload.paths.selector_state_path;
   }
+  if (!ids.marketFocus.value && payload.app?.market) {
+    ids.marketFocus.value = payload.app.market;
+  }
   if (!ids.optimizeTop.value && payload.ui_defaults?.optimize_top) {
     ids.optimizeTop.value = payload.ui_defaults.optimize_top;
   }
@@ -122,6 +128,80 @@ function syncInputsFromDashboard(payload) {
   ids.cfgPollSeconds.value = editableConfig["runtime.poll_seconds"] ?? "";
   ids.cfgSelectorMaxMarkets.value = editableConfig["selector.max_markets"] ?? "";
   ids.config.textContent = pretty(editableConfig);
+}
+
+function formatCompactNumber(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) {
+    return "-";
+  }
+  if (Math.abs(numeric) >= 1000) {
+    return new Intl.NumberFormat("en-US", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(numeric);
+  }
+  return numeric.toFixed(2);
+}
+
+function renderScanCards(scanPayload) {
+  const results = scanPayload?.scan_results || [];
+  if (!results.length) {
+    ids.scanCards.innerHTML = '<div class="empty-state">Run a scan to load ranked markets.</div>';
+    return;
+  }
+
+  ids.scanCards.innerHTML = results.map((item, index) => {
+    const action = String(item.action || "HOLD").toLowerCase();
+    const reasons = (item.reasons || []).slice(0, 4).map((value) => escapeXml(value)).join(" · ");
+    const warningChip = item.market_warning && item.market_warning !== "NONE"
+      ? `<span class="chip warn">warning ${escapeXml(item.market_warning)}</span>`
+      : '<span class="chip good">warning clear</span>';
+    const liquidityChip = item.liquidity_ok
+      ? '<span class="chip good">liquidity ok</span>'
+      : '<span class="chip warn">liquidity low</span>';
+    return `
+      <article class="scan-card">
+        <div class="scan-card-head">
+          <div>
+            <p class="scan-rank">Rank #${index + 1}</p>
+            <h3>${escapeXml(item.market)}</h3>
+          </div>
+          <span class="scan-badge ${action}">${escapeXml(item.action || "HOLD")}</span>
+        </div>
+        <div class="scan-meta">
+          <span>${escapeXml(item.timestamp || "-")}</span>
+          <span>confidence ${Number(item.confidence || 0).toFixed(2)}</span>
+        </div>
+        <div class="scan-metrics">
+          <div class="scan-metric">
+            <span class="scan-metric-label">Score</span>
+            <strong class="scan-metric-value">${Number(item.score || 0).toFixed(1)}</strong>
+          </div>
+          <div class="scan-metric">
+            <span class="scan-metric-label">Close</span>
+            <strong class="scan-metric-value">${formatCompactNumber(item.close)}</strong>
+          </div>
+          <div class="scan-metric">
+            <span class="scan-metric-label">24H Liquidity</span>
+            <strong class="scan-metric-value">${formatCompactNumber(item.liquidity_24h)}</strong>
+          </div>
+          <div class="scan-metric">
+            <span class="scan-metric-label">Signal Count</span>
+            <strong class="scan-metric-value">${(item.reasons || []).length}</strong>
+          </div>
+        </div>
+        <div class="chip-row">
+          ${liquidityChip}
+          ${warningChip}
+        </div>
+        <p class="scan-reasons">${reasons || "No reasons provided."}</p>
+        <div class="scan-actions">
+          <button class="ghost-button small scan-use-button" data-market="${escapeXml(item.market)}">Use Market</button>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderPriceChart(chartPayload) {
@@ -292,8 +372,10 @@ async function runScan() {
       quote_currency: inputs.quote_currency,
     });
     ids.scan.textContent = pretty(payload);
+    renderScanCards(payload);
   } catch (error) {
     ids.scan.textContent = `scan error: ${error.message}`;
+    renderScanCards(null);
   }
 }
 
@@ -304,7 +386,7 @@ async function runReconcile() {
     const payload = await postJson("/api/reconcile", {
       state_path: inputs.state_path,
       mode: dashboardState.app.mode || "paper",
-      market: dashboardState.app.market || undefined,
+      market: inputs.market || dashboardState.app.market || undefined,
     });
     ids.reconcile.textContent = pretty(payload);
   } catch (error) {
@@ -319,7 +401,7 @@ async function runSyncCandles() {
     const payload = await postJson("/api/sync-candles", {
       csv_path: inputs.csv_path,
       count: inputs.sync_count,
-      market: dashboardState.app.market || undefined,
+      market: inputs.market || dashboardState.app.market || undefined,
     });
     ids.paths.textContent = pretty(payload);
     await refreshDashboard();
@@ -346,7 +428,7 @@ async function startJob(jobType) {
       state_path: inputs.state_path,
       selector_state_path: inputs.selector_state_path,
       csv_path: inputs.csv_path,
-      market: dashboardState.app.market || undefined,
+      market: inputs.market || dashboardState.app.market || undefined,
       max_markets: inputs.max_markets,
       quote_currency: inputs.quote_currency,
       poll_seconds: Number(ids.cfgPollSeconds.value || dashboardState.app.poll_seconds || "10"),
@@ -410,6 +492,14 @@ document.getElementById("run-reconcile").addEventListener("click", runReconcile)
 document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
 document.getElementById("save-config").addEventListener("click", saveConfig);
 document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);
+ids.scanCards.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-market]");
+  if (!button) {
+    return;
+  }
+  ids.marketFocus.value = button.dataset.market || "";
+  ids.scan.textContent = `focus market set to ${ids.marketFocus.value}`;
+});
 document.getElementById("start-paper-loop").addEventListener("click", () => startJob("paper-loop"));
 document.getElementById("stop-paper-loop").addEventListener("click", () => stopJob("paper-loop"));
 document.getElementById("start-paper-selector").addEventListener("click", () => startJob("paper-selector"));
@@ -420,5 +510,6 @@ document.getElementById("start-live-supervisor").addEventListener("click", () =>
 document.getElementById("stop-live-supervisor").addEventListener("click", () => stopJob("live-supervisor"));
 ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 
+renderScanCards(null);
 refreshDashboard();
 resetAutoRefresh();

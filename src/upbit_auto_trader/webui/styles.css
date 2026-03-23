@@ -251,6 +251,161 @@ body {
   gap: 18px;
 }
 
+.scan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.scan-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 254, 250, 0.98), rgba(249, 242, 233, 0.9));
+}
+
+.scan-card-head,
+.scan-meta,
+.chip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.scan-card-head {
+  align-items: start;
+}
+
+.scan-card h3,
+.scan-card p {
+  margin: 0;
+}
+
+.scan-rank {
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.scan-meta {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.scan-metrics {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.scan-metric {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+}
+
+.scan-metric-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.scan-metric-value {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-size: 20px;
+}
+
+.chip-row {
+  flex-wrap: wrap;
+  justify-content: start;
+  margin-top: 14px;
+}
+
+.chip,
+.scan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid transparent;
+}
+
+.chip {
+  background: rgba(31, 31, 31, 0.06);
+  color: var(--muted);
+}
+
+.chip.good {
+  background: rgba(15, 155, 98, 0.12);
+  color: #0f7f55;
+}
+
+.chip.warn {
+  background: rgba(176, 57, 46, 0.12);
+  color: #8f2f28;
+}
+
+.scan-badge {
+  font-weight: 700;
+}
+
+.scan-badge.buy {
+  background: rgba(15, 155, 98, 0.16);
+  color: #0f7f55;
+}
+
+.scan-badge.sell {
+  background: rgba(176, 57, 46, 0.14);
+  color: #8f2f28;
+}
+
+.scan-badge.hold {
+  background: rgba(201, 137, 42, 0.14);
+  color: #9a661d;
+}
+
+.scan-reasons {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.scan-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: end;
+}
+
+.ghost-button.small {
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.empty-state {
+  padding: 22px;
+  border-radius: 18px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--muted);
+  text-align: center;
+}
+
 .code-block {
   margin: 18px 0 0;
   min-height: 220px;
@@ -282,6 +437,7 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .scan-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }

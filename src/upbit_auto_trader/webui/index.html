@@ -33,6 +33,10 @@
           <input id="selector-state-path-input" type="text" placeholder="data/selector-state.json">
         </label>
         <label class="field short">
+          <span>Focus Market</span>
+          <input id="market-focus-input" type="text" placeholder="KRW-BTC">
+        </label>
+        <label class="field short">
           <span>Refresh</span>
           <select id="refresh-seconds">
             <option value="0">Off</option>
@@ -211,6 +215,9 @@
               <h2>Market Ranking</h2>
             </div>
             <button id="run-scan" class="ghost-button">Run Scan</button>
+          </div>
+          <div id="scan-cards" class="scan-grid">
+            <div class="empty-state">Run a scan to load ranked markets.</div>
           </div>
           <pre id="scan-json" class="code-block">Idle</pre>
         </article>
