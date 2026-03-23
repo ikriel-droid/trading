@@ -1,3 +1,4 @@
+import shutil
 import pathlib
 import sys
 import unittest
@@ -12,11 +13,13 @@ from upbit_auto_trader.models import Balance  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.ui import (  # noqa: E402
     build_dashboard_payload,
+    load_editable_config,
     run_backtest_action,
     run_live_reconcile_action,
     run_scan_action,
     run_optimize_action,
     run_signal_action,
+    update_editable_config,
 )
 
 
@@ -73,10 +76,14 @@ class FakeUiBroker:
 class UiTests(unittest.TestCase):
     def setUp(self):
         self.config_path = str(PROJECT_ROOT / "config.example.json")
+        self.temp_config_path = PROJECT_ROOT / "data" / "test-ui-config.json"
         self.csv_path = str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv")
         self.state_path = PROJECT_ROOT / "data" / "test-ui-state.json"
         if self.state_path.exists():
             self.state_path.unlink()
+        if self.temp_config_path.exists():
+            self.temp_config_path.unlink()
+        shutil.copyfile(self.config_path, self.temp_config_path)
 
         config = load_config(self.config_path)
         config.runtime.journal_path = ""
@@ -90,6 +97,8 @@ class UiTests(unittest.TestCase):
     def tearDown(self):
         if self.state_path.exists():
             self.state_path.unlink()
+        if self.temp_config_path.exists():
+            self.temp_config_path.unlink()
 
     def test_build_dashboard_payload_contains_summary_and_signal(self):
         payload = build_dashboard_payload(
@@ -129,6 +138,22 @@ class UiTests(unittest.TestCase):
         self.assertTrue(len(scan["scan_results"]) >= 1)
         self.assertEqual(reconcile["open_order_count"], 1)
         self.assertIn("summary", reconcile)
+
+    def test_editable_config_can_be_loaded_and_saved(self):
+        before = load_editable_config(str(self.temp_config_path))
+        result = update_editable_config(
+            str(self.temp_config_path),
+            {
+                "strategy.buy_threshold": 70.0,
+                "strategy.sell_threshold": 42.0,
+                "selector.max_markets": 7,
+            },
+        )
+        after = load_editable_config(str(self.temp_config_path))
+
+        self.assertNotEqual(before["strategy.buy_threshold"], after["strategy.buy_threshold"])
+        self.assertEqual(result["current"]["strategy.buy_threshold"], 70.0)
+        self.assertEqual(result["current"]["selector.max_markets"], 7)
 
 
 if __name__ == "__main__":

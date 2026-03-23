@@ -164,6 +164,47 @@
         <article class="panel">
           <div class="panel-head">
             <div>
+              <p class="panel-eyebrow">Config</p>
+              <h2>Strategy Editor</h2>
+            </div>
+            <button id="save-config" class="ghost-button">Save Config</button>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>Buy Threshold</span>
+              <input id="cfg-buy-threshold" type="number" step="0.1">
+            </label>
+            <label class="field">
+              <span>Sell Threshold</span>
+              <input id="cfg-sell-threshold" type="number" step="0.1">
+            </label>
+            <label class="field">
+              <span>Min ADX</span>
+              <input id="cfg-min-adx" type="number" step="0.1">
+            </label>
+            <label class="field">
+              <span>Min BB Width</span>
+              <input id="cfg-min-bb-width" type="number" step="0.001">
+            </label>
+            <label class="field">
+              <span>Volume Spike</span>
+              <input id="cfg-volume-spike" type="number" step="0.1">
+            </label>
+            <label class="field">
+              <span>Poll Seconds</span>
+              <input id="cfg-poll-seconds" type="number" step="0.5">
+            </label>
+            <label class="field">
+              <span>Selector Max Markets</span>
+              <input id="cfg-selector-max-markets" type="number" step="1">
+            </label>
+          </div>
+          <pre id="config-json" class="code-block">Loading...</pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
               <p class="panel-eyebrow">Paths</p>
               <h2>Workspace Inputs</h2>
             </div>

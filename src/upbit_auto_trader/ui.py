@@ -15,6 +15,67 @@ from .strategy import ProfessionalCryptoStrategy
 
 
 WEBUI_DIR = Path(__file__).with_name("webui")
+EDITABLE_CONFIG_FIELDS = {
+    "strategy.buy_threshold": float,
+    "strategy.sell_threshold": float,
+    "strategy.min_adx": float,
+    "strategy.min_bollinger_width_fraction": float,
+    "strategy.volume_spike_multiplier": float,
+    "runtime.poll_seconds": float,
+    "selector.max_markets": int,
+}
+
+
+def _load_raw_config(config_path: str) -> Dict[str, Any]:
+    with open(config_path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _save_raw_config(config_path: str, payload: Dict[str, Any]) -> None:
+    with open(config_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+
+
+def _get_nested_value(payload: Dict[str, Any], dotted_path: str) -> Any:
+    current = payload
+    parts = dotted_path.split(".")
+    for part in parts:
+        current = current[part]
+    return current
+
+
+def _set_nested_value(payload: Dict[str, Any], dotted_path: str, value: Any) -> None:
+    current = payload
+    parts = dotted_path.split(".")
+    for part in parts[:-1]:
+        current = current.setdefault(part, {})
+    current[parts[-1]] = value
+
+
+def load_editable_config(config_path: str) -> Dict[str, Any]:
+    payload = _load_raw_config(config_path)
+    return {
+        field_name: _get_nested_value(payload, field_name)
+        for field_name in EDITABLE_CONFIG_FIELDS
+    }
+
+
+def update_editable_config(config_path: str, values: Dict[str, Any]) -> Dict[str, Any]:
+    payload = _load_raw_config(config_path)
+    updated = {}
+    for field_name, caster in EDITABLE_CONFIG_FIELDS.items():
+        if field_name not in values:
+            continue
+        typed_value = caster(values[field_name])
+        _set_nested_value(payload, field_name, typed_value)
+        updated[field_name] = typed_value
+    _save_raw_config(config_path, payload)
+    return {
+        "config_path": config_path,
+        "updated": updated,
+        "current": load_editable_config(config_path),
+    }
 
 
 def load_runtime_summary(config_path: str, state_path: Optional[str], mode: str) -> Optional[Dict[str, Any]]:
@@ -175,6 +236,7 @@ def build_dashboard_payload(
         },
         "broker_readiness": broker.readiness_report(),
         "state_summary": load_runtime_summary(config_path, state_path, mode),
+        "editable_config": load_editable_config(config_path),
         "ui_defaults": {
             "refresh_seconds": 5,
             "optimize_top": 5,
@@ -276,6 +338,9 @@ def _build_handler(
                         market=body.get("market"),
                     )
                 )
+                return
+            if self.path == "/api/config-save":
+                self._write_json(update_editable_config(config_path, body))
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
 

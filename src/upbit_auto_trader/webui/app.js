@@ -11,6 +11,7 @@ const ids = {
   optimize: document.getElementById("optimize-json"),
   scan: document.getElementById("scan-json"),
   reconcile: document.getElementById("reconcile-json"),
+  config: document.getElementById("config-json"),
   paths: document.getElementById("paths-json"),
   readiness: document.getElementById("readiness-json"),
   chart: document.getElementById("price-chart"),
@@ -21,6 +22,13 @@ const ids = {
   optimizeTop: document.getElementById("optimize-top-input"),
   scanMaxMarkets: document.getElementById("scan-max-markets-input"),
   quoteCurrency: document.getElementById("quote-currency-input"),
+  cfgBuyThreshold: document.getElementById("cfg-buy-threshold"),
+  cfgSellThreshold: document.getElementById("cfg-sell-threshold"),
+  cfgMinAdx: document.getElementById("cfg-min-adx"),
+  cfgMinBbWidth: document.getElementById("cfg-min-bb-width"),
+  cfgVolumeSpike: document.getElementById("cfg-volume-spike"),
+  cfgPollSeconds: document.getElementById("cfg-poll-seconds"),
+  cfgSelectorMaxMarkets: document.getElementById("cfg-selector-max-markets"),
 };
 
 let dashboardState = {
@@ -70,6 +78,16 @@ function syncInputsFromDashboard(payload) {
   if (!ids.quoteCurrency.value && payload.ui_defaults?.quote_currency) {
     ids.quoteCurrency.value = payload.ui_defaults.quote_currency;
   }
+
+  const editableConfig = payload.editable_config || {};
+  ids.cfgBuyThreshold.value = editableConfig["strategy.buy_threshold"] ?? "";
+  ids.cfgSellThreshold.value = editableConfig["strategy.sell_threshold"] ?? "";
+  ids.cfgMinAdx.value = editableConfig["strategy.min_adx"] ?? "";
+  ids.cfgMinBbWidth.value = editableConfig["strategy.min_bollinger_width_fraction"] ?? "";
+  ids.cfgVolumeSpike.value = editableConfig["strategy.volume_spike_multiplier"] ?? "";
+  ids.cfgPollSeconds.value = editableConfig["runtime.poll_seconds"] ?? "";
+  ids.cfgSelectorMaxMarkets.value = editableConfig["selector.max_markets"] ?? "";
+  ids.config.textContent = pretty(editableConfig);
 }
 
 function renderPriceChart(chartPayload) {
@@ -218,6 +236,25 @@ async function runReconcile() {
   }
 }
 
+async function saveConfig() {
+  try {
+    ids.config.textContent = "Saving config...";
+    const payload = await postJson("/api/config-save", {
+      "strategy.buy_threshold": Number(ids.cfgBuyThreshold.value || "0"),
+      "strategy.sell_threshold": Number(ids.cfgSellThreshold.value || "0"),
+      "strategy.min_adx": Number(ids.cfgMinAdx.value || "0"),
+      "strategy.min_bollinger_width_fraction": Number(ids.cfgMinBbWidth.value || "0"),
+      "strategy.volume_spike_multiplier": Number(ids.cfgVolumeSpike.value || "0"),
+      "runtime.poll_seconds": Number(ids.cfgPollSeconds.value || "0"),
+      "selector.max_markets": Number(ids.cfgSelectorMaxMarkets.value || "0"),
+    });
+    ids.config.textContent = pretty(payload);
+    await refreshDashboard();
+  } catch (error) {
+    ids.config.textContent = `config error: ${error.message}`;
+  }
+}
+
 function resetAutoRefresh() {
   if (refreshTimer) {
     clearInterval(refreshTimer);
@@ -235,6 +272,7 @@ document.getElementById("run-backtest").addEventListener("click", runBacktest);
 document.getElementById("run-optimize").addEventListener("click", runOptimize);
 document.getElementById("run-scan").addEventListener("click", runScan);
 document.getElementById("run-reconcile").addEventListener("click", runReconcile);
+document.getElementById("save-config").addEventListener("click", saveConfig);
 ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 
 refreshDashboard();

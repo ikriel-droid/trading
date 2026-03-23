@@ -147,6 +147,13 @@ body {
   font: inherit;
 }
 
+.form-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
 .status-grid {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
@@ -265,6 +272,10 @@ body {
 
   .panel-grid,
   .panel-grid.secondary {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid {
     grid-template-columns: 1fr;
   }
 }
