@@ -22,6 +22,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_live_reconcile_action,
     run_show_report_action,
     run_load_profile_action,
+    run_preview_profile_action,
     run_scan_action,
     run_save_profile_action,
     run_save_current_preset_action,
@@ -578,6 +579,34 @@ class UiTests(unittest.TestCase):
         self.assertTrue(started["job"]["report_on_exit"])
         self.assertEqual(started["job"]["report_mode"], "paper")
         self.assertEqual(started["job"]["report_state_path"], str(self.state_path))
+
+    def test_operator_profile_can_be_previewed(self):
+        saved_profile = run_save_profile_action(
+            config_path=str(self.temp_config_path),
+            profile_name="test-ui-preview-profile",
+            profile_payload={
+                "job_type": "paper-loop",
+                "market": "KRW-BTC",
+                "csv_path": self.csv_path,
+                "state_path": str(self.state_path),
+                "selector_state_path": str(self.selector_state_path),
+                "quote_currency": "KRW",
+                "max_markets": 8,
+                "poll_seconds": 6.0,
+                "reconcile_every": 11,
+                "reconcile_every_loops": 3,
+                "preset": "",
+                "auto_restart": True,
+                "max_restarts": 2,
+                "restart_backoff_seconds": 1.5,
+            },
+        )
+
+        preview = run_preview_profile_action(str(self.temp_config_path), saved_profile["path"])
+
+        self.assertEqual(preview["profile"]["name"], "test-ui-preview-profile")
+        self.assertTrue(preview["job_preview"]["can_start"])
+        self.assertIn("run-loop", preview["job_preview"]["command"])
 
     def test_session_report_can_be_exported_and_loaded(self):
         exported = run_session_report_action(

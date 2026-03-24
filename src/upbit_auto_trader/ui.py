@@ -866,6 +866,31 @@ def run_load_profile_action(config_path: str, profile_ref: str) -> Dict[str, Any
     return load_operator_profile(config_path, profile_ref)
 
 
+def run_preview_profile_action(config_path: str, profile_ref: str) -> Dict[str, Any]:
+    loaded = load_operator_profile(config_path, profile_ref)
+    profile = loaded["profile"]
+    preview = preview_managed_job(
+        config_path=config_path,
+        job_type=profile["job_type"],
+        state_path=profile["state_path"] or None,
+        selector_state_path=profile["selector_state_path"] or None,
+        csv_path=profile["csv_path"] or None,
+        poll_seconds=profile["poll_seconds"] or None,
+        reconcile_every_loops=profile["reconcile_every_loops"] or None,
+        reconcile_every=profile["reconcile_every"] or None,
+        market=profile["market"] or None,
+        quote_currency=profile["quote_currency"] or None,
+        max_markets=profile["max_markets"] or None,
+        auto_restart=profile["auto_restart"],
+        max_restarts=profile["max_restarts"],
+        restart_backoff_seconds=profile["restart_backoff_seconds"],
+    )
+    return {
+        "profile": loaded,
+        "job_preview": preview,
+    }
+
+
 def run_start_profile_action(
     config_path: str,
     profile_ref: str,
@@ -1434,6 +1459,9 @@ def _build_handler(
                 return
             if self.path == "/api/profile-load":
                 self._write_json(run_load_profile_action(config_path, body.get("profile", "")))
+                return
+            if self.path == "/api/profile-preview":
+                self._write_json(run_preview_profile_action(config_path, body.get("profile", "")))
                 return
             if self.path == "/api/profile-start":
                 self._write_json(

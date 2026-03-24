@@ -35,6 +35,7 @@ from .selector import RotatingMarketSelector, StreamingMarketSelector
 from .strategy import ProfessionalCryptoStrategy
 from .ui import (
     run_load_profile_action,
+    run_preview_profile_action,
     run_save_profile_action,
     run_start_profile_action,
     run_web_ui_server,
@@ -89,6 +90,10 @@ def build_parser() -> argparse.ArgumentParser:
     profile_show_parser = subparsers.add_parser("profile-show")
     profile_show_parser.add_argument("--config", required=True)
     profile_show_parser.add_argument("--profile", required=True)
+
+    profile_preview_parser = subparsers.add_parser("profile-preview")
+    profile_preview_parser.add_argument("--config", required=True)
+    profile_preview_parser.add_argument("--profile", required=True)
 
     profile_save_parser = subparsers.add_parser("profile-save")
     profile_save_parser.add_argument("--config", required=True)
@@ -797,6 +802,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "profile-show":
             _print_json(run_load_profile_action(args.config, args.profile))
+            return 0
+
+        if args.command == "profile-preview":
+            _print_json(run_preview_profile_action(args.config, args.profile))
             return 0
 
         if args.command == "profile-save":

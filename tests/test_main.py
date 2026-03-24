@@ -359,6 +359,24 @@ class MainTests(unittest.TestCase):
             self.assertEqual(result, 0)
             listed = json.loads(stdout.getvalue())
             self.assertTrue(any(item["name"] == "test-main-paper" for item in listed["items"]))
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "profile-preview",
+                        "--config",
+                        str(config_path),
+                        "--profile",
+                        "test-main-paper",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            previewed = json.loads(stdout.getvalue())
+            self.assertEqual(previewed["profile"]["name"], "test-main-paper")
+            self.assertTrue(previewed["job_preview"]["can_start"])
+            self.assertIn("run-loop", previewed["job_preview"]["command"])
         finally:
             if config_path.exists():
                 config_path.unlink()

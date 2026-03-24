@@ -907,6 +907,24 @@ async function loadProfile() {
   }
 }
 
+async function previewProfile() {
+  try {
+    const profile = ids.profileSelect.value;
+    if (!profile) {
+      ids.profiles.textContent = "profile preview error: select a profile first";
+      return;
+    }
+    ids.jobPreview.textContent = "Previewing profile...";
+    const payload = await postJson("/api/profile-preview", { profile });
+    ids.jobPreview.textContent = pretty(payload);
+    if (payload.profile?.profile) {
+      applyProfileToForm(payload.profile.profile);
+    }
+  } catch (error) {
+    ids.jobPreview.textContent = `profile preview error: ${error.message}`;
+  }
+}
+
 async function startProfile() {
   try {
     const profile = ids.profileSelect.value;
@@ -957,6 +975,7 @@ document.getElementById("save-best-preset").addEventListener("click", () => runO
 document.getElementById("apply-preset").addEventListener("click", applyPreset);
 document.getElementById("save-profile").addEventListener("click", saveProfile);
 document.getElementById("load-profile").addEventListener("click", loadProfile);
+document.getElementById("preview-profile").addEventListener("click", previewProfile);
 document.getElementById("start-profile").addEventListener("click", startProfile);
 document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);
 document.getElementById("preview-job").addEventListener("click", () => previewJob());

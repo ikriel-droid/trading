@@ -204,6 +204,12 @@ If you already saved a launch profile, you can start it from PowerShell too:
 .\start_profile.ps1 -Profile paper-btc-main
 ```
 
+You can preview a saved profile before launching it:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main profile-preview --config config.example.json --profile paper-btc-main
+```
+
 Preview a market buy order request:
 
 ```powershell
