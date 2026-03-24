@@ -51,6 +51,7 @@ const ids = {
   cfgSelectorMaxMarkets: document.getElementById("cfg-selector-max-markets"),
   presetName: document.getElementById("preset-name-input"),
   presetSelect: document.getElementById("preset-select"),
+  reportSelect: document.getElementById("report-select"),
   profileName: document.getElementById("profile-name-input"),
   profileSelect: document.getElementById("profile-select"),
   jobType: document.getElementById("job-type-select"),
@@ -390,6 +391,27 @@ function renderProfiles(profilePayload) {
   ids.profileSelect.value = nextValue;
 }
 
+function renderReports(reportPayload) {
+  const items = reportPayload?.items || [];
+  const currentValue = ids.reportSelect.value;
+  if (!items.length) {
+    ids.reportSelect.innerHTML = '<option value="">No reports</option>';
+    return;
+  }
+
+  ids.reportSelect.innerHTML = items
+    .map((item) => {
+      const label = `${item.market || "market"} | ${item.mode || "paper"} | trades ${item.trade_count} | pnl ${Number(item.total_net_pnl || 0).toFixed(2)}`;
+      return `<option value="${escapeXml(item.json_path)}">${escapeXml(label)}</option>`;
+    })
+    .join("");
+
+  const nextValue = items.some((item) => item.json_path === currentValue)
+    ? currentValue
+    : items[0].json_path;
+  ids.reportSelect.value = nextValue;
+}
+
 function applyProfileToForm(profilePayload) {
   if (!profilePayload) {
     return;
@@ -544,6 +566,7 @@ async function refreshDashboard() {
     renderSelectorCards(payload.selector_summary || null);
     renderPresets(payload.strategy_presets || null);
     renderProfiles(payload.operator_profiles || null);
+    renderReports(payload.session_reports || null);
     renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, payload.selector_summary?.active_market_chart);
     renderJobs(payload.jobs);
     renderPriceChart(payload.chart);
@@ -657,8 +680,24 @@ async function runSessionReport() {
       label: (inputs.market || dashboardState.app.market || "session").toLowerCase(),
     });
     ids.report.textContent = pretty(payload);
+    await refreshDashboard();
   } catch (error) {
     ids.report.textContent = `report error: ${error.message}`;
+  }
+}
+
+async function loadSessionReport() {
+  try {
+    const report = ids.reportSelect.value;
+    if (!report) {
+      ids.report.textContent = "report load error: select a report first";
+      return;
+    }
+    ids.report.textContent = "Loading session report...";
+    const payload = await postJson("/api/report-show", { report });
+    ids.report.textContent = pretty(payload);
+  } catch (error) {
+    ids.report.textContent = `report load error: ${error.message}`;
   }
 }
 
@@ -847,6 +886,7 @@ document.getElementById("run-scan").addEventListener("click", runScan);
 document.getElementById("run-reconcile").addEventListener("click", runReconcile);
 document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
 document.getElementById("run-session-report").addEventListener("click", runSessionReport);
+document.getElementById("load-session-report").addEventListener("click", loadSessionReport);
 document.getElementById("save-config").addEventListener("click", saveConfig);
 document.getElementById("save-current-preset").addEventListener("click", saveCurrentPreset);
 document.getElementById("save-best-preset").addEventListener("click", () => runOptimize(true));

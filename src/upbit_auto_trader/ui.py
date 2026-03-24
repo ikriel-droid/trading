@@ -34,6 +34,7 @@ from .presets import (
     save_grid_search_best_preset,
 )
 from .reporting import default_reports_dir, write_runtime_report
+from .reporting import list_session_reports, load_session_report
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .strategy import ProfessionalCryptoStrategy
@@ -864,6 +865,15 @@ def run_session_report_action(
     }
 
 
+def run_show_report_action(
+    config_path: str,
+    report_ref: str,
+    output_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+    resolved_output_dir = _resolve_project_path(config_path, output_dir) if output_dir else None
+    return load_session_report(config_path=config_path, report_ref=report_ref, output_dir=resolved_output_dir)
+
+
 def run_live_reconcile_action(
     config_path: str,
     state_path: Optional[str],
@@ -941,6 +951,10 @@ def build_dashboard_payload(
         "operator_profiles": {
             "dir": default_profile_dir(config_path),
             "items": list_operator_profiles(config_path),
+        },
+        "session_reports": {
+            "dir": default_reports_dir(config_path),
+            "items": list_session_reports(config_path),
         },
         "jobs": jobs,
         "alerts": _build_alert_feed(
@@ -1202,6 +1216,15 @@ def _build_handler(
                         mode=body.get("mode") or mode,
                         output_dir=body.get("output_dir"),
                         label=body.get("label", ""),
+                    )
+                )
+                return
+            if self.path == "/api/report-show":
+                self._write_json(
+                    run_show_report_action(
+                        config_path=config_path,
+                        report_ref=body.get("report", ""),
+                        output_dir=body.get("output_dir"),
                     )
                 )
                 return

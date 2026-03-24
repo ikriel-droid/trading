@@ -416,6 +416,40 @@ class MainTests(unittest.TestCase):
             payload = json.loads(stdout.getvalue())
             self.assertTrue(pathlib.Path(payload["json_path"]).exists())
             self.assertTrue(pathlib.Path(payload["html_path"]).exists())
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "report-list",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--output-dir",
+                        str(reports_dir),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            listed = json.loads(stdout.getvalue())
+            self.assertEqual(len(listed["items"]), 1)
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "report-show",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--report",
+                        payload["json_path"],
+                        "--output-dir",
+                        str(reports_dir),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            shown = json.loads(stdout.getvalue())
+            self.assertEqual(shown["json_path"], payload["json_path"])
         finally:
             if state_path.exists():
                 state_path.unlink()

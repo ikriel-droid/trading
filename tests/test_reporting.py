@@ -8,7 +8,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
 from upbit_auto_trader.datafeed import load_csv_candles  # noqa: E402
-from upbit_auto_trader.reporting import write_runtime_report  # noqa: E402
+from upbit_auto_trader.reporting import list_session_reports, load_session_report, write_runtime_report  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 
 
@@ -47,6 +47,20 @@ class ReportingTests(unittest.TestCase):
             self.assertTrue(pathlib.Path(report["html_path"]).exists())
             self.assertIn("summary", report)
             self.assertIn("metrics", report)
+            listed = list_session_reports(
+                config_path=str(PROJECT_ROOT / "config.example.json"),
+                output_dir=str(reports_dir),
+            )
+            loaded = load_session_report(
+                config_path=str(PROJECT_ROOT / "config.example.json"),
+                report_ref=report["json_path"],
+                output_dir=str(reports_dir),
+            )
+
+            self.assertEqual(len(listed), 1)
+            self.assertEqual(listed[0]["json_path"], report["json_path"])
+            self.assertEqual(loaded["json_path"], report["json_path"])
+            self.assertIn("recent_events", loaded)
         finally:
             if state_path.exists():
                 state_path.unlink()

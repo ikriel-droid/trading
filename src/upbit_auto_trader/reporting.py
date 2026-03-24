@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from .config import load_config
 from .runtime import TradingRuntime
@@ -14,11 +14,43 @@ def default_reports_dir(config_path: str) -> str:
     return str(Path(config_path).resolve().parent / DEFAULT_REPORTS_DIR)
 
 
+def _resolve_reports_dir(config_path: str, output_dir: str | None = None) -> Path:
+    return Path(output_dir or default_reports_dir(config_path))
+
+
 def _report_slug(timestamp: str, label: str) -> str:
     safe_label = "".join(character if character.isalnum() or character in ("-", "_") else "-" for character in label.strip())
     safe_label = safe_label.strip("-_")
     base = timestamp.replace(":", "").replace("-", "").replace("+", "").replace(".", "")
     return "{0}-{1}".format(base, safe_label) if safe_label else base
+
+
+def _resolve_report_path(config_path: str, report_ref: str, output_dir: str | None = None) -> Path:
+    candidate = Path(str(report_ref or "").strip())
+    if not str(candidate):
+        raise ValueError("report reference is required")
+
+    if candidate.is_absolute():
+        if candidate.exists():
+            return candidate
+        raise ValueError("report not found: {0}".format(candidate))
+
+    reports_dir = _resolve_reports_dir(config_path, output_dir)
+    if candidate.suffix == ".json":
+        direct_path = reports_dir / candidate
+        if direct_path.exists():
+            return direct_path
+
+    if "/" in str(candidate) or "\\" in str(candidate):
+        direct_path = Path(config_path).resolve().parent / candidate
+        if direct_path.exists():
+            return direct_path
+
+    for path in reports_dir.glob("session-report-*.json"):
+        if path.stem == candidate.stem or path.name == str(candidate):
+            return path
+
+    raise ValueError("report not found: {0}".format(report_ref))
 
 
 def _serialize_trade(trade: Any) -> Dict[str, Any]:
@@ -145,6 +177,54 @@ def _render_report_html(report: Dict[str, Any]) -> str:
     )
 
 
+def _report_summary_item(path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
+    html_path = path.with_suffix(".html")
+    summary = payload.get("summary", {})
+    metrics = payload.get("metrics", {})
+    return {
+        "name": path.stem,
+        "json_path": str(path),
+        "html_path": str(html_path) if html_path.exists() else "",
+        "generated_at": str(payload.get("generated_at", "")),
+        "market": str(summary.get("market", "")),
+        "mode": str(summary.get("mode", "")),
+        "equity": round(float(summary.get("equity", 0.0) or 0.0), 2),
+        "trade_count": int(metrics.get("closed_trade_count", 0) or 0),
+        "total_net_pnl": round(float(metrics.get("total_net_pnl", 0.0) or 0.0), 8),
+    }
+
+
+def list_session_reports(config_path: str, output_dir: str | None = None, limit: int = 12) -> List[Dict[str, Any]]:
+    reports_dir = _resolve_reports_dir(config_path, output_dir)
+    if not reports_dir.exists():
+        return []
+
+    items: List[Dict[str, Any]] = []
+    for path in reports_dir.glob("session-report-*.json"):
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            continue
+        items.append(_report_summary_item(path, payload))
+
+    items.sort(key=lambda item: str(item.get("generated_at", "")), reverse=True)
+    return items[: max(1, limit)]
+
+
+def load_session_report(config_path: str, report_ref: str, output_dir: str | None = None) -> Dict[str, Any]:
+    path = _resolve_report_path(config_path, report_ref, output_dir)
+    with open(path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+
+    return {
+        "name": path.stem,
+        "json_path": str(path),
+        "html_path": str(path.with_suffix(".html")),
+        **payload,
+    }
+
+
 def write_runtime_report(
     config_path: str,
     state_path: str,
@@ -153,7 +233,7 @@ def write_runtime_report(
     label: str = "",
 ) -> Dict[str, Any]:
     report = build_runtime_report(config_path=config_path, state_path=state_path, mode=mode)
-    reports_dir = Path(output_dir or default_reports_dir(config_path))
+    reports_dir = _resolve_reports_dir(config_path, output_dir)
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     slug = _report_slug(report["generated_at"], label)

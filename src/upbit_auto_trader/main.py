@@ -26,7 +26,7 @@ from .presets import (
     save_grid_search_best_preset,
 )
 from .profiles import default_profile_dir, list_operator_profiles
-from .reporting import default_reports_dir, write_runtime_report
+from .reporting import default_reports_dir, list_session_reports, load_session_report, write_runtime_report
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
@@ -117,6 +117,15 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
     report_parser.add_argument("--output-dir")
     report_parser.add_argument("--label", default="")
+
+    report_list_parser = subparsers.add_parser("report-list")
+    report_list_parser.add_argument("--config", required=True)
+    report_list_parser.add_argument("--output-dir")
+
+    report_show_parser = subparsers.add_parser("report-show")
+    report_show_parser.add_argument("--config", required=True)
+    report_show_parser.add_argument("--report", required=True)
+    report_show_parser.add_argument("--output-dir")
 
     web_ui_parser = subparsers.add_parser("web-ui")
     web_ui_parser.add_argument("--config", required=True)
@@ -899,6 +908,19 @@ def main(argv: Optional[List[str]] = None) -> int:
                     ),
                 }
             )
+            return 0
+
+        if args.command == "report-list":
+            _print_json(
+                {
+                    "reports_dir": default_reports_dir(args.config),
+                    "items": list_session_reports(args.config, output_dir=args.output_dir),
+                }
+            )
+            return 0
+
+        if args.command == "report-show":
+            _print_json(load_session_report(args.config, args.report, output_dir=args.output_dir))
             return 0
 
         if args.command == "web-ui":
