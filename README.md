@@ -186,6 +186,12 @@ Or use the one-click PowerShell launcher:
 .\start_control_room.ps1
 ```
 
+Or use the browser-opening launcher:
+
+```powershell
+.\launch_control_room.cmd
+```
+
 Run a local preflight check before paper or live operation:
 
 ```powershell
