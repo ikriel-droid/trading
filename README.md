@@ -76,6 +76,12 @@ Install the package in editable mode:
 .venv\Scripts\python.exe -m pip install -e .
 ```
 
+Optional: create `.env` from the example file so API keys and webhook settings load automatically from the project root:
+
+```powershell
+Copy-Item .env.example .env
+```
+
 Run the demo backtest:
 
 ```powershell
@@ -118,10 +124,40 @@ Apply a saved preset back into the config file:
 .venv\Scripts\python.exe -m upbit_auto_trader.main preset-apply --config config.example.json --preset krw-btc-best
 ```
 
+List saved launch profiles:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main profile-list --config config.example.json
+```
+
+Save a reusable launch profile from the CLI:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main profile-save --config config.example.json --name paper-btc-main --job-type paper-loop --market KRW-BTC --csv data/demo_krw_btc_15m.csv --state data/paper-state.json --auto-restart --max-restarts 2 --restart-backoff-seconds 2
+```
+
+Show one saved launch profile:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main profile-show --config config.example.json --profile paper-btc-main
+```
+
+Start one saved launch profile without opening the UI:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main profile-start --config config.example.json --profile paper-btc-main
+```
+
 Start the browser-based control room UI:
 
 ```powershell
 .venv\Scripts\python.exe -m upbit_auto_trader.main web-ui --config config.example.json --state data\paper-state.json --selector-state data\selector-state.json --csv data/demo_krw_btc_15m.csv --mode paper --port 8765
+```
+
+Or use the one-click PowerShell launcher:
+
+```powershell
+.\start_control_room.ps1
 ```
 
 Run a local preflight check before paper or live operation:
@@ -131,6 +167,12 @@ Run a local preflight check before paper or live operation:
 ```
 
 The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, key config editing, strategy preset save or apply controls, launch-profile save or load controls, separate selector-state input, and start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs. Background job logs are rotated automatically under `data/webui-jobs`, and managed jobs can now auto-restart with a watchdog and bounded retry count.
+
+If you already saved a launch profile, you can start it from PowerShell too:
+
+```powershell
+.\start_profile.ps1 -Profile paper-btc-main
+```
 
 Preview a market buy order request:
 
@@ -307,6 +349,8 @@ Managed background jobs in the web UI now have a separate watchdog layer:
 - `auto_restart`: automatically restart a failed background job
 - `max_restarts`: maximum restart attempts before leaving the job stopped
 - `restart_backoff_seconds`: base delay before each retry; later retries wait longer
+
+Config loading also reads `.env` from the project root before resolving `${ENV_NAME}` placeholders in `config.example.json`. Existing environment variables still win over `.env` values.
 
 The `notifications` section controls optional external alerts:
 

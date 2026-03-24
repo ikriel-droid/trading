@@ -290,6 +290,80 @@ class MainTests(unittest.TestCase):
             if preset_path.exists():
                 preset_path.unlink()
 
+    def test_cli_profile_save_show_and_list(self):
+        config_path = PROJECT_ROOT / "test-main-profile-config.json"
+        profile_path = PROJECT_ROOT / "data" / "operator-profiles" / "test-main-paper.json"
+        if config_path.exists():
+            config_path.unlink()
+        if profile_path.exists():
+            profile_path.unlink()
+        try:
+            shutil.copyfile(PROJECT_ROOT / "config.example.json", config_path)
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "profile-save",
+                        "--config",
+                        str(config_path),
+                        "--name",
+                        "test-main-paper",
+                        "--job-type",
+                        "paper-loop",
+                        "--market",
+                        "KRW-BTC",
+                        "--csv",
+                        "data/demo_krw_btc_15m.csv",
+                        "--state",
+                        "data/paper-state.json",
+                        "--auto-restart",
+                        "--max-restarts",
+                        "2",
+                        "--restart-backoff-seconds",
+                        "1.5",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            self.assertTrue(profile_path.exists())
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "profile-show",
+                        "--config",
+                        str(config_path),
+                        "--profile",
+                        "test-main-paper",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            shown = json.loads(stdout.getvalue())
+            self.assertEqual(shown["profile"]["job_type"], "paper-loop")
+            self.assertTrue(shown["profile"]["auto_restart"])
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "profile-list",
+                        "--config",
+                        str(config_path),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            listed = json.loads(stdout.getvalue())
+            self.assertTrue(any(item["name"] == "test-main-paper" for item in listed["items"]))
+        finally:
+            if config_path.exists():
+                config_path.unlink()
+            if profile_path.exists():
+                profile_path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

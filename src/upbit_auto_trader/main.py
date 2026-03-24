@@ -25,11 +25,17 @@ from .presets import (
     save_current_strategy_preset,
     save_grid_search_best_preset,
 )
+from .profiles import default_profile_dir, list_operator_profiles
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
 from .strategy import ProfessionalCryptoStrategy
-from .ui import run_web_ui_server
+from .ui import (
+    run_load_profile_action,
+    run_save_profile_action,
+    run_start_profile_action,
+    run_web_ui_server,
+)
 from .websocket_client import (
     UpbitWebSocketClient,
     build_myorder_subscription,
@@ -73,6 +79,36 @@ def build_parser() -> argparse.ArgumentParser:
     preset_apply_parser = subparsers.add_parser("preset-apply")
     preset_apply_parser.add_argument("--config", required=True)
     preset_apply_parser.add_argument("--preset", required=True)
+
+    profile_list_parser = subparsers.add_parser("profile-list")
+    profile_list_parser.add_argument("--config", required=True)
+
+    profile_show_parser = subparsers.add_parser("profile-show")
+    profile_show_parser.add_argument("--config", required=True)
+    profile_show_parser.add_argument("--profile", required=True)
+
+    profile_save_parser = subparsers.add_parser("profile-save")
+    profile_save_parser.add_argument("--config", required=True)
+    profile_save_parser.add_argument("--name", required=True)
+    profile_save_parser.add_argument("--job-type", required=True)
+    profile_save_parser.add_argument("--market")
+    profile_save_parser.add_argument("--csv")
+    profile_save_parser.add_argument("--state")
+    profile_save_parser.add_argument("--selector-state")
+    profile_save_parser.add_argument("--quote-currency")
+    profile_save_parser.add_argument("--max-markets", type=int)
+    profile_save_parser.add_argument("--poll-seconds", type=float)
+    profile_save_parser.add_argument("--reconcile-every", type=int)
+    profile_save_parser.add_argument("--reconcile-every-loops", type=int, default=3)
+    profile_save_parser.add_argument("--preset")
+    profile_save_parser.add_argument("--auto-restart", action="store_true")
+    profile_save_parser.add_argument("--max-restarts", type=int, default=0)
+    profile_save_parser.add_argument("--restart-backoff-seconds", type=float, default=0.0)
+    profile_save_parser.add_argument("--notes", default="")
+
+    profile_start_parser = subparsers.add_parser("profile-start")
+    profile_start_parser.add_argument("--config", required=True)
+    profile_start_parser.add_argument("--profile", required=True)
 
     web_ui_parser = subparsers.add_parser("web-ui")
     web_ui_parser.add_argument("--config", required=True)
@@ -797,6 +833,49 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "preset-apply":
             _print_json(apply_strategy_preset(args.config, args.preset))
+            return 0
+
+        if args.command == "profile-list":
+            _print_json(
+                {
+                    "dir": default_profile_dir(args.config),
+                    "items": list_operator_profiles(args.config),
+                }
+            )
+            return 0
+
+        if args.command == "profile-show":
+            _print_json(run_load_profile_action(args.config, args.profile))
+            return 0
+
+        if args.command == "profile-save":
+            _print_json(
+                run_save_profile_action(
+                    config_path=args.config,
+                    profile_name=args.name,
+                    profile_payload={
+                        "job_type": args.job_type,
+                        "market": args.market or config.market,
+                        "csv_path": args.csv or "",
+                        "state_path": args.state or "",
+                        "selector_state_path": args.selector_state or "",
+                        "quote_currency": args.quote_currency or "",
+                        "max_markets": args.max_markets or 0,
+                        "poll_seconds": args.poll_seconds or 0.0,
+                        "reconcile_every": args.reconcile_every or 0,
+                        "reconcile_every_loops": args.reconcile_every_loops or 0,
+                        "preset": args.preset or "",
+                        "auto_restart": args.auto_restart,
+                        "max_restarts": args.max_restarts,
+                        "restart_backoff_seconds": args.restart_backoff_seconds,
+                    },
+                    notes=args.notes,
+                )
+            )
+            return 0
+
+        if args.command == "profile-start":
+            _print_json(run_start_profile_action(args.config, args.profile))
             return 0
 
         if args.command == "web-ui":

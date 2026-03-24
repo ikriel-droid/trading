@@ -1,11 +1,13 @@
 import json
 import os
 import re
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 
 ENV_PATTERN = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+_LOADED_DOTENV_PATHS: set[str] = set()
 
 
 @dataclass
@@ -141,7 +143,44 @@ def _resolve_env(value: Any) -> Any:
     return value
 
 
+def _strip_wrapping_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
+
+
+def _load_dotenv_file(path: Path) -> None:
+    resolved = str(path.resolve())
+    if resolved in _LOADED_DOTENV_PATHS or not path.exists():
+        return
+
+    with open(path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            env_name = key.strip()
+            if not env_name or env_name.startswith("#"):
+                continue
+            env_value = _strip_wrapping_quotes(value.strip())
+            os.environ.setdefault(env_name, env_value)
+
+    _LOADED_DOTENV_PATHS.add(resolved)
+
+
+def _load_project_dotenv(config_path: str) -> None:
+    config_file = Path(config_path).resolve()
+    candidate_paths = [
+        config_file.parent / ".env",
+        config_file.parent.parent / ".env",
+    ]
+    for candidate in candidate_paths:
+        _load_dotenv_file(candidate)
+
+
 def load_config(path: str) -> AppConfig:
+    _load_project_dotenv(path)
     with open(path, "r", encoding="utf-8") as handle:
         raw = json.load(handle)
 
