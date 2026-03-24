@@ -33,6 +33,7 @@ from .presets import (
     save_current_strategy_preset,
     save_grid_search_best_preset,
 )
+from .reporting import default_reports_dir, write_runtime_report
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .strategy import ProfessionalCryptoStrategy
@@ -842,6 +843,27 @@ def run_start_profile_action(
     }
 
 
+def run_session_report_action(
+    config_path: str,
+    state_path: str,
+    mode: str = "paper",
+    output_dir: Optional[str] = None,
+    label: str = "",
+) -> Dict[str, Any]:
+    resolved_state_path = _resolve_project_path(config_path, state_path)
+    resolved_output_dir = _resolve_project_path(config_path, output_dir) if output_dir else None
+    return {
+        "reports_dir": default_reports_dir(config_path),
+        **write_runtime_report(
+            config_path=config_path,
+            state_path=resolved_state_path,
+            mode=mode,
+            output_dir=resolved_output_dir,
+            label=label,
+        ),
+    }
+
+
 def run_live_reconcile_action(
     config_path: str,
     state_path: Optional[str],
@@ -898,6 +920,7 @@ def build_dashboard_payload(
             "selector_state_path": resolved_selector_state_path,
             "csv_path": effective_csv_path,
             "suggested_market_csv_path": suggested_market_csv_path,
+            "reports_dir": default_reports_dir(config_path),
         },
         "app": {
             "market": config.market,
@@ -1168,6 +1191,17 @@ def _build_handler(
                         config_path=config_path,
                         profile_ref=body.get("profile", ""),
                         job_manager=JOB_MANAGER,
+                    )
+                )
+                return
+            if self.path == "/api/session-report":
+                self._write_json(
+                    run_session_report_action(
+                        config_path=config_path,
+                        state_path=body.get("state_path") or state_path or "",
+                        mode=body.get("mode") or mode,
+                        output_dir=body.get("output_dir"),
+                        label=body.get("label", ""),
                     )
                 )
                 return

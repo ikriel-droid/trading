@@ -148,6 +148,12 @@ Start one saved launch profile without opening the UI:
 .venv\Scripts\python.exe -m upbit_auto_trader.main profile-start --config config.example.json --profile paper-btc-main
 ```
 
+Export the current runtime state into JSON and HTML session reports:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main session-report --config config.example.json --state data/paper-state.json --label paper-btc-main
+```
+
 Start the browser-based control room UI:
 
 ```powershell
@@ -166,7 +172,7 @@ Run a local preflight check before paper or live operation:
 .venv\Scripts\python.exe -m upbit_auto_trader.main doctor --config config.example.json --state data\paper-state.json --selector-state data\selector-state.json
 ```
 
-The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, key config editing, strategy preset save or apply controls, launch-profile save or load controls, separate selector-state input, and start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs. Background job logs are rotated automatically under `data/webui-jobs`, and managed jobs can now auto-restart with a watchdog and bounded retry count.
+The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, session report export, key config editing, strategy preset save or apply controls, launch-profile save or load controls, separate selector-state input, and start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs. Background job logs are rotated automatically under `data/webui-jobs`, and managed jobs can now auto-restart with a watchdog and bounded retry count.
 
 If you already saved a launch profile, you can start it from PowerShell too:
 

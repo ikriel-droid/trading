@@ -26,6 +26,7 @@ from .presets import (
     save_grid_search_best_preset,
 )
 from .profiles import default_profile_dir, list_operator_profiles
+from .reporting import default_reports_dir, write_runtime_report
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
@@ -109,6 +110,13 @@ def build_parser() -> argparse.ArgumentParser:
     profile_start_parser = subparsers.add_parser("profile-start")
     profile_start_parser.add_argument("--config", required=True)
     profile_start_parser.add_argument("--profile", required=True)
+
+    report_parser = subparsers.add_parser("session-report")
+    report_parser.add_argument("--config", required=True)
+    report_parser.add_argument("--state", required=True)
+    report_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
+    report_parser.add_argument("--output-dir")
+    report_parser.add_argument("--label", default="")
 
     web_ui_parser = subparsers.add_parser("web-ui")
     web_ui_parser.add_argument("--config", required=True)
@@ -876,6 +884,21 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "profile-start":
             _print_json(run_start_profile_action(args.config, args.profile))
+            return 0
+
+        if args.command == "session-report":
+            _print_json(
+                {
+                    "reports_dir": default_reports_dir(args.config),
+                    **write_runtime_report(
+                        config_path=args.config,
+                        state_path=args.state,
+                        mode=args.mode,
+                        output_dir=args.output_dir,
+                        label=args.label,
+                    ),
+                }
+            )
             return 0
 
         if args.command == "web-ui":

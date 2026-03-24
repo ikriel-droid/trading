@@ -364,6 +364,68 @@ class MainTests(unittest.TestCase):
             if profile_path.exists():
                 profile_path.unlink()
 
+    def test_cli_session_report_writes_files(self):
+        reports_dir = PROJECT_ROOT / "data" / "test-main-reports"
+        state_path = PROJECT_ROOT / "data" / "test-main-report-state.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
+        if state_path.exists():
+            state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
+        if reports_dir.exists():
+            for path in reports_dir.glob("*"):
+                path.unlink()
+            reports_dir.rmdir()
+        try:
+            config = load_config(str(PROJECT_ROOT / "config.example.json"))
+            config.runtime.journal_path = ""
+            runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
+            minimum_history = runtime.strategy.minimum_history()
+            candles = [
+                Candle(
+                    timestamp="2026-03-26T11:{0:02d}:00".format(index),
+                    open=100.0,
+                    high=100.0,
+                    low=100.0,
+                    close=100.0,
+                    volume=1000.0,
+                )
+                for index in range(minimum_history + 2)
+            ]
+            runtime.bootstrap(candles[:minimum_history])
+            for candle in candles[minimum_history:]:
+                runtime.process_candle(candle)
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "session-report",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--state",
+                        str(state_path),
+                        "--output-dir",
+                        str(reports_dir),
+                        "--label",
+                        "test-main",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertTrue(pathlib.Path(payload["json_path"]).exists())
+            self.assertTrue(pathlib.Path(payload["html_path"]).exists())
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+            if reports_dir.exists():
+                for path in reports_dir.glob("*"):
+                    path.unlink()
+                reports_dir.rmdir()
+
 
 if __name__ == "__main__":
     unittest.main()

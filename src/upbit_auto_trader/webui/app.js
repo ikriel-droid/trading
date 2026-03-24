@@ -11,6 +11,7 @@ const ids = {
   optimize: document.getElementById("optimize-json"),
   scan: document.getElementById("scan-json"),
   reconcile: document.getElementById("reconcile-json"),
+  report: document.getElementById("report-json"),
   config: document.getElementById("config-json"),
   presets: document.getElementById("presets-json"),
   profiles: document.getElementById("profiles-json"),
@@ -646,6 +647,21 @@ async function runSyncCandles() {
   }
 }
 
+async function runSessionReport() {
+  try {
+    ids.report.textContent = "Exporting session report...";
+    const inputs = currentInputs();
+    const payload = await postJson("/api/session-report", {
+      state_path: inputs.state_path,
+      mode: dashboardState.app.mode || "paper",
+      label: (inputs.market || dashboardState.app.market || "session").toLowerCase(),
+    });
+    ids.report.textContent = pretty(payload);
+  } catch (error) {
+    ids.report.textContent = `report error: ${error.message}`;
+  }
+}
+
 async function refreshJobs() {
   try {
     const payload = await getJson("/api/jobs");
@@ -830,6 +846,7 @@ document.getElementById("run-optimize").addEventListener("click", () => runOptim
 document.getElementById("run-scan").addEventListener("click", runScan);
 document.getElementById("run-reconcile").addEventListener("click", runReconcile);
 document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
+document.getElementById("run-session-report").addEventListener("click", runSessionReport);
 document.getElementById("save-config").addEventListener("click", saveConfig);
 document.getElementById("save-current-preset").addEventListener("click", saveCurrentPreset);
 document.getElementById("save-best-preset").addEventListener("click", () => runOptimize(true));
