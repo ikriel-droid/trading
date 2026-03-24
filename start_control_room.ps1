@@ -5,7 +5,7 @@ param(
     [string]$Csv = "data/demo_krw_btc_15m.csv",
     [ValidateSet("paper", "live")]
     [string]$Mode = "paper",
-    [string]$Host = "127.0.0.1",
+    [string]$BindHost = "127.0.0.1",
     [int]$Port = 8765
 )
 
@@ -27,7 +27,7 @@ try {
         --selector-state $SelectorState `
         --csv $Csv `
         --mode $Mode `
-        --host $Host `
+        --host $BindHost `
         --port $Port
 }
 finally {
