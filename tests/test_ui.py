@@ -19,10 +19,12 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_apply_preset_action,
     run_backtest_action,
     run_live_reconcile_action,
+    run_show_report_action,
     run_load_profile_action,
     run_scan_action,
     run_save_profile_action,
     run_save_current_preset_action,
+    run_session_report_action,
     run_start_profile_action,
     run_sync_candles_action,
     run_optimize_action,
@@ -130,6 +132,7 @@ class UiTests(unittest.TestCase):
         self.selector_market_state_path = PROJECT_ROOT / "data" / "selector-states" / "KRW_BTC.json"
         self.preset_dir = PROJECT_ROOT / "data" / "strategy-presets"
         self.profile_dir = PROJECT_ROOT / "data" / "operator-profiles"
+        self.reports_dir = PROJECT_ROOT / "data" / "session-reports"
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
@@ -150,6 +153,9 @@ class UiTests(unittest.TestCase):
         if self.profile_dir.exists():
             for profile_path in self.profile_dir.glob("test-ui-*.json"):
                 profile_path.unlink()
+        if self.reports_dir.exists():
+            for report_path in self.reports_dir.glob("session-report-*-test-ui-report*"):
+                report_path.unlink()
         shutil.copyfile(self.config_path, self.temp_config_path)
         with open(self.temp_config_path, "r", encoding="utf-8") as handle:
             temp_config = json.load(handle)
@@ -256,6 +262,9 @@ class UiTests(unittest.TestCase):
         if self.profile_dir.exists():
             for profile_path in self.profile_dir.glob("test-ui-*.json"):
                 profile_path.unlink()
+        if self.reports_dir.exists():
+            for report_path in self.reports_dir.glob("session-report-*-test-ui-report*"):
+                report_path.unlink()
 
     def test_build_dashboard_payload_contains_summary_and_signal(self):
         payload = build_dashboard_payload(
@@ -354,6 +363,26 @@ class UiTests(unittest.TestCase):
 
         self.assertTrue(payload["operator_profiles"]["dir"].endswith("data\\operator-profiles"))
         self.assertTrue(any(item["name"] == "test-ui-paper" for item in payload["operator_profiles"]["items"]))
+
+    def test_build_dashboard_payload_exposes_session_reports(self):
+        run_session_report_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            mode="paper",
+            label="test-ui-report",
+        )
+
+        payload = build_dashboard_payload(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="paper",
+            job_manager=BackgroundJobManager(),
+        )
+
+        self.assertTrue(payload["paths"]["reports_dir"].endswith("data\\session-reports"))
+        self.assertTrue(any("test-ui-report" in item["name"] for item in payload["session_reports"]["items"]))
 
     def test_build_dashboard_payload_exposes_alerts(self):
         with open(self.alert_journal_path, "w", encoding="utf-8") as handle:
@@ -513,6 +542,23 @@ class UiTests(unittest.TestCase):
         self.assertEqual(started["job"]["max_restarts"], 4)
         self.assertEqual(started["job"]["restart_backoff_seconds"], 1.5)
         self.assertIn("run-loop", started["job"]["command"])
+
+    def test_session_report_can_be_exported_and_loaded(self):
+        exported = run_session_report_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            mode="paper",
+            label="test-ui-report",
+        )
+        loaded = run_show_report_action(
+            config_path=str(self.temp_config_path),
+            report_ref=exported["json_path"],
+        )
+
+        self.assertTrue(pathlib.Path(exported["json_path"]).exists())
+        self.assertTrue(pathlib.Path(exported["html_path"]).exists())
+        self.assertEqual(loaded["json_path"], exported["json_path"])
+        self.assertIn("recent_events", loaded)
 
     def test_scan_and_reconcile_actions_return_expected_keys(self):
         broker = FakeUiBroker()
