@@ -17,6 +17,7 @@ const ids = {
   presets: document.getElementById("presets-json"),
   profiles: document.getElementById("profiles-json"),
   jobs: document.getElementById("jobs-json"),
+  jobPreview: document.getElementById("job-preview-json"),
   logs: document.getElementById("logs-json"),
   jobHistory: document.getElementById("job-history-json"),
   paths: document.getElementById("paths-json"),
@@ -770,6 +771,32 @@ async function startJob(jobType) {
   }
 }
 
+async function previewJob(jobType = ids.jobType.value) {
+  try {
+    ids.jobPreview.textContent = `Previewing ${jobType}...`;
+    const inputs = currentInputs();
+    const jobSettings = currentJobSettings();
+    const payload = await postJson("/api/jobs-preview", {
+      job_type: jobType,
+      state_path: inputs.state_path,
+      selector_state_path: inputs.selector_state_path,
+      csv_path: inputs.csv_path,
+      market: inputs.market || dashboardState.app.market || undefined,
+      max_markets: inputs.max_markets,
+      quote_currency: inputs.quote_currency,
+      poll_seconds: Number(ids.cfgPollSeconds.value || dashboardState.app.poll_seconds || "10"),
+      reconcile_every: inputs.reconcile_every,
+      reconcile_every_loops: 3,
+      auto_restart: jobSettings.auto_restart,
+      max_restarts: jobSettings.max_restarts,
+      restart_backoff_seconds: jobSettings.restart_backoff_seconds,
+    });
+    ids.jobPreview.textContent = pretty(payload);
+  } catch (error) {
+    ids.jobPreview.textContent = `preview error: ${error.message}`;
+  }
+}
+
 async function stopJob(jobName) {
   try {
     ids.jobs.textContent = `Stopping ${jobName}...`;
@@ -932,6 +959,7 @@ document.getElementById("save-profile").addEventListener("click", saveProfile);
 document.getElementById("load-profile").addEventListener("click", loadProfile);
 document.getElementById("start-profile").addEventListener("click", startProfile);
 document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);
+document.getElementById("preview-job").addEventListener("click", () => previewJob());
 ids.scanCards.addEventListener("click", (event) => {
   const button = event.target.closest("[data-market]");
   if (!button) {

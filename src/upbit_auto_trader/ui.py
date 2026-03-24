@@ -1094,7 +1094,6 @@ def start_managed_job(
     restart_backoff_seconds: float,
     job_manager: Optional[BackgroundJobManager] = None,
 ) -> Dict[str, Any]:
-    job_manager = job_manager or JOB_MANAGER
     project_root = str(Path(config_path).resolve().parent)
     resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
     effective_state_path = state_path or ""
@@ -1141,6 +1140,25 @@ def start_managed_job(
     resolved_state_path = _resolve_project_path(config_path, effective_state_path) if effective_state_path else ""
     resolved_selector_state_path = _resolve_project_path(config_path, resolved_selector_state_path) if resolved_selector_state_path else ""
 
+    preview = {
+        "job_type": job_type,
+        "command": command,
+        "cwd": project_root,
+        "auto_restart": auto_restart,
+        "max_restarts": max_restarts,
+        "restart_backoff_seconds": restart_backoff_seconds,
+        "report_on_exit": bool(resolved_state_path),
+        "report_config_path": str(Path(config_path).resolve()),
+        "report_state_path": resolved_state_path,
+        "report_mode": report_mode,
+        "report_output_dir": default_reports_dir(config_path),
+        "report_label": job_type,
+        "blocking_issues": [],
+        "warnings": [],
+        "preflight": None,
+        "can_start": True,
+    }
+
     if report_mode == "live":
         live_config = _override_market(load_config(config_path), market)
         preflight = build_doctor_report(
@@ -1150,31 +1168,128 @@ def start_managed_job(
             selector_state_path=resolved_selector_state_path or None,
         )
         blocking_issues = _preflight_blocking_issues(preflight)
-        if blocking_issues:
-            warnings = [issue for issue in preflight.get("issues", []) if issue not in blocking_issues]
-            return {
-                "error": "live_preflight_failed",
-                "job_type": job_type,
-                "blocking_issues": blocking_issues,
-                "warnings": warnings,
-                "preflight": preflight,
-            }
+        preview["blocking_issues"] = blocking_issues
+        preview["warnings"] = [issue for issue in preflight.get("issues", []) if issue not in blocking_issues]
+        preview["preflight"] = preflight
+        preview["can_start"] = len(blocking_issues) == 0
+
+    job_manager = job_manager or JOB_MANAGER
+    if not preview["can_start"]:
+        return {
+            "error": "live_preflight_failed",
+            **preview,
+        }
 
     return job_manager.start_job(
         name=job_type,
         kind=job_type,
-        command=command,
-        cwd=project_root,
-        auto_restart=auto_restart,
-        max_restarts=max_restarts,
-        restart_backoff_seconds=restart_backoff_seconds,
-        report_on_exit=bool(resolved_state_path),
-        report_config_path=str(Path(config_path).resolve()),
-        report_state_path=resolved_state_path,
-        report_mode=report_mode,
-        report_output_dir=default_reports_dir(config_path),
-        report_label=job_type,
+        command=preview["command"],
+        cwd=preview["cwd"],
+        auto_restart=preview["auto_restart"],
+        max_restarts=preview["max_restarts"],
+        restart_backoff_seconds=preview["restart_backoff_seconds"],
+        report_on_exit=preview["report_on_exit"],
+        report_config_path=preview["report_config_path"],
+        report_state_path=preview["report_state_path"],
+        report_mode=preview["report_mode"],
+        report_output_dir=preview["report_output_dir"],
+        report_label=preview["report_label"],
     )
+
+
+def preview_managed_job(
+    config_path: str,
+    job_type: str,
+    state_path: Optional[str],
+    selector_state_path: Optional[str],
+    csv_path: Optional[str],
+    poll_seconds: Optional[float],
+    reconcile_every_loops: Optional[int],
+    reconcile_every: Optional[int],
+    market: Optional[str],
+    quote_currency: Optional[str],
+    max_markets: Optional[int],
+    auto_restart: bool,
+    max_restarts: int,
+    restart_backoff_seconds: float,
+) -> Dict[str, Any]:
+    project_root = str(Path(config_path).resolve().parent)
+    resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
+    effective_state_path = state_path or ""
+    report_mode = "paper"
+
+    if job_type == "paper-loop":
+        effective_state_path = state_path or "data/paper-state-ui.json"
+        command = build_paper_loop_command(
+            config_path=config_path,
+            state_path=effective_state_path,
+            warmup_csv=csv_path,
+            poll_seconds=poll_seconds,
+        )
+    elif job_type == "paper-selector":
+        command = build_paper_selector_command(
+            config_path=config_path,
+            selector_state_path=resolved_selector_state_path,
+            poll_seconds=poll_seconds,
+            quote_currency=quote_currency,
+            max_markets=max_markets,
+        )
+    elif job_type == "live-daemon":
+        effective_state_path = state_path or "data/live-state-ui.json"
+        command = build_live_daemon_command(
+            config_path=config_path,
+            state_path=effective_state_path,
+            warmup_csv=csv_path,
+            poll_seconds=poll_seconds,
+            reconcile_every_loops=reconcile_every_loops,
+        )
+        report_mode = "live"
+    elif job_type == "live-supervisor":
+        effective_state_path = state_path or "data/live-state-ui.json"
+        command = build_live_supervisor_command(
+            config_path=config_path,
+            state_path=effective_state_path,
+            market=market,
+            reconcile_every=reconcile_every,
+        )
+        report_mode = "live"
+    else:
+        return {"error": "unsupported job type", "job_type": job_type}
+
+    resolved_state_path = _resolve_project_path(config_path, effective_state_path) if effective_state_path else ""
+    resolved_selector_state_path = _resolve_project_path(config_path, resolved_selector_state_path) if resolved_selector_state_path else ""
+    preview = {
+        "job_type": job_type,
+        "command": command,
+        "cwd": project_root,
+        "auto_restart": auto_restart,
+        "max_restarts": max_restarts,
+        "restart_backoff_seconds": restart_backoff_seconds,
+        "report_on_exit": bool(resolved_state_path),
+        "report_config_path": str(Path(config_path).resolve()),
+        "report_state_path": resolved_state_path,
+        "report_mode": report_mode,
+        "report_output_dir": default_reports_dir(config_path),
+        "report_label": job_type,
+        "blocking_issues": [],
+        "warnings": [],
+        "preflight": None,
+        "can_start": True,
+    }
+    if report_mode == "live":
+        live_config = _override_market(load_config(config_path), market)
+        preflight = build_doctor_report(
+            config_path=str(Path(config_path).resolve()),
+            config=live_config,
+            state_path=resolved_state_path or None,
+            selector_state_path=resolved_selector_state_path or None,
+        )
+        blocking_issues = _preflight_blocking_issues(preflight)
+        preview["blocking_issues"] = blocking_issues
+        preview["warnings"] = [issue for issue in preflight.get("issues", []) if issue not in blocking_issues]
+        preview["preflight"] = preflight
+        preview["can_start"] = len(blocking_issues) == 0
+    return preview
 
 
 def stop_managed_job(job_name: str, job_manager: Optional[BackgroundJobManager] = None) -> Dict[str, Any]:
@@ -1352,6 +1467,34 @@ def _build_handler(
             if self.path == "/api/jobs-start":
                 self._write_json(
                     start_managed_job(
+                        config_path=config_path,
+                        job_type=body.get("job_type", ""),
+                        state_path=body.get("state_path") or state_path,
+                        selector_state_path=body.get("selector_state_path") or selector_state_path,
+                        csv_path=body.get("csv_path") or csv_path,
+                        poll_seconds=float(body["poll_seconds"]) if body.get("poll_seconds") not in (None, "") else None,
+                        reconcile_every_loops=(
+                            int(body["reconcile_every_loops"])
+                            if body.get("reconcile_every_loops") not in (None, "")
+                            else None
+                        ),
+                        reconcile_every=(
+                            int(body["reconcile_every"])
+                            if body.get("reconcile_every") not in (None, "")
+                            else None
+                        ),
+                        market=body.get("market"),
+                        quote_currency=body.get("quote_currency"),
+                        max_markets=int(body["max_markets"]) if body.get("max_markets") not in (None, "") else None,
+                        auto_restart=bool(body.get("auto_restart", False)),
+                        max_restarts=int(body.get("max_restarts", 0) or 0),
+                        restart_backoff_seconds=float(body.get("restart_backoff_seconds", 0.0) or 0.0),
+                    )
+                )
+                return
+            if self.path == "/api/jobs-preview":
+                self._write_json(
+                    preview_managed_job(
                         config_path=config_path,
                         job_type=body.get("job_type", ""),
                         state_path=body.get("state_path") or state_path,

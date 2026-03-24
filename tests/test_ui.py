@@ -30,6 +30,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_sync_candles_action,
     run_optimize_action,
     run_signal_action,
+    preview_managed_job,
     start_managed_job,
     update_editable_config,
 )
@@ -747,6 +748,50 @@ class UiTests(unittest.TestCase):
         self.assertEqual(started["error"], "live_preflight_failed")
         self.assertIn("live_enabled=false", started["blocking_issues"])
         self.assertEqual(manager.calls, [])
+
+    def test_preview_managed_job_returns_paper_command_without_starting(self):
+        preview = preview_managed_job(
+            config_path=self.config_path,
+            job_type="paper-loop",
+            state_path=None,
+            selector_state_path=None,
+            csv_path=self.csv_path,
+            poll_seconds=5.0,
+            reconcile_every_loops=None,
+            reconcile_every=None,
+            market="KRW-BTC",
+            quote_currency="KRW",
+            max_markets=5,
+            auto_restart=False,
+            max_restarts=0,
+            restart_backoff_seconds=0.0,
+        )
+
+        self.assertTrue(preview["can_start"])
+        self.assertIn("run-loop", preview["command"])
+        self.assertTrue(preview["report_state_path"].endswith("data\\paper-state-ui.json"))
+
+    def test_preview_managed_job_exposes_live_blocking_issues(self):
+        preview = preview_managed_job(
+            config_path=self.config_path,
+            job_type="live-daemon",
+            state_path=str(self.state_path),
+            selector_state_path=None,
+            csv_path=self.csv_path,
+            poll_seconds=5.0,
+            reconcile_every_loops=3,
+            reconcile_every=None,
+            market="KRW-BTC",
+            quote_currency="KRW",
+            max_markets=5,
+            auto_restart=False,
+            max_restarts=0,
+            restart_backoff_seconds=0.0,
+        )
+
+        self.assertFalse(preview["can_start"])
+        self.assertIn("live_enabled=false", preview["blocking_issues"])
+        self.assertIsNotNone(preview["preflight"])
 
     def test_start_managed_job_uses_default_state_path_for_reports(self):
         manager = RecordingJobManager()

@@ -196,6 +196,8 @@ The UI now includes runtime cards, an alert center for blocked entries, fills, j
 
 Live background jobs are now preflight-gated. If `doctor` finds blocking issues such as `live_enabled=false`, missing live state, unreadable state, or unresolved API keys, the UI and profile launcher will refuse to start the live job and return the full preflight report instead.
 
+The control-room UI also includes a `Preview Launch` action so you can inspect the exact command, report paths, and any live preflight blockers before starting a background job.
+
 If you already saved a launch profile, you can start it from PowerShell too:
 
 ```powershell
