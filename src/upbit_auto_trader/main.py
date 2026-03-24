@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 from typing import Any, Iterable, List, Optional
 
 from .backtest import Backtester, format_backtest_report
@@ -17,7 +18,7 @@ from .datafeed import (
     write_csv_candles,
 )
 from .doctor import build_doctor_report
-from .jobs import list_job_history
+from .jobs import HEARTBEAT_ENV_VAR, list_job_history
 from .optimizer import run_grid_search
 from .notifier import DiscordWebhookNotifier, NotificationError
 from .presets import (
@@ -351,6 +352,32 @@ def _build_doctor_report(config_path: str, config: AppConfig, state_path: Option
     )
 
 
+def _write_heartbeat(kind: str, phase: str, stale_after_seconds: float, **payload: Any) -> None:
+    heartbeat_path = os.environ.get(HEARTBEAT_ENV_VAR, "").strip()
+    if not heartbeat_path:
+        return
+
+    heartbeat = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "kind": kind,
+        "phase": phase,
+        "stale_after_seconds": round(max(5.0, float(stale_after_seconds)), 3),
+    }
+    for key, value in payload.items():
+        if value is None:
+            continue
+        heartbeat[key] = value
+
+    temp_path = heartbeat_path + ".tmp"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(heartbeat, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(temp_path, heartbeat_path)
+    except OSError:
+        return
+
+
 def _parse_markets(value: Optional[str]) -> List[str]:
     if not value:
         return []
@@ -426,15 +453,42 @@ def _run_replay_loop(
 
     processed = 0
     last_timestamp = runtime.state.last_processed_timestamp
+    _write_heartbeat(
+        kind="replay-loop",
+        phase="bootstrapped",
+        stale_after_seconds=30.0,
+        market=runtime.config.market,
+        mode=runtime.mode,
+        processed=processed,
+        last_processed_timestamp=last_timestamp,
+    )
     for candle in candles_to_process:
         if last_timestamp and candle.timestamp <= last_timestamp:
             continue
         for event in runtime.process_candle(candle):
             print(event)
         processed += 1
+        _write_heartbeat(
+            kind="replay-loop",
+            phase="processing",
+            stale_after_seconds=30.0,
+            market=runtime.config.market,
+            mode=runtime.mode,
+            processed=processed,
+            last_processed_timestamp=runtime.state.last_processed_timestamp,
+        )
         if max_steps is not None and processed >= max_steps:
             break
 
+    _write_heartbeat(
+        kind="replay-loop",
+        phase="completed",
+        stale_after_seconds=30.0,
+        market=runtime.config.market,
+        mode=runtime.mode,
+        processed=processed,
+        last_processed_timestamp=runtime.state.last_processed_timestamp,
+    )
     _print_json(runtime.summary())
     return 0
 
@@ -455,6 +509,18 @@ def _run_broker_loop(
     poll_interval = poll_seconds if poll_seconds is not None else runtime.config.runtime.poll_seconds
     fetch_count = max(runtime.config.upbit.candle_count, runtime.strategy.minimum_history() + 5)
     loops = 0
+    heartbeat_kind = "{0}-loop".format(runtime.mode)
+    heartbeat_stale_after = max(30.0, float(poll_interval or 0.0) * 3.0)
+
+    _write_heartbeat(
+        kind=heartbeat_kind,
+        phase="bootstrapped",
+        stale_after_seconds=heartbeat_stale_after,
+        market=runtime.config.market,
+        mode=runtime.mode,
+        cycle=loops,
+        last_processed_timestamp=runtime.state.last_processed_timestamp,
+    )
 
     while True:
         payload = broker.get_minute_candles(
@@ -464,18 +530,39 @@ def _run_broker_loop(
         )
         new_candles = upbit_candles_to_internal(payload)
         last_timestamp = runtime.state.last_processed_timestamp
+        processed_candles = 0
         for candle in new_candles:
             if last_timestamp and candle.timestamp <= last_timestamp:
                 continue
             for event in runtime.process_candle(candle):
                 print(event)
             last_timestamp = runtime.state.last_processed_timestamp
+            processed_candles += 1
 
         loops += 1
+        _write_heartbeat(
+            kind=heartbeat_kind,
+            phase="loop",
+            stale_after_seconds=heartbeat_stale_after,
+            market=runtime.config.market,
+            mode=runtime.mode,
+            cycle=loops,
+            processed_candles=processed_candles,
+            last_processed_timestamp=runtime.state.last_processed_timestamp,
+        )
         if max_steps is not None and loops >= max_steps:
             break
         time.sleep(max(poll_interval, 1.0))
 
+    _write_heartbeat(
+        kind=heartbeat_kind,
+        phase="completed",
+        stale_after_seconds=heartbeat_stale_after,
+        market=runtime.config.market,
+        mode=runtime.mode,
+        cycle=loops,
+        last_processed_timestamp=runtime.state.last_processed_timestamp,
+    )
     _print_json(runtime.summary())
     return 0
 
@@ -500,6 +587,16 @@ def _run_live_daemon(
     poll_interval = poll_seconds if poll_seconds is not None else config.runtime.poll_seconds
     fetch_count = max(config.upbit.candle_count, runtime.strategy.minimum_history() + 5)
     loops = 0
+    heartbeat_stale_after = max(30.0, float(poll_interval or 0.0) * 3.0)
+    _write_heartbeat(
+        kind="live-daemon",
+        phase="bootstrapped",
+        stale_after_seconds=heartbeat_stale_after,
+        market=config.market,
+        mode="live",
+        cycle=loops,
+        last_processed_timestamp=runtime.state.last_processed_timestamp,
+    )
 
     while True:
         payload = broker.get_minute_candles(
@@ -529,14 +626,43 @@ def _run_live_daemon(
                 "summary": runtime.summary(),
             }
         )
+        _write_heartbeat(
+            kind="live-daemon",
+            phase="loop",
+            stale_after_seconds=heartbeat_stale_after,
+            market=config.market,
+            mode="live",
+            cycle=loops,
+            processed_candles=processed_candles,
+            event_count=len(cycle_events),
+            last_processed_timestamp=runtime.state.last_processed_timestamp,
+        )
 
         if reconcile_every_loops > 0 and (loops % reconcile_every_loops) == 0:
+            _write_heartbeat(
+                kind="live-daemon",
+                phase="reconcile",
+                stale_after_seconds=heartbeat_stale_after,
+                market=config.market,
+                mode="live",
+                cycle=loops,
+                last_processed_timestamp=runtime.state.last_processed_timestamp,
+            )
             _print_json({"kind": "reconcile", "data": runtime.reconcile_live_snapshot()})
 
         if max_loops is not None and loops >= max_loops:
             break
         time.sleep(max(poll_interval, 1.0))
 
+    _write_heartbeat(
+        kind="live-daemon",
+        phase="completed",
+        stale_after_seconds=heartbeat_stale_after,
+        market=config.market,
+        mode="live",
+        cycle=loops,
+        last_processed_timestamp=runtime.state.last_processed_timestamp,
+    )
     _print_json({"kind": "final", "summary": runtime.summary()})
     return 0
 
@@ -558,6 +684,17 @@ def _run_selector_loop(
     )
     cycles = 0
     interval = poll_seconds if poll_seconds is not None else config.runtime.poll_seconds
+    heartbeat_kind = "{0}-selector".format(mode)
+    heartbeat_stale_after = max(30.0, float(interval or 0.0) * 3.0)
+
+    _write_heartbeat(
+        kind=heartbeat_kind,
+        phase="bootstrapped",
+        stale_after_seconds=heartbeat_stale_after,
+        market=config.market,
+        mode=mode,
+        cycle=cycles,
+    )
 
     while True:
         result = selector.run_cycle(markets=explicit_markets or None)
@@ -566,9 +703,27 @@ def _run_selector_loop(
         _print_json(result)
 
         cycles += 1
+        _write_heartbeat(
+            kind=heartbeat_kind,
+            phase="cycle",
+            stale_after_seconds=heartbeat_stale_after,
+            market=config.market,
+            mode=mode,
+            cycle=cycles,
+            active_market=result.get("active_market") or result.get("selected_market"),
+            event_count=len(result.get("events", [])),
+        )
         if max_steps is not None and cycles >= max_steps:
             break
         time.sleep(max(interval, 1.0))
+    _write_heartbeat(
+        kind=heartbeat_kind,
+        phase="completed",
+        stale_after_seconds=heartbeat_stale_after,
+        market=config.market,
+        mode=mode,
+        cycle=cycles,
+    )
     return 0
 
 
@@ -589,12 +744,39 @@ def _run_selector_stream(
     markets = selector.bootstrap_markets(markets=explicit_markets or None)
     client = UpbitWebSocketClient()
     subscription = build_selector_stream_subscription(config.upbit.candle_unit, markets)
+    processed = 0
+    _write_heartbeat(
+        kind="selector-stream",
+        phase="listening",
+        stale_after_seconds=120.0,
+        market=config.market,
+        mode=mode,
+        event_count=processed,
+    )
 
     for result in client.iter_messages(subscription, max_messages=max_events):
         payload = selector.process_stream_message(result)
         for event in payload["events"]:
             print(event)
         _print_json(payload)
+        processed += 1
+        _write_heartbeat(
+            kind="selector-stream",
+            phase="stream",
+            stale_after_seconds=120.0,
+            market=config.market,
+            mode=mode,
+            event_count=processed,
+            active_market=payload.get("active_market") or payload.get("selected_market"),
+        )
+    _write_heartbeat(
+        kind="selector-stream",
+        phase="completed",
+        stale_after_seconds=120.0,
+        market=config.market,
+        mode=mode,
+        event_count=processed,
+    )
     return 0
 
 
@@ -610,11 +792,38 @@ def _run_myorder_listener(
     client = UpbitWebSocketClient()
     subscription = build_myorder_subscription([market])
     headers = broker.websocket_private_headers()
+    processed = 0
+    _write_heartbeat(
+        kind="myorder-listener",
+        phase="listening",
+        stale_after_seconds=180.0,
+        market=market,
+        mode="live",
+        event_count=processed,
+    )
 
     for payload in client.iter_private_messages(subscription, headers=headers, max_messages=max_events):
         for event in runtime.apply_myorder_event(payload):
             print(event)
         _print_json(runtime.summary())
+        processed += 1
+        _write_heartbeat(
+            kind="myorder-listener",
+            phase="event",
+            stale_after_seconds=180.0,
+            market=market,
+            mode="live",
+            event_count=processed,
+            message_type=payload.get("type"),
+        )
+    _write_heartbeat(
+        kind="myorder-listener",
+        phase="completed",
+        stale_after_seconds=180.0,
+        market=market,
+        mode="live",
+        event_count=processed,
+    )
     return 0
 
 
@@ -630,12 +839,39 @@ def _run_private_listener(
     client = UpbitWebSocketClient()
     subscription = build_private_account_subscription([market])
     headers = broker.websocket_private_headers()
+    processed = 0
+    _write_heartbeat(
+        kind="private-listener",
+        phase="listening",
+        stale_after_seconds=180.0,
+        market=market,
+        mode="live",
+        event_count=processed,
+    )
 
     for payload in client.iter_private_messages(subscription, headers=headers, max_messages=max_events):
         result = _dispatch_private_payload(runtime, payload)
         for event in result["events"]:
             print(event)
         _print_json(runtime.summary())
+        processed += 1
+        _write_heartbeat(
+            kind="private-listener",
+            phase="event",
+            stale_after_seconds=180.0,
+            market=market,
+            mode="live",
+            event_count=processed,
+            message_type=payload.get("type"),
+        )
+    _write_heartbeat(
+        kind="private-listener",
+        phase="completed",
+        stale_after_seconds=180.0,
+        market=market,
+        mode="live",
+        event_count=processed,
+    )
     return 0
 
 
@@ -691,6 +927,15 @@ def _run_live_supervisor(
         _print_json(runtime.reconcile_live_snapshot())
 
     processed = 0
+    _write_heartbeat(
+        kind="live-supervisor",
+        phase="listening",
+        stale_after_seconds=180.0,
+        market=market,
+        mode="live",
+        event_count=processed,
+        last_processed_timestamp=runtime.state.last_processed_timestamp,
+    )
     for payload in client.iter_private_messages(
         subscription,
         headers=headers,
@@ -700,8 +945,36 @@ def _run_live_supervisor(
         result = _dispatch_private_payload(runtime, payload)
         _print_json(result)
         processed += 1
+        _write_heartbeat(
+            kind="live-supervisor",
+            phase="event",
+            stale_after_seconds=180.0,
+            market=market,
+            mode="live",
+            event_count=processed,
+            message_type=payload.get("type"),
+            last_processed_timestamp=runtime.state.last_processed_timestamp,
+        )
         if reconcile_every > 0 and (processed % reconcile_every) == 0:
+            _write_heartbeat(
+                kind="live-supervisor",
+                phase="reconcile",
+                stale_after_seconds=180.0,
+                market=market,
+                mode="live",
+                event_count=processed,
+                last_processed_timestamp=runtime.state.last_processed_timestamp,
+            )
             _print_json(runtime.reconcile_live_snapshot())
+    _write_heartbeat(
+        kind="live-supervisor",
+        phase="completed",
+        stale_after_seconds=180.0,
+        market=market,
+        mode="live",
+        event_count=processed,
+        last_processed_timestamp=runtime.state.last_processed_timestamp,
+    )
     return 0
 
 

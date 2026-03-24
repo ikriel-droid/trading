@@ -10,6 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.jobs import (  # noqa: E402
     BackgroundJobManager,
+    HEARTBEAT_ENV_VAR,
     JOB_LOG_DIR,
     RotatingLogWriter,
     build_live_supervisor_command,
@@ -47,6 +48,9 @@ class JobTests(unittest.TestCase):
             for path in JOB_LOG_DIR.glob(pattern):
                 if path.exists():
                     path.unlink()
+        for path in JOB_LOG_DIR.glob("*.heartbeat.json"):
+            if path.exists():
+                path.unlink()
         flag_path = PROJECT_ROOT / "data" / "test-job-restart-flag.txt"
         if flag_path.exists():
             flag_path.unlink()
@@ -249,6 +253,36 @@ class JobTests(unittest.TestCase):
         history = list_job_history(history_path=str(self.history_path))
         self.assertEqual(history[0]["status"], "completed")
         self.assertEqual(history[0]["last_report"]["json_path"], payload["last_report"]["json_path"])
+
+    def test_manager_tracks_job_heartbeat(self):
+        manager = self.build_manager(watchdog_interval_seconds=0.05)
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import json, os, time; "
+                "path = os.environ[{0!r}]; "
+                "payload = {{'updated_at': __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(), 'phase': 'loop', 'stale_after_seconds': 300}}; "
+                "json.dump(payload, open(path, 'w', encoding='utf-8')); "
+                "time.sleep(0.3)"
+            ).format(HEARTBEAT_ENV_VAR),
+        ]
+
+        manager.start_job(
+            name="test-job",
+            kind="test",
+            command=command,
+            cwd=str(PROJECT_ROOT),
+        )
+        time.sleep(0.1)
+        payload = manager.get_job("test-job")
+
+        self.assertIsNotNone(payload)
+        self.assertTrue(payload["running"])
+        self.assertTrue(payload["heartbeat_path"].endswith("test-job.heartbeat.json"))
+        self.assertEqual(payload["heartbeat"]["phase"], "loop")
+        self.assertEqual(payload["heartbeat_status"], "healthy")
+        self.assertTrue(payload["heartbeat_healthy"])
 
 
 if __name__ == "__main__":

@@ -416,6 +416,26 @@ def _job_to_alert(job: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(started_at, (int, float)):
         timestamp = datetime.fromtimestamp(started_at, tz=timezone.utc).isoformat()
 
+    if running and str(job.get("heartbeat_status", "")) in {"missing", "stale"}:
+        heartbeat_status = str(job.get("heartbeat_status", ""))
+        heartbeat = job.get("heartbeat") or {}
+        heartbeat_age = job.get("heartbeat_age_seconds")
+        age_text = "{0:.1f}s".format(float(heartbeat_age)) if isinstance(heartbeat_age, (int, float)) else "unknown"
+        phase = str(heartbeat.get("phase", "") or "unknown")
+        return {
+            "source": "job",
+            "level": "warning",
+            "headline": "Job Heartbeat {0}".format("Missing" if heartbeat_status == "missing" else "Stale"),
+            "message": "{0} heartbeat={1} age={2} phase={3}".format(
+                job.get("name", ""),
+                heartbeat_status,
+                age_text,
+                phase,
+            ),
+            "market": "",
+            "timestamp": timestamp,
+        }
+
     if running:
         return {
             "source": "job",
@@ -1178,6 +1198,7 @@ def start_managed_job(
         "report_mode": report_mode,
         "report_output_dir": default_reports_dir(config_path),
         "report_label": job_type,
+        "heartbeat_path": str(Path(project_root) / "data" / "webui-jobs" / "{0}.heartbeat.json".format(job_type)),
         "blocking_issues": [],
         "warnings": [],
         "preflight": None,
@@ -1296,6 +1317,7 @@ def preview_managed_job(
         "report_mode": report_mode,
         "report_output_dir": default_reports_dir(config_path),
         "report_label": job_type,
+        "heartbeat_path": str(Path(project_root) / "data" / "webui-jobs" / "{0}.heartbeat.json".format(job_type)),
         "blocking_issues": [],
         "warnings": [],
         "preflight": None,

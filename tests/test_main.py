@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import pathlib
 import shutil
 import sys
@@ -11,7 +12,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
-from upbit_auto_trader.jobs import JOB_HISTORY_PATH  # noqa: E402
+from upbit_auto_trader.jobs import HEARTBEAT_ENV_VAR, JOB_HISTORY_PATH  # noqa: E402
 from upbit_auto_trader.main import _build_doctor_report, _run_live_daemon, _run_live_supervisor, main  # noqa: E402
 from upbit_auto_trader.models import Balance, Candle  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
@@ -572,6 +573,49 @@ class MainTests(unittest.TestCase):
         finally:
             if config_path.exists():
                 config_path.unlink()
+
+    def test_run_live_daemon_updates_heartbeat_file(self):
+        config = load_config(str(PROJECT_ROOT / "config.example.json"))
+        config.runtime.journal_path = ""
+        config.upbit.live_enabled = True
+        broker = FakeSupervisorBroker()
+        state_path = PROJECT_ROOT / "data" / "test-live-daemon-heartbeat-state.json"
+        heartbeat_path = PROJECT_ROOT / "data" / "test-live-daemon-heartbeat.json"
+        original_heartbeat = os.environ.get(HEARTBEAT_ENV_VAR)
+        if state_path.exists():
+            state_path.unlink()
+        if heartbeat_path.exists():
+            heartbeat_path.unlink()
+        try:
+            os.environ[HEARTBEAT_ENV_VAR] = str(heartbeat_path)
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = _run_live_daemon(
+                    config=config,
+                    broker=broker,
+                    state_path=str(state_path),
+                    warmup_csv=str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"),
+                    poll_seconds=0.0,
+                    max_loops=1,
+                    reconcile_every_loops=1,
+                )
+
+            self.assertEqual(result, 0)
+            self.assertTrue(heartbeat_path.exists())
+            with open(heartbeat_path, "r", encoding="utf-8") as handle:
+                heartbeat = json.load(handle)
+            self.assertEqual(heartbeat["kind"], "live-daemon")
+            self.assertEqual(heartbeat["phase"], "completed")
+            self.assertEqual(heartbeat["mode"], "live")
+        finally:
+            if original_heartbeat is None:
+                os.environ.pop(HEARTBEAT_ENV_VAR, None)
+            else:
+                os.environ[HEARTBEAT_ENV_VAR] = original_heartbeat
+            if state_path.exists():
+                state_path.unlink()
+            if heartbeat_path.exists():
+                heartbeat_path.unlink()
 
 
 if __name__ == "__main__":

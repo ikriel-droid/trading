@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -17,6 +18,8 @@ DEFAULT_LOG_BACKUP_COUNT = 3
 DEFAULT_WATCHDOG_INTERVAL_SECONDS = 0.5
 DEFAULT_HISTORY_LIMIT = 12
 DEFAULT_HISTORY_MAX_ENTRIES = 200
+DEFAULT_HEARTBEAT_STALE_SECONDS = 45.0
+HEARTBEAT_ENV_VAR = "UPBIT_AUTO_TRADER_HEARTBEAT_PATH"
 
 
 class RotatingLogWriter:
@@ -117,6 +120,7 @@ class ManagedJob:
     report_label: str
     report_generated: bool
     last_report: Optional[Dict[str, Any]]
+    heartbeat_path: str
 
 
 class BackgroundJobManager:
@@ -164,16 +168,19 @@ class BackgroundJobManager:
 
             JOB_LOG_DIR.mkdir(parents=True, exist_ok=True)
             log_path = str(JOB_LOG_DIR / "{0}.log".format(name))
+            heartbeat_path = default_job_heartbeat_path(name)
             log_writer = RotatingLogWriter(
                 log_path=log_path,
                 max_bytes=self._log_max_bytes,
                 backup_count=self._log_backup_count,
             )
             log_writer.write("\n[{0}] starting {1}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(command)))
+            _seed_job_heartbeat(heartbeat_path, name=name, kind=kind, phase="starting")
             process, output_thread = self._spawn_process(
                 command=command,
                 cwd=cwd or str(PROJECT_ROOT),
                 log_writer=log_writer,
+                heartbeat_path=heartbeat_path,
             )
             job = ManagedJob(
                 name=name,
@@ -202,6 +209,7 @@ class BackgroundJobManager:
                 report_label=report_label,
                 report_generated=False,
                 last_report=None,
+                heartbeat_path=heartbeat_path,
             )
             self._jobs[name] = job
             return self._serialize_job(job)
@@ -256,11 +264,15 @@ class BackgroundJobManager:
             self.stop_job(name)
 
     def _serialize_job(self, job: ManagedJob) -> Dict[str, Any]:
+        running = job.process.poll() is None
+        heartbeat = _load_json_record(Path(job.heartbeat_path))
+        heartbeat_age_seconds = _heartbeat_age_seconds(heartbeat)
+        heartbeat_status = _heartbeat_status(heartbeat, running=running)
         return {
             "name": job.name,
             "kind": job.kind,
             "pid": job.process.pid,
-            "running": job.process.poll() is None,
+            "running": running,
             "returncode": job.process.poll(),
             "started_at": job.started_at,
             "command": job.command,
@@ -277,6 +289,11 @@ class BackgroundJobManager:
             "last_returncode": job.last_returncode,
             "report_on_exit": job.report_on_exit,
             "last_report": job.last_report,
+            "heartbeat_path": job.heartbeat_path,
+            "heartbeat": heartbeat,
+            "heartbeat_age_seconds": heartbeat_age_seconds,
+            "heartbeat_status": heartbeat_status,
+            "heartbeat_healthy": heartbeat_status == "healthy",
         }
 
     def _tail_log(self, log_path: str, max_lines: int = 40) -> str:
@@ -311,7 +328,10 @@ class BackgroundJobManager:
         command: List[str],
         cwd: str,
         log_writer: RotatingLogWriter,
+        heartbeat_path: str,
     ) -> tuple[subprocess.Popen, threading.Thread]:
+        env = os.environ.copy()
+        env[HEARTBEAT_ENV_VAR] = heartbeat_path
         process = subprocess.Popen(
             command,
             cwd=cwd,
@@ -323,6 +343,7 @@ class BackgroundJobManager:
             errors="replace",
             bufsize=1,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            env=env,
         )
         output_thread = threading.Thread(
             target=self._pump_process_output,
@@ -388,10 +409,12 @@ class BackgroundJobManager:
                 and job.next_restart_at > 0
                 and now >= job.next_restart_at
             ):
+                _seed_job_heartbeat(job.heartbeat_path, name=job.name, kind=job.kind, phase="restarting")
                 process, output_thread = self._spawn_process(
                     command=job.command,
                     cwd=job.cwd,
                     log_writer=job.log_writer,
+                    heartbeat_path=job.heartbeat_path,
                 )
                 job.process = process
                 job.output_thread = output_thread
@@ -447,6 +470,7 @@ class BackgroundJobManager:
 
     def _append_history_entry(self, job: ManagedJob, status: str, will_restart: bool) -> None:
         finished_at = job.last_exit_at or time.time()
+        heartbeat = _load_json_record(Path(job.heartbeat_path))
         payload = {
             "recorded_at": _iso_utc(time.time()),
             "name": job.name,
@@ -464,6 +488,10 @@ class BackgroundJobManager:
             "cwd": job.cwd,
             "log_path": job.log_path,
             "last_report": job.last_report,
+            "heartbeat_path": job.heartbeat_path,
+            "heartbeat": heartbeat,
+            "heartbeat_phase": str(heartbeat.get("phase", "")) if heartbeat else "",
+            "heartbeat_age_seconds": _heartbeat_age_seconds(heartbeat, now=finished_at),
         }
         _append_job_history_record(
             history_path=self._history_path,
@@ -474,6 +502,76 @@ class BackgroundJobManager:
 
 def _iso_utc(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+
+def default_job_heartbeat_path(name: str) -> str:
+    return str(JOB_LOG_DIR / "{0}.heartbeat.json".format(name))
+
+
+def _write_json_record(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(path.name + ".tmp")
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+    temp_path.replace(path)
+
+
+def _load_json_record(path: Path) -> Optional[Dict[str, Any]]:
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _seed_job_heartbeat(path: str, name: str, kind: str, phase: str) -> None:
+    _write_json_record(
+        Path(path),
+        {
+            "updated_at": _iso_utc(time.time()),
+            "job_name": name,
+            "job_kind": kind,
+            "phase": phase,
+            "stale_after_seconds": DEFAULT_HEARTBEAT_STALE_SECONDS,
+        },
+    )
+
+
+def _heartbeat_age_seconds(heartbeat: Optional[Dict[str, Any]], now: Optional[float] = None) -> Optional[float]:
+    if not heartbeat:
+        return None
+    updated_at = str(heartbeat.get("updated_at", "")).strip()
+    if not updated_at:
+        return None
+    try:
+        timestamp = datetime.fromisoformat(updated_at)
+    except ValueError:
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    current = now if now is not None else time.time()
+    return round(max(0.0, current - timestamp.timestamp()), 3)
+
+
+def _heartbeat_status(heartbeat: Optional[Dict[str, Any]], running: bool) -> str:
+    if not running:
+        return "stopped"
+    if not heartbeat:
+        return "missing"
+    heartbeat_age_seconds = _heartbeat_age_seconds(heartbeat)
+    if heartbeat_age_seconds is None:
+        return "unknown"
+    try:
+        stale_after_seconds = max(5.0, float(heartbeat.get("stale_after_seconds", DEFAULT_HEARTBEAT_STALE_SECONDS)))
+    except (TypeError, ValueError):
+        stale_after_seconds = DEFAULT_HEARTBEAT_STALE_SECONDS
+    if heartbeat_age_seconds > stale_after_seconds:
+        return "stale"
+    return "healthy"
 
 
 def _append_job_history_record(history_path: Path, payload: Dict[str, Any], max_entries: int) -> None:

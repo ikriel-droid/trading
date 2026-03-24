@@ -477,6 +477,43 @@ class UiTests(unittest.TestCase):
         self.assertTrue(any(item["source"] == "journal" for item in payload["alerts"]["items"]))
         self.assertEqual(payload["job_history"]["items"][0]["name"], "live-daemon")
 
+    def test_build_dashboard_payload_flags_stale_running_job_heartbeat(self):
+        payload = build_dashboard_payload(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="paper",
+            job_manager=StaticJobManager(
+                [
+                    {
+                        "name": "paper-loop",
+                        "kind": "paper-loop",
+                        "pid": 1234,
+                        "running": True,
+                        "returncode": None,
+                        "started_at": 1760000000.0,
+                        "command": ["python", "-m", "upbit_auto_trader.main"],
+                        "cwd": str(PROJECT_ROOT),
+                        "log_path": "data/webui-jobs/paper-loop.log",
+                        "log_tail": "still alive",
+                        "heartbeat": {
+                            "updated_at": "2026-03-23T00:00:00+00:00",
+                            "phase": "loop",
+                            "stale_after_seconds": 10,
+                        },
+                        "heartbeat_path": "data/webui-jobs/paper-loop.heartbeat.json",
+                        "heartbeat_age_seconds": 120.0,
+                        "heartbeat_status": "stale",
+                        "heartbeat_healthy": False,
+                        "last_report": None,
+                    }
+                ]
+            ),
+        )
+
+        self.assertTrue(any(item["headline"] == "Job Heartbeat Stale" for item in payload["alerts"]["items"]))
+
     def test_backtest_signal_and_optimize_actions_return_expected_keys(self):
         signal = run_signal_action(self.config_path, self.csv_path, market="KRW-BTC")
         backtest = run_backtest_action(self.config_path, self.csv_path, market="KRW-BTC")
@@ -799,6 +836,7 @@ class UiTests(unittest.TestCase):
         self.assertTrue(preview["can_start"])
         self.assertIn("run-loop", preview["command"])
         self.assertTrue(preview["report_state_path"].endswith("data\\paper-state-ui.json"))
+        self.assertTrue(preview["heartbeat_path"].endswith("data\\webui-jobs\\paper-loop.heartbeat.json"))
 
     def test_preview_managed_job_exposes_live_blocking_issues(self):
         preview = preview_managed_job(

@@ -114,13 +114,17 @@ function renderJobs(jobs) {
   ids.jobs.textContent = pretty(jobs || []);
   const tails = (jobs || [])
     .map((job) => {
+      const heartbeat = job.heartbeat || null;
+      const heartbeatLine = job.heartbeat_status
+        ? `heartbeat: ${job.heartbeat_status}${job.heartbeat_age_seconds !== null && job.heartbeat_age_seconds !== undefined ? ` age=${Number(job.heartbeat_age_seconds).toFixed(1)}s` : ""}${heartbeat?.phase ? ` phase=${heartbeat.phase}` : ""}`
+        : "";
       const report = job.last_report || null;
       const reportLine = report?.json_path
         ? `report: ${report.json_path}`
         : report?.error
           ? `report error: ${report.error}`
           : "";
-      return [`# ${job.name}`, reportLine, job.log_tail || ""].filter(Boolean).join("\n").trim();
+      return [`# ${job.name}`, heartbeatLine, reportLine, job.log_tail || ""].filter(Boolean).join("\n").trim();
     })
     .filter(Boolean)
     .join("\n\n");
