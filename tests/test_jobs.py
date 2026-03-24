@@ -18,11 +18,24 @@ from upbit_auto_trader.jobs import (  # noqa: E402
 
 
 class JobTests(unittest.TestCase):
+    def setUp(self):
+        self.managers = []
+
     def tearDown(self):
-        for pattern in ("test-job.log*", "rotation-job.log*", "rotation-*.log*"):
+        for manager in self.managers:
+            manager.stop_all()
+        for pattern in ("test-job.log*", "rotation-job.log*", "rotation-*.log*", "restart-job.log*"):
             for path in JOB_LOG_DIR.glob(pattern):
                 if path.exists():
                     path.unlink()
+        flag_path = PROJECT_ROOT / "data" / "test-job-restart-flag.txt"
+        if flag_path.exists():
+            flag_path.unlink()
+
+    def build_manager(self, **kwargs):
+        manager = BackgroundJobManager(**kwargs)
+        self.managers.append(manager)
+        return manager
 
     def test_builder_creates_selector_command(self):
         command = build_paper_selector_command(
@@ -55,7 +68,7 @@ class JobTests(unittest.TestCase):
         self.assertIn("15", command)
 
     def test_manager_starts_tracks_and_stops_job(self):
-        manager = BackgroundJobManager()
+        manager = self.build_manager()
         command = [
             sys.executable,
             "-c",
@@ -98,7 +111,7 @@ class JobTests(unittest.TestCase):
                 path.unlink()
 
     def test_manager_exposes_rotated_log_archives(self):
-        manager = BackgroundJobManager(log_max_bytes=80, log_backup_count=2)
+        manager = self.build_manager(log_max_bytes=80, log_backup_count=2)
         command = [
             sys.executable,
             "-c",
@@ -117,6 +130,43 @@ class JobTests(unittest.TestCase):
         self.assertIn("log_archives", payload)
         self.assertGreaterEqual(len(stopped["log_archives"]), 1)
         self.assertTrue(any(path.endswith(".1") for path in stopped["log_archives"]))
+
+    def test_manager_restarts_failed_job_when_enabled(self):
+        manager = self.build_manager(watchdog_interval_seconds=0.05)
+        flag_path = PROJECT_ROOT / "data" / "test-job-restart-flag.txt"
+        if flag_path.exists():
+            flag_path.unlink()
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; "
+                "import sys; "
+                "path = Path(r'{0}'); "
+                "first = not path.exists(); "
+                "path.write_text('seen', encoding='utf-8'); "
+                "print('attempt-1' if first else 'attempt-2'); "
+                "sys.exit(1 if first else 0)"
+            ).format(flag_path),
+        ]
+
+        manager.start_job(
+            name="restart-job",
+            kind="test",
+            command=command,
+            cwd=str(PROJECT_ROOT),
+            auto_restart=True,
+            max_restarts=1,
+            restart_backoff_seconds=0.05,
+        )
+        time.sleep(0.4)
+        payload = manager.get_job("restart-job")
+
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["restart_count"], 1)
+        self.assertFalse(payload["running"])
+        self.assertEqual(payload["returncode"], 0)
+        self.assertIn("attempt-2", payload["log_tail"])
 
 
 if __name__ == "__main__":

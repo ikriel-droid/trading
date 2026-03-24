@@ -19,8 +19,11 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_apply_preset_action,
     run_backtest_action,
     run_live_reconcile_action,
+    run_load_profile_action,
     run_scan_action,
+    run_save_profile_action,
     run_save_current_preset_action,
+    run_start_profile_action,
     run_sync_candles_action,
     run_optimize_action,
     run_signal_action,
@@ -83,12 +86,24 @@ class RecordingJobManager:
     def __init__(self):
         self.calls = []
 
-    def start_job(self, name, kind, command, cwd=None):
+    def start_job(
+        self,
+        name,
+        kind,
+        command,
+        cwd=None,
+        auto_restart=False,
+        max_restarts=0,
+        restart_backoff_seconds=0.0,
+    ):
         payload = {
             "name": name,
             "kind": kind,
             "command": command,
             "cwd": cwd,
+            "auto_restart": auto_restart,
+            "max_restarts": max_restarts,
+            "restart_backoff_seconds": restart_backoff_seconds,
         }
         self.calls.append(payload)
         return payload
@@ -114,6 +129,7 @@ class UiTests(unittest.TestCase):
         self.selector_state_path = PROJECT_ROOT / "data" / "test-ui-selector-state.json"
         self.selector_market_state_path = PROJECT_ROOT / "data" / "selector-states" / "KRW_BTC.json"
         self.preset_dir = PROJECT_ROOT / "data" / "strategy-presets"
+        self.profile_dir = PROJECT_ROOT / "data" / "operator-profiles"
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
@@ -131,6 +147,9 @@ class UiTests(unittest.TestCase):
         if self.preset_dir.exists():
             for preset_path in self.preset_dir.glob("test-ui-*.json"):
                 preset_path.unlink()
+        if self.profile_dir.exists():
+            for profile_path in self.profile_dir.glob("test-ui-*.json"):
+                profile_path.unlink()
         shutil.copyfile(self.config_path, self.temp_config_path)
         with open(self.temp_config_path, "r", encoding="utf-8") as handle:
             temp_config = json.load(handle)
@@ -234,6 +253,9 @@ class UiTests(unittest.TestCase):
         if self.preset_dir.exists():
             for preset_path in self.preset_dir.glob("test-ui-*.json"):
                 preset_path.unlink()
+        if self.profile_dir.exists():
+            for profile_path in self.profile_dir.glob("test-ui-*.json"):
+                profile_path.unlink()
 
     def test_build_dashboard_payload_contains_summary_and_signal(self):
         payload = build_dashboard_payload(
@@ -298,6 +320,40 @@ class UiTests(unittest.TestCase):
 
         self.assertTrue(payload["strategy_presets"]["dir"].endswith("data\\strategy-presets"))
         self.assertTrue(any(item["name"] == "test-ui-current" for item in payload["strategy_presets"]["items"]))
+
+    def test_build_dashboard_payload_exposes_operator_profiles(self):
+        run_save_profile_action(
+            config_path=str(self.temp_config_path),
+            profile_name="test-ui-paper",
+            profile_payload={
+                "job_type": "paper-loop",
+                "market": "KRW-BTC",
+                "csv_path": self.csv_path,
+                "state_path": str(self.state_path),
+                "selector_state_path": str(self.selector_state_path),
+                "quote_currency": "KRW",
+                "max_markets": 10,
+                "poll_seconds": 6.0,
+                "reconcile_every": 11,
+                "reconcile_every_loops": 3,
+                "preset": "",
+                "auto_restart": True,
+                "max_restarts": 2,
+                "restart_backoff_seconds": 1.5,
+            },
+        )
+
+        payload = build_dashboard_payload(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="paper",
+            job_manager=BackgroundJobManager(),
+        )
+
+        self.assertTrue(payload["operator_profiles"]["dir"].endswith("data\\operator-profiles"))
+        self.assertTrue(any(item["name"] == "test-ui-paper" for item in payload["operator_profiles"]["items"]))
 
     def test_build_dashboard_payload_exposes_alerts(self):
         with open(self.alert_journal_path, "w", encoding="utf-8") as handle:
@@ -407,6 +463,57 @@ class UiTests(unittest.TestCase):
         self.assertEqual(updated.strategy.buy_threshold, saved["strategy"]["buy_threshold"])
         self.assertEqual(updated.strategy.sell_threshold, saved["strategy"]["sell_threshold"])
 
+    def test_operator_profile_can_be_saved_loaded_and_started(self):
+        preset = run_save_current_preset_action(
+            config_path=str(self.temp_config_path),
+            preset_name="test-ui-profile-preset",
+            csv_path=self.csv_path,
+            market="KRW-BTC",
+        )
+        update_editable_config(
+            str(self.temp_config_path),
+            {
+                "strategy.buy_threshold": 71.0,
+            },
+        )
+
+        saved_profile = run_save_profile_action(
+            config_path=str(self.temp_config_path),
+            profile_name="test-ui-profile",
+            profile_payload={
+                "job_type": "paper-loop",
+                "market": "KRW-BTC",
+                "csv_path": self.csv_path,
+                "state_path": str(self.state_path),
+                "selector_state_path": str(self.selector_state_path),
+                "quote_currency": "KRW",
+                "max_markets": 8,
+                "poll_seconds": 6.0,
+                "reconcile_every": 11,
+                "reconcile_every_loops": 3,
+                "preset": preset["path"],
+                "auto_restart": True,
+                "max_restarts": 4,
+                "restart_backoff_seconds": 1.5,
+            },
+        )
+        loaded_profile = run_load_profile_action(str(self.temp_config_path), saved_profile["path"])
+        manager = RecordingJobManager()
+        started = run_start_profile_action(
+            config_path=str(self.temp_config_path),
+            profile_ref=saved_profile["path"],
+            job_manager=manager,
+        )
+        updated = load_config(str(self.temp_config_path))
+
+        self.assertEqual(loaded_profile["profile"]["job_type"], "paper-loop")
+        self.assertEqual(started["profile"]["name"], "test-ui-profile")
+        self.assertEqual(updated.strategy.buy_threshold, preset["strategy"]["buy_threshold"])
+        self.assertTrue(started["job"]["auto_restart"])
+        self.assertEqual(started["job"]["max_restarts"], 4)
+        self.assertEqual(started["job"]["restart_backoff_seconds"], 1.5)
+        self.assertIn("run-loop", started["job"]["command"])
+
     def test_scan_and_reconcile_actions_return_expected_keys(self):
         broker = FakeUiBroker()
         scan = run_scan_action(self.config_path, max_markets=2, quote_currency="KRW", broker=broker)
@@ -465,6 +572,9 @@ class UiTests(unittest.TestCase):
             market="KRW-BTC",
             quote_currency="KRW",
             max_markets=9,
+            auto_restart=True,
+            max_restarts=3,
+            restart_backoff_seconds=1.5,
             job_manager=manager,
         )
         supervisor_job = start_managed_job(
@@ -479,12 +589,16 @@ class UiTests(unittest.TestCase):
             market="KRW-BTC",
             quote_currency="KRW",
             max_markets=9,
+            auto_restart=False,
+            max_restarts=0,
+            restart_backoff_seconds=0.0,
             job_manager=manager,
         )
 
         self.assertIn("run-selector", selector_job["command"])
         self.assertIn("data/test-selector-state.json", selector_job["command"])
         self.assertIn("9", selector_job["command"])
+        self.assertTrue(selector_job["auto_restart"])
         self.assertIn("run-live-supervisor", supervisor_job["command"])
         self.assertIn("11", supervisor_job["command"])
 

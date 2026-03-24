@@ -13,6 +13,7 @@ const ids = {
   reconcile: document.getElementById("reconcile-json"),
   config: document.getElementById("config-json"),
   presets: document.getElementById("presets-json"),
+  profiles: document.getElementById("profiles-json"),
   jobs: document.getElementById("jobs-json"),
   logs: document.getElementById("logs-json"),
   paths: document.getElementById("paths-json"),
@@ -49,6 +50,12 @@ const ids = {
   cfgSelectorMaxMarkets: document.getElementById("cfg-selector-max-markets"),
   presetName: document.getElementById("preset-name-input"),
   presetSelect: document.getElementById("preset-select"),
+  profileName: document.getElementById("profile-name-input"),
+  profileSelect: document.getElementById("profile-select"),
+  jobType: document.getElementById("job-type-select"),
+  jobAutoRestart: document.getElementById("job-auto-restart-select"),
+  jobMaxRestarts: document.getElementById("job-max-restarts-input"),
+  jobRestartBackoff: document.getElementById("job-restart-backoff-input"),
 };
 
 let dashboardState = {
@@ -86,6 +93,15 @@ function currentInputs() {
     quote_currency: ids.quoteCurrency.value.trim() || "KRW",
     sync_count: Number(ids.syncCount.value || "200"),
     reconcile_every: Number(ids.reconcileEvery.value || "10"),
+  };
+}
+
+function currentJobSettings() {
+  return {
+    job_type: ids.jobType.value,
+    auto_restart: ids.jobAutoRestart.value === "true",
+    max_restarts: Number(ids.jobMaxRestarts.value || "0"),
+    restart_backoff_seconds: Number(ids.jobRestartBackoff.value || "0"),
   };
 }
 
@@ -158,6 +174,18 @@ function syncInputsFromDashboard(payload) {
   if (!ids.reconcileEvery.value && payload.ui_defaults?.reconcile_every) {
     ids.reconcileEvery.value = payload.ui_defaults.reconcile_every;
   }
+  if (!ids.jobType.value && payload.ui_defaults?.job_type) {
+    ids.jobType.value = payload.ui_defaults.job_type;
+  }
+  if (!ids.jobAutoRestart.value && payload.ui_defaults) {
+    ids.jobAutoRestart.value = String(Boolean(payload.ui_defaults.auto_restart));
+  }
+  if (!ids.jobMaxRestarts.value && payload.ui_defaults?.max_restarts !== undefined) {
+    ids.jobMaxRestarts.value = payload.ui_defaults.max_restarts;
+  }
+  if (!ids.jobRestartBackoff.value && payload.ui_defaults?.restart_backoff_seconds !== undefined) {
+    ids.jobRestartBackoff.value = payload.ui_defaults.restart_backoff_seconds;
+  }
 
   const editableConfig = payload.editable_config || {};
   ids.cfgBuyThreshold.value = editableConfig["strategy.buy_threshold"] ?? "";
@@ -207,6 +235,16 @@ function resolvePresetName(suffix) {
   }
   const generated = defaultPresetName(suffix);
   ids.presetName.value = generated;
+  return generated;
+}
+
+function resolveProfileName(suffix) {
+  const current = ids.profileName.value.trim();
+  if (current) {
+    return current;
+  }
+  const generated = defaultPresetName(suffix);
+  ids.profileName.value = generated;
   return generated;
 }
 
@@ -329,6 +367,47 @@ function renderPresets(presetPayload) {
     ? currentValue
     : items[0].path;
   ids.presetSelect.value = nextValue;
+}
+
+function renderProfiles(profilePayload) {
+  const items = profilePayload?.items || [];
+  ids.profiles.textContent = pretty(profilePayload || { dir: "", items: [] });
+
+  const currentValue = ids.profileSelect.value;
+  if (!items.length) {
+    ids.profileSelect.innerHTML = '<option value="">No profiles</option>';
+    return;
+  }
+
+  ids.profileSelect.innerHTML = items
+    .map((item) => `<option value="${escapeXml(item.path)}">${escapeXml(item.name)}</option>`)
+    .join("");
+
+  const nextValue = items.some((item) => item.path === currentValue)
+    ? currentValue
+    : items[0].path;
+  ids.profileSelect.value = nextValue;
+}
+
+function applyProfileToForm(profilePayload) {
+  if (!profilePayload) {
+    return;
+  }
+  ids.jobType.value = profilePayload.job_type || ids.jobType.value;
+  ids.marketFocus.value = profilePayload.market || ids.marketFocus.value;
+  ids.csvPath.value = profilePayload.csv_path || ids.csvPath.value;
+  ids.statePath.value = profilePayload.state_path || ids.statePath.value;
+  ids.selectorStatePath.value = profilePayload.selector_state_path || ids.selectorStatePath.value;
+  ids.quoteCurrency.value = profilePayload.quote_currency || ids.quoteCurrency.value;
+  ids.scanMaxMarkets.value = profilePayload.max_markets || ids.scanMaxMarkets.value;
+  ids.reconcileEvery.value = profilePayload.reconcile_every || ids.reconcileEvery.value;
+  ids.cfgPollSeconds.value = profilePayload.poll_seconds || ids.cfgPollSeconds.value;
+  ids.jobAutoRestart.value = String(Boolean(profilePayload.auto_restart));
+  ids.jobMaxRestarts.value = profilePayload.max_restarts || 0;
+  ids.jobRestartBackoff.value = profilePayload.restart_backoff_seconds || 0;
+  if (profilePayload.preset) {
+    ids.presetSelect.value = profilePayload.preset;
+  }
 }
 
 function renderChart(chartElement, metaElement, chartPayload) {
@@ -463,6 +542,7 @@ async function refreshDashboard() {
     ids.selectorActiveEvents.textContent = pretty(payload.selector_summary?.active_market_activity?.recent_events || []);
     renderSelectorCards(payload.selector_summary || null);
     renderPresets(payload.strategy_presets || null);
+    renderProfiles(payload.operator_profiles || null);
     renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, payload.selector_summary?.active_market_chart);
     renderJobs(payload.jobs);
     renderPriceChart(payload.chart);
@@ -579,6 +659,7 @@ async function startJob(jobType) {
   try {
     ids.jobs.textContent = `Starting ${jobType}...`;
     const inputs = currentInputs();
+    const jobSettings = currentJobSettings();
     const payload = await postJson("/api/jobs-start", {
       job_type: jobType,
       state_path: inputs.state_path,
@@ -590,6 +671,9 @@ async function startJob(jobType) {
       poll_seconds: Number(ids.cfgPollSeconds.value || dashboardState.app.poll_seconds || "10"),
       reconcile_every: inputs.reconcile_every,
       reconcile_every_loops: 3,
+      auto_restart: jobSettings.auto_restart,
+      max_restarts: jobSettings.max_restarts,
+      restart_backoff_seconds: jobSettings.restart_backoff_seconds,
     });
     ids.jobs.textContent = pretty(payload);
     await refreshJobs();
@@ -660,6 +744,74 @@ async function applyPreset() {
   }
 }
 
+async function saveProfile() {
+  try {
+    ids.profiles.textContent = "Saving profile...";
+    const inputs = currentInputs();
+    const jobSettings = currentJobSettings();
+    const payload = await postJson("/api/profile-save", {
+      profile_name: resolveProfileName("profile"),
+      profile: {
+        job_type: jobSettings.job_type,
+        market: inputs.market || dashboardState.app.market || "",
+        csv_path: inputs.csv_path,
+        state_path: inputs.state_path,
+        selector_state_path: inputs.selector_state_path,
+        quote_currency: inputs.quote_currency,
+        max_markets: inputs.max_markets,
+        poll_seconds: Number(ids.cfgPollSeconds.value || dashboardState.app.poll_seconds || "10"),
+        reconcile_every: inputs.reconcile_every,
+        reconcile_every_loops: 3,
+        preset: ids.presetSelect.value || "",
+        auto_restart: jobSettings.auto_restart,
+        max_restarts: jobSettings.max_restarts,
+        restart_backoff_seconds: jobSettings.restart_backoff_seconds,
+      },
+    });
+    ids.profiles.textContent = pretty(payload);
+    await refreshDashboard();
+  } catch (error) {
+    ids.profiles.textContent = `profile save error: ${error.message}`;
+  }
+}
+
+async function loadProfile() {
+  try {
+    const profile = ids.profileSelect.value;
+    if (!profile) {
+      ids.profiles.textContent = "profile load error: select a profile first";
+      return;
+    }
+    ids.profiles.textContent = "Loading profile...";
+    const payload = await postJson("/api/profile-load", { profile });
+    ids.profiles.textContent = pretty(payload);
+    applyProfileToForm(payload.profile);
+    await refreshDashboard();
+  } catch (error) {
+    ids.profiles.textContent = `profile load error: ${error.message}`;
+  }
+}
+
+async function startProfile() {
+  try {
+    const profile = ids.profileSelect.value;
+    if (!profile) {
+      ids.profiles.textContent = "profile start error: select a profile first";
+      return;
+    }
+    ids.jobs.textContent = "Starting profile...";
+    const payload = await postJson("/api/profile-start", { profile });
+    ids.jobs.textContent = pretty(payload);
+    if (payload.profile?.profile) {
+      applyProfileToForm(payload.profile.profile);
+    }
+    await refreshJobs();
+    await refreshDashboard();
+  } catch (error) {
+    ids.jobs.textContent = `profile start error: ${error.message}`;
+  }
+}
+
 function resetAutoRefresh() {
   if (refreshTimer) {
     clearInterval(refreshTimer);
@@ -682,6 +834,9 @@ document.getElementById("save-config").addEventListener("click", saveConfig);
 document.getElementById("save-current-preset").addEventListener("click", saveCurrentPreset);
 document.getElementById("save-best-preset").addEventListener("click", () => runOptimize(true));
 document.getElementById("apply-preset").addEventListener("click", applyPreset);
+document.getElementById("save-profile").addEventListener("click", saveProfile);
+document.getElementById("load-profile").addEventListener("click", loadProfile);
+document.getElementById("start-profile").addEventListener("click", startProfile);
 document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);
 ids.scanCards.addEventListener("click", (event) => {
   const button = event.target.closest("[data-market]");
@@ -712,6 +867,7 @@ ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 renderScanCards(null);
 renderSelectorCards(null);
 renderPresets(null);
+renderProfiles(null);
 renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, null);
 refreshDashboard();
 resetAutoRefresh();

@@ -53,7 +53,9 @@ Official sources used while building this starter on 2026-03-22:
 - `src/upbit_auto_trader/backtest.py`: simulation engine
 - `src/upbit_auto_trader/runtime.py`: stateful paper or live loop
 - `src/upbit_auto_trader/ui.py`: standard-library web dashboard server
+- `src/upbit_auto_trader/jobs.py`: managed background jobs with watchdog restart
 - `src/upbit_auto_trader/presets.py`: strategy preset save or apply helpers
+- `src/upbit_auto_trader/profiles.py`: one-click launch profile save or load helpers
 - `src/upbit_auto_trader/scanner.py`: multi-market ranking
 - `src/upbit_auto_trader/selector.py`: rotating best-market selector
 - `src/upbit_auto_trader/brokers/upbit.py`: Upbit REST adapter
@@ -128,7 +130,7 @@ Run a local preflight check before paper or live operation:
 .venv\Scripts\python.exe -m upbit_auto_trader.main doctor --config config.example.json --state data\paper-state.json --selector-state data\selector-state.json
 ```
 
-The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, key config editing, strategy preset save or apply controls, separate selector-state input, and start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs. Background job logs are rotated automatically under `data/webui-jobs` so repeated runs do not keep one file growing forever.
+The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, key config editing, strategy preset save or apply controls, launch-profile save or load controls, separate selector-state input, and start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs. Background job logs are rotated automatically under `data/webui-jobs`, and managed jobs can now auto-restart with a watchdog and bounded retry count.
 
 Preview a market buy order request:
 
@@ -238,6 +240,8 @@ Run the selector from Upbit's real-time candle websocket:
 .venv\Scripts\python.exe -m upbit_auto_trader.main run-selector-stream --config config.example.json --mode paper --selector-state data\selector-state.json --max-markets 10 --max-events 20
 ```
 
+The browser control room can now save launch profiles that capture the selected job type, market, CSV path, state paths, quote currency, selected strategy preset, and watchdog restart settings. A saved profile can be loaded back into the form or started directly with one click.
+
 Show the saved runtime state:
 
 ```powershell
@@ -297,6 +301,12 @@ The `upbit` section also includes request-layer safety controls:
 - `retry_backoff_seconds`: exponential backoff base between retry attempts
 
 The broker only auto-retries `GET` requests. It does not auto-retry `POST` or `DELETE` order-changing calls because that would risk duplicate submissions or repeated cancels after an ambiguous network failure.
+
+Managed background jobs in the web UI now have a separate watchdog layer:
+
+- `auto_restart`: automatically restart a failed background job
+- `max_restarts`: maximum restart attempts before leaving the job stopped
+- `restart_backoff_seconds`: base delay before each retry; later retries wait longer
 
 The `notifications` section controls optional external alerts:
 

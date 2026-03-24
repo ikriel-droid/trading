@@ -20,6 +20,12 @@ from .jobs import (
     build_paper_selector_command,
 )
 from .optimizer import run_grid_search
+from .profiles import (
+    default_profile_dir,
+    list_operator_profiles,
+    load_operator_profile,
+    save_operator_profile,
+)
 from .presets import (
     apply_strategy_preset,
     default_preset_dir,
@@ -783,6 +789,59 @@ def run_apply_preset_action(config_path: str, preset_ref: str) -> Dict[str, Any]
     return apply_strategy_preset(config_path, preset_ref)
 
 
+def run_save_profile_action(
+    config_path: str,
+    profile_name: str,
+    profile_payload: Dict[str, Any],
+    notes: str = "",
+) -> Dict[str, Any]:
+    return save_operator_profile(
+        config_path=config_path,
+        name=profile_name,
+        profile_payload=profile_payload,
+        notes=notes,
+    )
+
+
+def run_load_profile_action(config_path: str, profile_ref: str) -> Dict[str, Any]:
+    return load_operator_profile(config_path, profile_ref)
+
+
+def run_start_profile_action(
+    config_path: str,
+    profile_ref: str,
+    job_manager: Optional[BackgroundJobManager] = None,
+) -> Dict[str, Any]:
+    loaded = load_operator_profile(config_path, profile_ref)
+    profile = loaded["profile"]
+    preset_applied = None
+    if profile["preset"]:
+        preset_applied = apply_strategy_preset(config_path, profile["preset"])
+
+    job = start_managed_job(
+        config_path=config_path,
+        job_type=profile["job_type"],
+        state_path=profile["state_path"] or None,
+        selector_state_path=profile["selector_state_path"] or None,
+        csv_path=profile["csv_path"] or None,
+        poll_seconds=profile["poll_seconds"] or None,
+        reconcile_every_loops=profile["reconcile_every_loops"] or None,
+        reconcile_every=profile["reconcile_every"] or None,
+        market=profile["market"] or None,
+        quote_currency=profile["quote_currency"] or None,
+        max_markets=profile["max_markets"] or None,
+        auto_restart=profile["auto_restart"],
+        max_restarts=profile["max_restarts"],
+        restart_backoff_seconds=profile["restart_backoff_seconds"],
+        job_manager=job_manager,
+    )
+    return {
+        "profile": loaded,
+        "preset_applied": preset_applied,
+        "job": job,
+    }
+
+
 def run_live_reconcile_action(
     config_path: str,
     state_path: Optional[str],
@@ -856,6 +915,10 @@ def build_dashboard_payload(
             "dir": default_preset_dir(config_path),
             "items": list_strategy_presets(config_path),
         },
+        "operator_profiles": {
+            "dir": default_profile_dir(config_path),
+            "items": list_operator_profiles(config_path),
+        },
         "jobs": jobs,
         "alerts": _build_alert_feed(
             config_path=config_path,
@@ -872,6 +935,10 @@ def build_dashboard_payload(
             "scan_max_markets": min(10, config.selector.max_markets),
             "quote_currency": config.selector.quote_currency,
             "reconcile_every": 10,
+            "job_type": "paper-loop",
+            "auto_restart": False,
+            "max_restarts": 2,
+            "restart_backoff_seconds": 2.0,
         },
     }
 
@@ -908,6 +975,9 @@ def start_managed_job(
     market: Optional[str],
     quote_currency: Optional[str],
     max_markets: Optional[int],
+    auto_restart: bool,
+    max_restarts: int,
+    restart_backoff_seconds: float,
     job_manager: Optional[BackgroundJobManager] = None,
 ) -> Dict[str, Any]:
     job_manager = job_manager or JOB_MANAGER
@@ -952,6 +1022,9 @@ def start_managed_job(
         kind=job_type,
         command=command,
         cwd=project_root,
+        auto_restart=auto_restart,
+        max_restarts=max_restarts,
+        restart_backoff_seconds=restart_backoff_seconds,
     )
 
 
@@ -1076,6 +1149,28 @@ def _build_handler(
             if self.path == "/api/config-save":
                 self._write_json(update_editable_config(config_path, body))
                 return
+            if self.path == "/api/profile-save":
+                self._write_json(
+                    run_save_profile_action(
+                        config_path=config_path,
+                        profile_name=body.get("profile_name", ""),
+                        profile_payload=body.get("profile", {}),
+                        notes=body.get("notes", ""),
+                    )
+                )
+                return
+            if self.path == "/api/profile-load":
+                self._write_json(run_load_profile_action(config_path, body.get("profile", "")))
+                return
+            if self.path == "/api/profile-start":
+                self._write_json(
+                    run_start_profile_action(
+                        config_path=config_path,
+                        profile_ref=body.get("profile", ""),
+                        job_manager=JOB_MANAGER,
+                    )
+                )
+                return
             if self.path == "/api/jobs-start":
                 self._write_json(
                     start_managed_job(
@@ -1098,6 +1193,9 @@ def _build_handler(
                         market=body.get("market"),
                         quote_currency=body.get("quote_currency"),
                         max_markets=int(body["max_markets"]) if body.get("max_markets") not in (None, "") else None,
+                        auto_restart=bool(body.get("auto_restart", False)),
+                        max_restarts=int(body.get("max_restarts", 0) or 0),
+                        restart_backoff_seconds=float(body.get("restart_backoff_seconds", 0.0) or 0.0),
                     )
                 )
                 return

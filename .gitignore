@@ -13,3 +13,4 @@ data/*.log
 data/*.bak
 data/webui-jobs/
 data/strategy-presets/
+data/operator-profiles/

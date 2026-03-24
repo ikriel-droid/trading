@@ -11,6 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 JOB_LOG_DIR = PROJECT_ROOT / "data" / "webui-jobs"
 DEFAULT_LOG_MAX_BYTES = 1_000_000
 DEFAULT_LOG_BACKUP_COUNT = 3
+DEFAULT_WATCHDOG_INTERVAL_SECONDS = 0.5
 
 
 class RotatingLogWriter:
@@ -29,7 +30,7 @@ class RotatingLogWriter:
         encoded = text.encode("utf-8", errors="replace")
         with self._lock:
             self._rotate_if_needed(len(encoded))
-            if self._handle is None:
+            if self._handle is None or self._handle.closed:
                 self._open_handle()
             self._handle.write(text)
             self._handle.flush()
@@ -39,6 +40,7 @@ class RotatingLogWriter:
             if self._handle is not None and not self._handle.closed:
                 self._handle.flush()
                 self._handle.close()
+            self._handle = None
 
     def list_archives(self) -> List[str]:
         archives = []
@@ -93,6 +95,15 @@ class ManagedJob:
     log_writer: RotatingLogWriter
     output_thread: threading.Thread
     started_at: float
+    auto_restart: bool
+    max_restarts: int
+    restart_backoff_seconds: float
+    restart_count: int
+    next_restart_at: float
+    last_exit_at: float
+    last_returncode: Optional[int]
+    manual_stop: bool
+    exit_processed: bool
 
 
 class BackgroundJobManager:
@@ -100,13 +111,26 @@ class BackgroundJobManager:
         self,
         log_max_bytes: int = DEFAULT_LOG_MAX_BYTES,
         log_backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
+        watchdog_interval_seconds: float = DEFAULT_WATCHDOG_INTERVAL_SECONDS,
     ) -> None:
         self._jobs: Dict[str, ManagedJob] = {}
         self._lock = threading.Lock()
         self._log_max_bytes = log_max_bytes
         self._log_backup_count = log_backup_count
+        self._watchdog_interval_seconds = max(0.1, watchdog_interval_seconds)
+        self._watchdog_thread = threading.Thread(target=self._watchdog_loop, daemon=True)
+        self._watchdog_thread.start()
 
-    def start_job(self, name: str, kind: str, command: List[str], cwd: Optional[str] = None) -> Dict[str, Any]:
+    def start_job(
+        self,
+        name: str,
+        kind: str,
+        command: List[str],
+        cwd: Optional[str] = None,
+        auto_restart: bool = False,
+        max_restarts: int = 0,
+        restart_backoff_seconds: float = 1.0,
+    ) -> Dict[str, Any]:
         with self._lock:
             current = self._jobs.get(name)
             if current is not None and current.process.poll() is None:
@@ -122,25 +146,11 @@ class BackgroundJobManager:
                 backup_count=self._log_backup_count,
             )
             log_writer.write("\n[{0}] starting {1}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(command)))
-
-            process = subprocess.Popen(
-                command,
+            process, output_thread = self._spawn_process(
+                command=command,
                 cwd=cwd or str(PROJECT_ROOT),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                log_writer=log_writer,
             )
-            output_thread = threading.Thread(
-                target=self._pump_process_output,
-                args=(process, log_writer),
-                daemon=True,
-            )
-            output_thread.start()
             job = ManagedJob(
                 name=name,
                 kind=kind,
@@ -151,6 +161,15 @@ class BackgroundJobManager:
                 log_writer=log_writer,
                 output_thread=output_thread,
                 started_at=time.time(),
+                auto_restart=bool(auto_restart),
+                max_restarts=max(0, int(max_restarts)),
+                restart_backoff_seconds=max(0.0, float(restart_backoff_seconds)),
+                restart_count=0,
+                next_restart_at=0.0,
+                last_exit_at=0.0,
+                last_returncode=None,
+                manual_stop=False,
+                exit_processed=False,
             )
             self._jobs[name] = job
             return self._serialize_job(job)
@@ -161,6 +180,8 @@ class BackgroundJobManager:
             if job is None:
                 return {"name": name, "running": False, "found": False}
 
+            job.manual_stop = True
+            job.next_restart_at = 0.0
             if job.process.poll() is None:
                 job.process.terminate()
                 try:
@@ -170,16 +191,21 @@ class BackgroundJobManager:
                     job.process.wait(timeout=5)
 
             self._join_output_thread(job)
+            job.last_returncode = job.process.poll()
+            job.last_exit_at = time.time()
+            job.exit_processed = True
             job.log_writer.write("\n[{0}] stopped\n".format(time.strftime("%Y-%m-%d %H:%M:%S")))
             self._finalize_job_resources(job)
             return self._serialize_job(job)
 
     def list_jobs(self) -> List[Dict[str, Any]]:
         with self._lock:
+            self._refresh_jobs_locked()
             return [self._serialize_job(job) for job in self._jobs.values()]
 
     def get_job(self, name: str) -> Optional[Dict[str, Any]]:
         with self._lock:
+            self._refresh_jobs_locked()
             job = self._jobs.get(name)
             return self._serialize_job(job) if job is not None else None
 
@@ -202,6 +228,13 @@ class BackgroundJobManager:
             "log_path": job.log_path,
             "log_archives": job.log_writer.list_archives(),
             "log_tail": self._tail_log(job.log_path),
+            "auto_restart": job.auto_restart,
+            "max_restarts": job.max_restarts,
+            "restart_count": job.restart_count,
+            "restart_backoff_seconds": job.restart_backoff_seconds,
+            "next_restart_at": job.next_restart_at,
+            "last_exit_at": job.last_exit_at,
+            "last_returncode": job.last_returncode,
         }
 
     def _tail_log(self, log_path: str, max_lines: int = 40) -> str:
@@ -230,6 +263,103 @@ class BackgroundJobManager:
     def _join_output_thread(self, job: ManagedJob) -> None:
         if job.output_thread.is_alive():
             job.output_thread.join(timeout=2)
+
+    def _spawn_process(
+        self,
+        command: List[str],
+        cwd: str,
+        log_writer: RotatingLogWriter,
+    ) -> tuple[subprocess.Popen, threading.Thread]:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        output_thread = threading.Thread(
+            target=self._pump_process_output,
+            args=(process, log_writer),
+            daemon=True,
+        )
+        output_thread.start()
+        return process, output_thread
+
+    def _watchdog_loop(self) -> None:
+        while True:
+            time.sleep(self._watchdog_interval_seconds)
+            with self._lock:
+                self._refresh_jobs_locked()
+
+    def _refresh_jobs_locked(self) -> None:
+        now = time.time()
+        for job in self._jobs.values():
+            returncode = job.process.poll()
+            if returncode is None:
+                continue
+
+            if not job.exit_processed:
+                self._join_output_thread(job)
+                job.last_returncode = returncode
+                job.last_exit_at = now
+                job.exit_processed = True
+                job.log_writer.write(
+                    "\n[{0}] exited rc={1}\n".format(
+                        time.strftime("%Y-%m-%d %H:%M:%S"),
+                        returncode,
+                    )
+                )
+                if (
+                    not job.manual_stop
+                    and job.auto_restart
+                    and returncode != 0
+                    and job.restart_count < job.max_restarts
+                ):
+                    delay = max(0.0, job.restart_backoff_seconds) * (job.restart_count + 1)
+                    job.next_restart_at = now + delay
+                    job.log_writer.write(
+                        "[{0}] restart scheduled in {1:.2f}s ({2}/{3})\n".format(
+                            time.strftime("%Y-%m-%d %H:%M:%S"),
+                            delay,
+                            job.restart_count + 1,
+                            job.max_restarts,
+                        )
+                    )
+
+            if (
+                job.exit_processed
+                and not job.manual_stop
+                and job.auto_restart
+                and returncode != 0
+                and job.restart_count < job.max_restarts
+                and job.next_restart_at > 0
+                and now >= job.next_restart_at
+            ):
+                process, output_thread = self._spawn_process(
+                    command=job.command,
+                    cwd=job.cwd,
+                    log_writer=job.log_writer,
+                )
+                job.process = process
+                job.output_thread = output_thread
+                job.started_at = now
+                job.restart_count += 1
+                job.next_restart_at = 0.0
+                job.last_exit_at = 0.0
+                job.last_returncode = None
+                job.exit_processed = False
+                job.log_writer.write(
+                    "[{0}] restarted ({1}/{2})\n".format(
+                        time.strftime("%Y-%m-%d %H:%M:%S"),
+                        job.restart_count,
+                        job.max_restarts,
+                    )
+                )
 
 
 def build_paper_loop_command(
