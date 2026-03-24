@@ -1,17 +1,22 @@
+import json
 import subprocess
 import sys
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 JOB_LOG_DIR = PROJECT_ROOT / "data" / "webui-jobs"
+JOB_HISTORY_PATH = PROJECT_ROOT / "data" / "webui-job-history.jsonl"
 DEFAULT_LOG_MAX_BYTES = 1_000_000
 DEFAULT_LOG_BACKUP_COUNT = 3
 DEFAULT_WATCHDOG_INTERVAL_SECONDS = 0.5
+DEFAULT_HISTORY_LIMIT = 12
+DEFAULT_HISTORY_MAX_ENTRIES = 200
 
 
 class RotatingLogWriter:
@@ -120,12 +125,16 @@ class BackgroundJobManager:
         log_max_bytes: int = DEFAULT_LOG_MAX_BYTES,
         log_backup_count: int = DEFAULT_LOG_BACKUP_COUNT,
         watchdog_interval_seconds: float = DEFAULT_WATCHDOG_INTERVAL_SECONDS,
+        history_path: Optional[str] = None,
+        history_max_entries: int = DEFAULT_HISTORY_MAX_ENTRIES,
     ) -> None:
         self._jobs: Dict[str, ManagedJob] = {}
         self._lock = threading.Lock()
         self._log_max_bytes = log_max_bytes
         self._log_backup_count = log_backup_count
         self._watchdog_interval_seconds = max(0.1, watchdog_interval_seconds)
+        self._history_path = Path(history_path) if history_path else JOB_HISTORY_PATH
+        self._history_max_entries = max(1, int(history_max_entries))
         self._watchdog_thread = threading.Thread(target=self._watchdog_loop, daemon=True)
         self._watchdog_thread.start()
 
@@ -146,6 +155,7 @@ class BackgroundJobManager:
         report_label: str = "",
     ) -> Dict[str, Any]:
         with self._lock:
+            self._refresh_jobs_locked()
             current = self._jobs.get(name)
             if current is not None and current.process.poll() is None:
                 return self._serialize_job(current)
@@ -201,6 +211,9 @@ class BackgroundJobManager:
             job = self._jobs.get(name)
             if job is None:
                 return {"name": name, "running": False, "found": False}
+            if job.process.poll() is not None and job.exit_processed:
+                self._finalize_job_resources(job)
+                return self._serialize_job(job)
 
             job.manual_stop = True
             job.next_restart_at = 0.0
@@ -218,6 +231,7 @@ class BackgroundJobManager:
             job.exit_processed = True
             self._maybe_generate_exit_report(job)
             job.log_writer.write("\n[{0}] stopped\n".format(time.strftime("%Y-%m-%d %H:%M:%S")))
+            self._append_history_entry(job, status="stopped", will_restart=False)
             self._finalize_job_resources(job)
             return self._serialize_job(job)
 
@@ -225,6 +239,9 @@ class BackgroundJobManager:
         with self._lock:
             self._refresh_jobs_locked()
             return [self._serialize_job(job) for job in self._jobs.values()]
+
+    def list_history(self, limit: int = DEFAULT_HISTORY_LIMIT) -> List[Dict[str, Any]]:
+        return list_job_history(history_path=str(self._history_path), limit=limit)
 
     def get_job(self, name: str) -> Optional[Dict[str, Any]]:
         with self._lock:
@@ -345,6 +362,7 @@ class BackgroundJobManager:
                     and returncode != 0
                     and job.restart_count < job.max_restarts
                 ):
+                    will_restart = True
                     delay = max(0.0, job.restart_backoff_seconds) * (job.restart_count + 1)
                     job.next_restart_at = now + delay
                     job.log_writer.write(
@@ -356,7 +374,10 @@ class BackgroundJobManager:
                         )
                     )
                 else:
+                    will_restart = False
                     self._maybe_generate_exit_report(job)
+                status = "retrying" if will_restart else ("completed" if returncode == 0 else "failed")
+                self._append_history_entry(job, status=status, will_restart=will_restart)
 
             if (
                 job.exit_processed
@@ -423,6 +444,67 @@ class BackgroundJobManager:
             )
         finally:
             job.report_generated = True
+
+    def _append_history_entry(self, job: ManagedJob, status: str, will_restart: bool) -> None:
+        finished_at = job.last_exit_at or time.time()
+        payload = {
+            "recorded_at": _iso_utc(time.time()),
+            "name": job.name,
+            "kind": job.kind,
+            "status": status,
+            "manual_stop": job.manual_stop,
+            "will_restart": will_restart,
+            "restart_count": job.restart_count,
+            "max_restarts": job.max_restarts,
+            "returncode": job.last_returncode,
+            "started_at": _iso_utc(job.started_at),
+            "finished_at": _iso_utc(finished_at),
+            "duration_seconds": round(max(0.0, finished_at - job.started_at), 4),
+            "command": list(job.command),
+            "cwd": job.cwd,
+            "log_path": job.log_path,
+            "last_report": job.last_report,
+        }
+        _append_job_history_record(
+            history_path=self._history_path,
+            payload=payload,
+            max_entries=self._history_max_entries,
+        )
+
+
+def _iso_utc(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+
+def _append_job_history_record(history_path: Path, payload: Dict[str, Any], max_entries: int) -> None:
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    records = list_job_history(history_path=str(history_path), limit=max_entries)
+    records.insert(0, payload)
+    records = records[: max(1, max_entries)]
+    with open(history_path, "w", encoding="utf-8") as handle:
+        for record in reversed(records):
+            json.dump(record, handle, ensure_ascii=False)
+            handle.write("\n")
+
+
+def list_job_history(history_path: Optional[str] = None, limit: int = DEFAULT_HISTORY_LIMIT) -> List[Dict[str, Any]]:
+    path = Path(history_path) if history_path else JOB_HISTORY_PATH
+    if not path.exists():
+        return []
+
+    items: List[Dict[str, Any]] = []
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for raw_line in reversed(handle.readlines()):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                items.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+            if len(items) >= max(1, limit):
+                break
+    return items
 
 
 def build_paper_loop_command(

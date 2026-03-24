@@ -11,6 +11,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
+from upbit_auto_trader.jobs import JOB_HISTORY_PATH  # noqa: E402
 from upbit_auto_trader.main import _build_doctor_report, _run_live_daemon, _run_live_supervisor, main  # noqa: E402
 from upbit_auto_trader.models import Balance, Candle  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
@@ -459,6 +460,46 @@ class MainTests(unittest.TestCase):
                 for path in reports_dir.glob("*"):
                     path.unlink()
                 reports_dir.rmdir()
+
+    def test_cli_job_history_lists_saved_runs(self):
+        original_text = JOB_HISTORY_PATH.read_text(encoding="utf-8") if JOB_HISTORY_PATH.exists() else None
+        JOB_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(JOB_HISTORY_PATH, "w", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "name": "paper-loop",
+                            "status": "completed",
+                            "returncode": 0,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "job-history",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--limit",
+                        "5",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["items"][0]["name"], "paper-loop")
+            self.assertEqual(payload["items"][0]["status"], "completed")
+        finally:
+            if original_text is None:
+                if JOB_HISTORY_PATH.exists():
+                    JOB_HISTORY_PATH.unlink()
+            else:
+                JOB_HISTORY_PATH.write_text(original_text, encoding="utf-8")
 
 
 if __name__ == "__main__":

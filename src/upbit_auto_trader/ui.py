@@ -949,6 +949,7 @@ def build_dashboard_payload(
     resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
     selector_summary = load_selector_summary(config_path, resolved_selector_state_path)
     jobs = job_manager.list_jobs()
+    job_history = job_manager.list_history()
     broker_readiness = broker.readiness_report()
     suggested_market_csv_path = _default_market_csv_path(config_path, config.market, config.upbit.candle_unit)
     effective_csv_path = _resolve_project_path(
@@ -989,6 +990,9 @@ def build_dashboard_payload(
             "items": list_session_reports(config_path),
         },
         "jobs": jobs,
+        "job_history": {
+            "items": job_history,
+        },
         "alerts": _build_alert_feed(
             config_path=config_path,
             config=config,
@@ -1153,7 +1157,7 @@ def _build_handler(
                 )
                 return
             if parsed.path == "/api/jobs":
-                self._write_json({"jobs": JOB_MANAGER.list_jobs()})
+                self._write_json({"jobs": JOB_MANAGER.list_jobs(), "history": JOB_MANAGER.list_history()})
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
 

@@ -17,6 +17,7 @@ const ids = {
   profiles: document.getElementById("profiles-json"),
   jobs: document.getElementById("jobs-json"),
   logs: document.getElementById("logs-json"),
+  jobHistory: document.getElementById("job-history-json"),
   paths: document.getElementById("paths-json"),
   readiness: document.getElementById("readiness-json"),
   alertsSummary: document.getElementById("alerts-summary"),
@@ -122,6 +123,10 @@ function renderJobs(jobs) {
     .filter(Boolean)
     .join("\n\n");
   ids.logs.textContent = tails || "No active job logs";
+}
+
+function renderJobHistory(historyPayload) {
+  ids.jobHistory.textContent = pretty(historyPayload?.items || []);
 }
 
 function renderAlerts(alertPayload) {
@@ -577,6 +582,7 @@ async function refreshDashboard() {
     renderReports(payload.session_reports || null);
     renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, payload.selector_summary?.active_market_chart);
     renderJobs(payload.jobs);
+    renderJobHistory(payload.job_history);
     renderPriceChart(payload.chart);
   } catch (error) {
     ids.summary.textContent = `dashboard error: ${error.message}`;
@@ -713,6 +719,7 @@ async function refreshJobs() {
   try {
     const payload = await getJson("/api/jobs");
     renderJobs(payload.jobs);
+    renderJobHistory({ items: payload.history || [] });
   } catch (error) {
     ids.jobs.textContent = `jobs error: ${error.message}`;
   }

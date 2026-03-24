@@ -16,6 +16,7 @@ from .datafeed import (
     upbit_candles_to_internal,
     write_csv_candles,
 )
+from .jobs import list_job_history
 from .optimizer import run_grid_search
 from .notifier import DiscordWebhookNotifier, NotificationError
 from .presets import (
@@ -126,6 +127,10 @@ def build_parser() -> argparse.ArgumentParser:
     report_show_parser.add_argument("--config", required=True)
     report_show_parser.add_argument("--report", required=True)
     report_show_parser.add_argument("--output-dir")
+
+    job_history_parser = subparsers.add_parser("job-history")
+    job_history_parser.add_argument("--config", required=True)
+    job_history_parser.add_argument("--limit", type=int, default=12)
 
     web_ui_parser = subparsers.add_parser("web-ui")
     web_ui_parser.add_argument("--config", required=True)
@@ -921,6 +926,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "report-show":
             _print_json(load_session_report(args.config, args.report, output_dir=args.output_dir))
+            return 0
+
+        if args.command == "job-history":
+            _print_json({"items": list_job_history(limit=args.limit)})
             return 0
 
         if args.command == "web-ui":

@@ -124,11 +124,15 @@ class RecordingJobManager:
 
 
 class StaticJobManager:
-    def __init__(self, jobs):
+    def __init__(self, jobs, history=None):
         self.jobs = list(jobs)
+        self.history = list(history or [])
 
     def list_jobs(self):
         return list(self.jobs)
+
+    def list_history(self):
+        return list(self.history)
 
 
 class UiTests(unittest.TestCase):
@@ -305,6 +309,7 @@ class UiTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["selector_summary"]["active_market_activity"]["recent_events"]), 1)
         self.assertGreaterEqual(len(payload["selector_summary"]["last_scan_results"]), 2)
         self.assertEqual(payload["jobs"], [])
+        self.assertEqual(payload["job_history"]["items"], [])
 
     def test_build_dashboard_payload_supports_focus_market(self):
         payload = build_dashboard_payload(
@@ -449,7 +454,14 @@ class UiTests(unittest.TestCase):
                             "summary": {"market": "KRW-BTC"},
                         },
                     }
-                ]
+                ],
+                history=[
+                    {
+                        "name": "live-daemon",
+                        "status": "failed",
+                        "returncode": 1,
+                    }
+                ],
             ),
         )
 
@@ -460,6 +472,7 @@ class UiTests(unittest.TestCase):
         self.assertTrue(any(item["headline"] == "Session Report Ready" for item in payload["alerts"]["items"]))
         self.assertTrue(any(item["headline"] == "Blocked Entry" for item in payload["alerts"]["items"]))
         self.assertTrue(any(item["source"] == "journal" for item in payload["alerts"]["items"]))
+        self.assertEqual(payload["job_history"]["items"][0]["name"], "live-daemon")
 
     def test_backtest_signal_and_optimize_actions_return_expected_keys(self):
         signal = run_signal_action(self.config_path, self.csv_path, market="KRW-BTC")

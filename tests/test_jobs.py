@@ -14,6 +14,7 @@ from upbit_auto_trader.jobs import (  # noqa: E402
     RotatingLogWriter,
     build_live_supervisor_command,
     build_paper_selector_command,
+    list_job_history,
 )
 from upbit_auto_trader.config import load_config  # noqa: E402
 from upbit_auto_trader.datafeed import load_csv_candles  # noqa: E402
@@ -28,10 +29,13 @@ class JobTests(unittest.TestCase):
         self.state_path = PROJECT_ROOT / "data" / "test-job-report-state.json"
         self.state_backup_path = pathlib.Path(str(self.state_path) + ".bak")
         self.reports_dir = PROJECT_ROOT / "data" / "session-reports"
+        self.history_path = PROJECT_ROOT / "data" / "test-job-history.jsonl"
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
             self.state_backup_path.unlink()
+        if self.history_path.exists():
+            self.history_path.unlink()
         if self.reports_dir.exists():
             for path in self.reports_dir.glob("session-report-*-test-job-report*"):
                 path.unlink()
@@ -50,11 +54,14 @@ class JobTests(unittest.TestCase):
             self.state_path.unlink()
         if self.state_backup_path.exists():
             self.state_backup_path.unlink()
+        if self.history_path.exists():
+            self.history_path.unlink()
         if self.reports_dir.exists():
             for path in self.reports_dir.glob("session-report-*-test-job-report*"):
                 path.unlink()
 
     def build_manager(self, **kwargs):
+        kwargs.setdefault("history_path", str(self.history_path))
         manager = BackgroundJobManager(**kwargs)
         self.managers.append(manager)
         return manager
@@ -123,6 +130,9 @@ class JobTests(unittest.TestCase):
         stopped = manager.stop_job("test-job")
         self.assertFalse(stopped["running"])
         self.assertIn("job-started", stopped["log_tail"])
+        history = manager.list_history()
+        self.assertEqual(history[0]["status"], "stopped")
+        self.assertEqual(history[0]["name"], "test-job")
 
     def test_rotating_log_writer_rotates_when_max_size_is_exceeded(self):
         log_name = "rotation-{0}.log".format(uuid.uuid4().hex)
@@ -236,6 +246,9 @@ class JobTests(unittest.TestCase):
         self.assertTrue(pathlib.Path(payload["last_report"]["json_path"]).exists())
         self.assertTrue(pathlib.Path(payload["last_report"]["html_path"]).exists())
         self.assertIn("test-job-report", payload["last_report"]["json_path"])
+        history = list_job_history(history_path=str(self.history_path))
+        self.assertEqual(history[0]["status"], "completed")
+        self.assertEqual(history[0]["last_report"]["json_path"], payload["last_report"]["json_path"])
 
 
 if __name__ == "__main__":

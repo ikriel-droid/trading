@@ -168,6 +168,12 @@ Show one saved session report:
 
 Managed background jobs automatically export a session report when they stop or finish if a runtime `state_path` is available. The latest generated report is also surfaced in the web UI job panel and alert center.
 
+List recent managed job runs:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main job-history --config config.example.json --limit 12
+```
+
 Start the browser-based control room UI:
 
 ```powershell
