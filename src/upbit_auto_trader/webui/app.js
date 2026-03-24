@@ -761,6 +761,9 @@ async function startJob(jobType) {
       restart_backoff_seconds: jobSettings.restart_backoff_seconds,
     });
     ids.jobs.textContent = pretty(payload);
+    if (payload?.error) {
+      return;
+    }
     await refreshJobs();
   } catch (error) {
     ids.jobs.textContent = `start job error: ${error.message}`;
@@ -889,6 +892,9 @@ async function startProfile() {
     ids.jobs.textContent = pretty(payload);
     if (payload.profile?.profile) {
       applyProfileToForm(payload.profile.profile);
+    }
+    if (payload?.error) {
+      return;
     }
     await refreshJobs();
     await refreshDashboard();

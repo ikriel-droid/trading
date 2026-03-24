@@ -621,6 +621,23 @@ class UiTests(unittest.TestCase):
         self.assertTrue(report["state"]["load_ok"])
         self.assertTrue(report["selector_state"]["exists"])
 
+    def test_doctor_action_flags_placeholder_live_keys(self):
+        with open(self.temp_config_path, "r", encoding="utf-8") as handle:
+            temp_config = json.load(handle)
+        temp_config["upbit"]["live_enabled"] = True
+        with open(self.temp_config_path, "w", encoding="utf-8") as handle:
+            json.dump(temp_config, handle, indent=2)
+            handle.write("\n")
+
+        report = run_doctor_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+        )
+
+        self.assertIn("access_key_missing", report["upbit"]["private_issues"])
+        self.assertIn("secret_key_missing", report["upbit"]["private_issues"])
+
     def test_editable_config_can_be_loaded_and_saved(self):
         before = load_editable_config(str(self.temp_config_path))
         result = update_editable_config(
@@ -651,9 +668,17 @@ class UiTests(unittest.TestCase):
 
     def test_start_managed_job_supports_selector_and_supervisor(self):
         manager = RecordingJobManager()
+        with open(self.temp_config_path, "r", encoding="utf-8") as handle:
+            temp_config = json.load(handle)
+        temp_config["upbit"]["live_enabled"] = True
+        temp_config["upbit"]["access_key"] = "test-access"
+        temp_config["upbit"]["secret_key"] = "test-secret"
+        with open(self.temp_config_path, "w", encoding="utf-8") as handle:
+            json.dump(temp_config, handle, indent=2)
+            handle.write("\n")
 
         selector_job = start_managed_job(
-            config_path=self.config_path,
+            config_path=str(self.temp_config_path),
             job_type="paper-selector",
             state_path=str(self.state_path),
             selector_state_path="data/test-selector-state.json",
@@ -670,7 +695,7 @@ class UiTests(unittest.TestCase):
             job_manager=manager,
         )
         supervisor_job = start_managed_job(
-            config_path=self.config_path,
+            config_path=str(self.temp_config_path),
             job_type="live-supervisor",
             state_path=str(self.state_path),
             selector_state_path="data/test-selector-state.json",
@@ -697,6 +722,31 @@ class UiTests(unittest.TestCase):
         self.assertIn("11", supervisor_job["command"])
         self.assertTrue(supervisor_job["report_on_exit"])
         self.assertEqual(supervisor_job["report_mode"], "live")
+
+    def test_start_managed_job_blocks_live_when_preflight_fails(self):
+        manager = RecordingJobManager()
+
+        started = start_managed_job(
+            config_path=self.config_path,
+            job_type="live-daemon",
+            state_path=str(self.state_path),
+            selector_state_path=None,
+            csv_path=self.csv_path,
+            poll_seconds=5.0,
+            reconcile_every_loops=3,
+            reconcile_every=None,
+            market="KRW-BTC",
+            quote_currency="KRW",
+            max_markets=5,
+            auto_restart=False,
+            max_restarts=0,
+            restart_backoff_seconds=0.0,
+            job_manager=manager,
+        )
+
+        self.assertEqual(started["error"], "live_preflight_failed")
+        self.assertIn("live_enabled=false", started["blocking_issues"])
+        self.assertEqual(manager.calls, [])
 
     def test_start_managed_job_uses_default_state_path_for_reports(self):
         manager = RecordingJobManager()

@@ -79,10 +79,34 @@ JOURNAL_ALERT_TYPES = {
     "myorder_done",
     "pending_order_cancel_requested",
 }
+NON_BLOCKING_PREFLIGHT_ISSUES = {"discord_webhook_not_configured"}
 
 
 def _default_selector_state_path(config_path: str) -> str:
     return str(Path(config_path).resolve().parent / "data" / "selector-state-ui.json")
+
+
+def _preflight_blocking_issues(report: Dict[str, Any]) -> list[str]:
+    issues = []
+    upbit = report.get("upbit", {})
+    issues.extend(str(item) for item in upbit.get("public_issues", []))
+    issues.extend(str(item) for item in upbit.get("private_issues", []))
+
+    state_report = report.get("state", {})
+    if state_report.get("path"):
+        if not (state_report.get("exists") or state_report.get("backup_exists")):
+            issues.append("state_missing")
+        elif not state_report.get("load_ok"):
+            issues.append("state_unreadable")
+
+    deduped = []
+    seen = set()
+    for issue in issues:
+        if issue in NON_BLOCKING_PREFLIGHT_ISSUES or issue in seen:
+            continue
+        seen.add(issue)
+        deduped.append(issue)
+    return deduped
 
 
 def _resolve_selector_state_path(config_path: str, selector_state_path: Optional[str]) -> str:
@@ -1115,6 +1139,26 @@ def start_managed_job(
         return {"error": "unsupported job type", "job_type": job_type}
 
     resolved_state_path = _resolve_project_path(config_path, effective_state_path) if effective_state_path else ""
+    resolved_selector_state_path = _resolve_project_path(config_path, resolved_selector_state_path) if resolved_selector_state_path else ""
+
+    if report_mode == "live":
+        live_config = _override_market(load_config(config_path), market)
+        preflight = build_doctor_report(
+            config_path=str(Path(config_path).resolve()),
+            config=live_config,
+            state_path=resolved_state_path or None,
+            selector_state_path=resolved_selector_state_path or None,
+        )
+        blocking_issues = _preflight_blocking_issues(preflight)
+        if blocking_issues:
+            warnings = [issue for issue in preflight.get("issues", []) if issue not in blocking_issues]
+            return {
+                "error": "live_preflight_failed",
+                "job_type": job_type,
+                "blocking_issues": blocking_issues,
+                "warnings": warnings,
+                "preflight": preflight,
+            }
 
     return job_manager.start_job(
         name=job_type,

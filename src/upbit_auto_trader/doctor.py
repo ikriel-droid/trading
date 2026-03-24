@@ -6,6 +6,13 @@ from .config import AppConfig
 from .runtime import TradingRuntime
 
 
+def has_real_config_secret(value: str) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    return not (text.startswith("${") and text.endswith("}"))
+
+
 def has_real_webhook_url(config: AppConfig) -> bool:
     value = str(config.notifications.discord_webhook_url or "").strip()
     if not value:
@@ -58,8 +65,19 @@ def build_doctor_report(config_path: str, config: AppConfig, state_path: Optiona
         "enabled_event_types": list(config.notifications.enabled_event_types),
     }
 
-    issues = []
     readiness = broker.readiness_report()
+    private_issues = list(readiness.get("private_issues", []))
+    if not has_real_config_secret(config.upbit.access_key) and "access_key_missing" not in private_issues:
+        private_issues.append("access_key_missing")
+    if not has_real_config_secret(config.upbit.secret_key) and "secret_key_missing" not in private_issues:
+        private_issues.append("secret_key_missing")
+    readiness = {
+        **readiness,
+        "private_issues": private_issues,
+        "private_ready": bool(readiness.get("public_ready", False)) and len(private_issues) == 0,
+    }
+
+    issues = []
     if not readiness["public_ready"]:
         issues.extend(readiness["public_issues"])
     if config.upbit.live_enabled and not readiness["private_ready"]:
