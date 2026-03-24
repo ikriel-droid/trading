@@ -12,6 +12,7 @@ from .brokers.upbit import UpbitBroker
 from .config import load_config
 from .datafeed import load_csv_candles
 from .datafeed import merge_candles, upbit_candles_to_internal, write_csv_candles
+from .doctor import build_doctor_report
 from .jobs import (
     BackgroundJobManager,
     build_live_daemon_command,
@@ -933,6 +934,22 @@ def run_live_reconcile_action(
     return runtime.reconcile_live_snapshot()
 
 
+def run_doctor_action(
+    config_path: str,
+    state_path: Optional[str],
+    selector_state_path: Optional[str],
+) -> Dict[str, Any]:
+    config = load_config(config_path)
+    resolved_state_path = _resolve_project_path(config_path, state_path) if state_path else None
+    resolved_selector_state_path = _resolve_project_path(config_path, selector_state_path) if selector_state_path else None
+    return build_doctor_report(
+        config_path=config_path,
+        config=config,
+        state_path=resolved_state_path,
+        selector_state_path=resolved_selector_state_path,
+    )
+
+
 def build_dashboard_payload(
     config_path: str,
     state_path: Optional[str],
@@ -1221,6 +1238,15 @@ def _build_handler(
                         state_path=body.get("state_path") or state_path,
                         mode=body.get("mode") or mode,
                         market=body.get("market"),
+                    )
+                )
+                return
+            if self.path == "/api/doctor":
+                self._write_json(
+                    run_doctor_action(
+                        config_path=config_path,
+                        state_path=body.get("state_path") or state_path,
+                        selector_state_path=body.get("selector_state_path") or selector_state_path,
                     )
                 )
                 return

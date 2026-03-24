@@ -18,6 +18,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     load_editable_config,
     run_apply_preset_action,
     run_backtest_action,
+    run_doctor_action,
     run_live_reconcile_action,
     run_show_report_action,
     run_load_profile_action,
@@ -608,6 +609,17 @@ class UiTests(unittest.TestCase):
         self.assertTrue(len(scan["scan_results"]) >= 1)
         self.assertEqual(reconcile["open_order_count"], 1)
         self.assertIn("summary", reconcile)
+
+    def test_doctor_action_returns_expected_keys(self):
+        report = run_doctor_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+        )
+
+        self.assertIn("ok", report)
+        self.assertTrue(report["state"]["load_ok"])
+        self.assertTrue(report["selector_state"]["exists"])
 
     def test_editable_config_can_be_loaded_and_saved(self):
         before = load_editable_config(str(self.temp_config_path))

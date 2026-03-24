@@ -12,6 +12,7 @@ const ids = {
   scan: document.getElementById("scan-json"),
   reconcile: document.getElementById("reconcile-json"),
   report: document.getElementById("report-json"),
+  doctor: document.getElementById("doctor-json"),
   config: document.getElementById("config-json"),
   presets: document.getElementById("presets-json"),
   profiles: document.getElementById("profiles-json"),
@@ -668,6 +669,20 @@ async function runReconcile() {
   }
 }
 
+async function runDoctor() {
+  try {
+    ids.doctor.textContent = "Running doctor...";
+    const inputs = currentInputs();
+    const payload = await postJson("/api/doctor", {
+      state_path: inputs.state_path,
+      selector_state_path: inputs.selector_state_path,
+    });
+    ids.doctor.textContent = pretty(payload);
+  } catch (error) {
+    ids.doctor.textContent = `doctor error: ${error.message}`;
+  }
+}
+
 async function runSyncCandles() {
   try {
     ids.paths.textContent = "Syncing candles...";
@@ -899,6 +914,7 @@ document.getElementById("run-backtest").addEventListener("click", runBacktest);
 document.getElementById("run-optimize").addEventListener("click", () => runOptimize(false));
 document.getElementById("run-scan").addEventListener("click", runScan);
 document.getElementById("run-reconcile").addEventListener("click", runReconcile);
+document.getElementById("run-doctor").addEventListener("click", runDoctor);
 document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
 document.getElementById("run-session-report").addEventListener("click", runSessionReport);
 document.getElementById("load-session-report").addEventListener("click", loadSessionReport);
