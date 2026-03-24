@@ -198,6 +198,12 @@ Live background jobs are now preflight-gated. If `doctor` finds blocking issues 
 
 The control-room UI also includes a `Preview Launch` action so you can inspect the exact command, report paths, and any live preflight blockers before starting a background job.
 
+You can preview an ad hoc managed job from PowerShell too:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main job-preview --config config.example.json --job-type paper-loop --state data\paper-state.json --csv data\demo_krw_btc_15m.csv
+```
+
 If you already saved a launch profile, you can start it from PowerShell too:
 
 ```powershell

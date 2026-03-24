@@ -34,6 +34,7 @@ from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
 from .strategy import ProfessionalCryptoStrategy
 from .ui import (
+    preview_managed_job,
     run_load_profile_action,
     run_preview_profile_action,
     run_save_profile_action,
@@ -137,6 +138,22 @@ def build_parser() -> argparse.ArgumentParser:
     job_history_parser = subparsers.add_parser("job-history")
     job_history_parser.add_argument("--config", required=True)
     job_history_parser.add_argument("--limit", type=int, default=12)
+
+    job_preview_parser = subparsers.add_parser("job-preview")
+    job_preview_parser.add_argument("--config", required=True)
+    job_preview_parser.add_argument("--job-type", required=True)
+    job_preview_parser.add_argument("--market")
+    job_preview_parser.add_argument("--csv")
+    job_preview_parser.add_argument("--state")
+    job_preview_parser.add_argument("--selector-state")
+    job_preview_parser.add_argument("--quote-currency")
+    job_preview_parser.add_argument("--max-markets", type=int)
+    job_preview_parser.add_argument("--poll-seconds", type=float)
+    job_preview_parser.add_argument("--reconcile-every", type=int)
+    job_preview_parser.add_argument("--reconcile-every-loops", type=int, default=3)
+    job_preview_parser.add_argument("--auto-restart", action="store_true")
+    job_preview_parser.add_argument("--max-restarts", type=int, default=0)
+    job_preview_parser.add_argument("--restart-backoff-seconds", type=float, default=0.0)
 
     web_ui_parser = subparsers.add_parser("web-ui")
     web_ui_parser.add_argument("--config", required=True)
@@ -868,6 +885,27 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "job-history":
             _print_json({"items": list_job_history(limit=args.limit)})
+            return 0
+
+        if args.command == "job-preview":
+            _print_json(
+                preview_managed_job(
+                    config_path=args.config,
+                    job_type=args.job_type,
+                    state_path=args.state,
+                    selector_state_path=args.selector_state,
+                    csv_path=args.csv,
+                    poll_seconds=args.poll_seconds,
+                    reconcile_every_loops=args.reconcile_every_loops,
+                    reconcile_every=args.reconcile_every,
+                    market=args.market or config.market,
+                    quote_currency=args.quote_currency,
+                    max_markets=args.max_markets,
+                    auto_restart=args.auto_restart,
+                    max_restarts=args.max_restarts,
+                    restart_backoff_seconds=args.restart_backoff_seconds,
+                )
+            )
             return 0
 
         if args.command == "web-ui":

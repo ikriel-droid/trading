@@ -519,6 +519,60 @@ class MainTests(unittest.TestCase):
             else:
                 JOB_HISTORY_PATH.write_text(original_text, encoding="utf-8")
 
+    def test_cli_job_preview_supports_paper_and_live(self):
+        config_path = PROJECT_ROOT / "test-main-job-preview-config.json"
+        if config_path.exists():
+            config_path.unlink()
+        try:
+            shutil.copyfile(PROJECT_ROOT / "config.example.json", config_path)
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "job-preview",
+                        "--config",
+                        str(config_path),
+                        "--job-type",
+                        "paper-loop",
+                        "--state",
+                        "data/paper-state.json",
+                        "--csv",
+                        "data/demo_krw_btc_15m.csv",
+                        "--poll-seconds",
+                        "15",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            preview = json.loads(stdout.getvalue())
+            self.assertTrue(preview["can_start"])
+            self.assertIn("run-loop", preview["command"])
+            self.assertIn("paper", preview["command"])
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "job-preview",
+                        "--config",
+                        str(config_path),
+                        "--job-type",
+                        "live-daemon",
+                        "--state",
+                        "data/live-state.json",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            preview = json.loads(stdout.getvalue())
+            self.assertFalse(preview["can_start"])
+            self.assertIn("live_enabled=false", preview["blocking_issues"])
+            self.assertIn("run-live-daemon", preview["command"])
+        finally:
+            if config_path.exists():
+                config_path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
