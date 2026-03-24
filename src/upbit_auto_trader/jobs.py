@@ -104,6 +104,14 @@ class ManagedJob:
     last_returncode: Optional[int]
     manual_stop: bool
     exit_processed: bool
+    report_on_exit: bool
+    report_config_path: str
+    report_state_path: str
+    report_mode: str
+    report_output_dir: str
+    report_label: str
+    report_generated: bool
+    last_report: Optional[Dict[str, Any]]
 
 
 class BackgroundJobManager:
@@ -130,6 +138,12 @@ class BackgroundJobManager:
         auto_restart: bool = False,
         max_restarts: int = 0,
         restart_backoff_seconds: float = 1.0,
+        report_on_exit: bool = False,
+        report_config_path: str = "",
+        report_state_path: str = "",
+        report_mode: str = "paper",
+        report_output_dir: str = "",
+        report_label: str = "",
     ) -> Dict[str, Any]:
         with self._lock:
             current = self._jobs.get(name)
@@ -170,6 +184,14 @@ class BackgroundJobManager:
                 last_returncode=None,
                 manual_stop=False,
                 exit_processed=False,
+                report_on_exit=bool(report_on_exit),
+                report_config_path=report_config_path,
+                report_state_path=report_state_path,
+                report_mode=report_mode,
+                report_output_dir=report_output_dir,
+                report_label=report_label,
+                report_generated=False,
+                last_report=None,
             )
             self._jobs[name] = job
             return self._serialize_job(job)
@@ -194,6 +216,7 @@ class BackgroundJobManager:
             job.last_returncode = job.process.poll()
             job.last_exit_at = time.time()
             job.exit_processed = True
+            self._maybe_generate_exit_report(job)
             job.log_writer.write("\n[{0}] stopped\n".format(time.strftime("%Y-%m-%d %H:%M:%S")))
             self._finalize_job_resources(job)
             return self._serialize_job(job)
@@ -235,6 +258,8 @@ class BackgroundJobManager:
             "next_restart_at": job.next_restart_at,
             "last_exit_at": job.last_exit_at,
             "last_returncode": job.last_returncode,
+            "report_on_exit": job.report_on_exit,
+            "last_report": job.last_report,
         }
 
     def _tail_log(self, log_path: str, max_lines: int = 40) -> str:
@@ -330,6 +355,8 @@ class BackgroundJobManager:
                             job.max_restarts,
                         )
                     )
+                else:
+                    self._maybe_generate_exit_report(job)
 
             if (
                 job.exit_processed
@@ -353,6 +380,8 @@ class BackgroundJobManager:
                 job.last_exit_at = 0.0
                 job.last_returncode = None
                 job.exit_processed = False
+                job.report_generated = False
+                job.last_report = None
                 job.log_writer.write(
                     "[{0}] restarted ({1}/{2})\n".format(
                         time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -360,6 +389,40 @@ class BackgroundJobManager:
                         job.max_restarts,
                     )
                 )
+
+    def _maybe_generate_exit_report(self, job: ManagedJob) -> None:
+        if job.report_generated or not job.report_on_exit:
+            return
+        if not job.report_config_path or not job.report_state_path:
+            return
+
+        try:
+            from .reporting import write_runtime_report
+
+            job.last_report = write_runtime_report(
+                config_path=job.report_config_path,
+                state_path=job.report_state_path,
+                mode=job.report_mode,
+                output_dir=job.report_output_dir or None,
+                label=job.report_label or job.name,
+            )
+            if job.last_report and job.last_report.get("json_path"):
+                job.log_writer.write(
+                    "[{0}] session report {1}\n".format(
+                        time.strftime("%Y-%m-%d %H:%M:%S"),
+                        job.last_report["json_path"],
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            job.last_report = {"error": str(exc)}
+            job.log_writer.write(
+                "[{0}] session report failed: {1}\n".format(
+                    time.strftime("%Y-%m-%d %H:%M:%S"),
+                    exc,
+                )
+            )
+        finally:
+            job.report_generated = True
 
 
 def build_paper_loop_command(

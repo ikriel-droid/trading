@@ -166,6 +166,8 @@ Show one saved session report:
 .venv\Scripts\python.exe -m upbit_auto_trader.main report-show --config config.example.json --report session-report-20260324T0000000000-paper-btc-main.json
 ```
 
+Managed background jobs automatically export a session report when they stop or finish if a runtime `state_path` is available. The latest generated report is also surfaced in the web UI job panel and alert center.
+
 Start the browser-based control room UI:
 
 ```powershell

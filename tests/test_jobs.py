@@ -15,11 +15,26 @@ from upbit_auto_trader.jobs import (  # noqa: E402
     build_live_supervisor_command,
     build_paper_selector_command,
 )
+from upbit_auto_trader.config import load_config  # noqa: E402
+from upbit_auto_trader.datafeed import load_csv_candles  # noqa: E402
+from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 
 
 class JobTests(unittest.TestCase):
     def setUp(self):
         self.managers = []
+        self.config_path = PROJECT_ROOT / "config.example.json"
+        self.csv_path = PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"
+        self.state_path = PROJECT_ROOT / "data" / "test-job-report-state.json"
+        self.state_backup_path = pathlib.Path(str(self.state_path) + ".bak")
+        self.reports_dir = PROJECT_ROOT / "data" / "session-reports"
+        if self.state_path.exists():
+            self.state_path.unlink()
+        if self.state_backup_path.exists():
+            self.state_backup_path.unlink()
+        if self.reports_dir.exists():
+            for path in self.reports_dir.glob("session-report-*-test-job-report*"):
+                path.unlink()
 
     def tearDown(self):
         for manager in self.managers:
@@ -31,11 +46,29 @@ class JobTests(unittest.TestCase):
         flag_path = PROJECT_ROOT / "data" / "test-job-restart-flag.txt"
         if flag_path.exists():
             flag_path.unlink()
+        if self.state_path.exists():
+            self.state_path.unlink()
+        if self.state_backup_path.exists():
+            self.state_backup_path.unlink()
+        if self.reports_dir.exists():
+            for path in self.reports_dir.glob("session-report-*-test-job-report*"):
+                path.unlink()
 
     def build_manager(self, **kwargs):
         manager = BackgroundJobManager(**kwargs)
         self.managers.append(manager)
         return manager
+
+    def _build_runtime_state(self):
+        config = load_config(str(self.config_path))
+        config.runtime.journal_path = ""
+        candles = load_csv_candles(str(self.csv_path))
+        runtime = TradingRuntime(config=config, mode="paper", state_path=str(self.state_path))
+        minimum_history = runtime.strategy.minimum_history()
+        runtime.bootstrap(candles[:minimum_history])
+        for candle in candles[minimum_history : minimum_history + 3]:
+            runtime.process_candle(candle)
+        runtime._save_state()  # noqa: SLF001
 
     def test_builder_creates_selector_command(self):
         command = build_paper_selector_command(
@@ -167,6 +200,42 @@ class JobTests(unittest.TestCase):
         self.assertFalse(payload["running"])
         self.assertEqual(payload["returncode"], 0)
         self.assertIn("attempt-2", payload["log_tail"])
+
+    def test_manager_generates_session_report_when_job_exits(self):
+        self._build_runtime_state()
+        manager = self.build_manager(watchdog_interval_seconds=0.05)
+        command = [
+            sys.executable,
+            "-c",
+            "print('report-job-finished')",
+        ]
+
+        manager.start_job(
+            name="test-job",
+            kind="test",
+            command=command,
+            cwd=str(PROJECT_ROOT),
+            report_on_exit=True,
+            report_config_path=str(self.config_path),
+            report_state_path=str(self.state_path),
+            report_mode="paper",
+            report_output_dir=str(self.reports_dir),
+            report_label="test-job-report",
+        )
+        payload = None
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            payload = manager.get_job("test-job")
+            if payload is not None and payload.get("last_report"):
+                break
+            time.sleep(0.05)
+
+        self.assertIsNotNone(payload)
+        self.assertFalse(payload["running"])
+        self.assertIsNotNone(payload["last_report"])
+        self.assertTrue(pathlib.Path(payload["last_report"]["json_path"]).exists())
+        self.assertTrue(pathlib.Path(payload["last_report"]["html_path"]).exists())
+        self.assertIn("test-job-report", payload["last_report"]["json_path"])
 
 
 if __name__ == "__main__":

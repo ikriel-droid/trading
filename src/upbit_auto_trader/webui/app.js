@@ -110,7 +110,15 @@ function currentJobSettings() {
 function renderJobs(jobs) {
   ids.jobs.textContent = pretty(jobs || []);
   const tails = (jobs || [])
-    .map((job) => `# ${job.name}\n${job.log_tail || ""}`.trim())
+    .map((job) => {
+      const report = job.last_report || null;
+      const reportLine = report?.json_path
+        ? `report: ${report.json_path}`
+        : report?.error
+          ? `report error: ${report.error}`
+          : "";
+      return [`# ${job.name}`, reportLine, job.log_tail || ""].filter(Boolean).join("\n").trim();
+    })
     .filter(Boolean)
     .join("\n\n");
   ids.logs.textContent = tails || "No active job logs";

@@ -97,6 +97,12 @@ class RecordingJobManager:
         auto_restart=False,
         max_restarts=0,
         restart_backoff_seconds=0.0,
+        report_on_exit=False,
+        report_config_path="",
+        report_state_path="",
+        report_mode="paper",
+        report_output_dir="",
+        report_label="",
     ):
         payload = {
             "name": name,
@@ -106,6 +112,12 @@ class RecordingJobManager:
             "auto_restart": auto_restart,
             "max_restarts": max_restarts,
             "restart_backoff_seconds": restart_backoff_seconds,
+            "report_on_exit": report_on_exit,
+            "report_config_path": report_config_path,
+            "report_state_path": report_state_path,
+            "report_mode": report_mode,
+            "report_output_dir": report_output_dir,
+            "report_label": report_label,
         }
         self.calls.append(payload)
         return payload
@@ -431,6 +443,11 @@ class UiTests(unittest.TestCase):
                         "cwd": str(PROJECT_ROOT),
                         "log_path": "data/webui-jobs/live-daemon.log",
                         "log_tail": "boom",
+                        "last_report": {
+                            "generated_at": "2026-03-23T00:06:00+00:00",
+                            "json_path": str(self.reports_dir / "session-report-test-ui-report.json"),
+                            "summary": {"market": "KRW-BTC"},
+                        },
                     }
                 ]
             ),
@@ -440,6 +457,7 @@ class UiTests(unittest.TestCase):
         self.assertGreaterEqual(payload["alerts"]["summary"]["error"], 1)
         self.assertGreaterEqual(payload["alerts"]["summary"]["warning"], 1)
         self.assertTrue(any(item["headline"] == "Job Failed" for item in payload["alerts"]["items"]))
+        self.assertTrue(any(item["headline"] == "Session Report Ready" for item in payload["alerts"]["items"]))
         self.assertTrue(any(item["headline"] == "Blocked Entry" for item in payload["alerts"]["items"]))
         self.assertTrue(any(item["source"] == "journal" for item in payload["alerts"]["items"]))
 
@@ -542,6 +560,9 @@ class UiTests(unittest.TestCase):
         self.assertEqual(started["job"]["max_restarts"], 4)
         self.assertEqual(started["job"]["restart_backoff_seconds"], 1.5)
         self.assertIn("run-loop", started["job"]["command"])
+        self.assertTrue(started["job"]["report_on_exit"])
+        self.assertEqual(started["job"]["report_mode"], "paper")
+        self.assertEqual(started["job"]["report_state_path"], str(self.state_path))
 
     def test_session_report_can_be_exported_and_loaded(self):
         exported = run_session_report_action(
@@ -645,8 +666,36 @@ class UiTests(unittest.TestCase):
         self.assertIn("data/test-selector-state.json", selector_job["command"])
         self.assertIn("9", selector_job["command"])
         self.assertTrue(selector_job["auto_restart"])
+        self.assertTrue(selector_job["report_on_exit"])
+        self.assertEqual(selector_job["report_mode"], "paper")
         self.assertIn("run-live-supervisor", supervisor_job["command"])
         self.assertIn("11", supervisor_job["command"])
+        self.assertTrue(supervisor_job["report_on_exit"])
+        self.assertEqual(supervisor_job["report_mode"], "live")
+
+    def test_start_managed_job_uses_default_state_path_for_reports(self):
+        manager = RecordingJobManager()
+
+        started = start_managed_job(
+            config_path=self.config_path,
+            job_type="paper-loop",
+            state_path=None,
+            selector_state_path=None,
+            csv_path=self.csv_path,
+            poll_seconds=5.0,
+            reconcile_every_loops=None,
+            reconcile_every=None,
+            market="KRW-BTC",
+            quote_currency="KRW",
+            max_markets=5,
+            auto_restart=False,
+            max_restarts=0,
+            restart_backoff_seconds=0.0,
+            job_manager=manager,
+        )
+
+        self.assertTrue(started["report_on_exit"])
+        self.assertTrue(started["report_state_path"].endswith("data\\paper-state-ui.json"))
 
 
 if __name__ == "__main__":

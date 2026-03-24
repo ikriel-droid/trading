@@ -421,6 +421,35 @@ def _job_to_alert(job: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _job_report_to_alert(job: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    report = job.get("last_report") or {}
+    if not isinstance(report, dict) or not report:
+        return None
+
+    timestamp = str(report.get("generated_at", ""))
+    if report.get("error"):
+        return {
+            "source": "report",
+            "level": "warning",
+            "headline": "Session Report Failed",
+            "message": "{0} report failed: {1}".format(job.get("name", ""), report.get("error", "")),
+            "market": "",
+            "timestamp": timestamp,
+        }
+
+    if report.get("json_path"):
+        return {
+            "source": "report",
+            "level": "success",
+            "headline": "Session Report Ready",
+            "message": "{0} report saved: {1}".format(job.get("name", ""), report.get("json_path", "")),
+            "market": str(report.get("summary", {}).get("market", "")),
+            "timestamp": timestamp,
+        }
+
+    return None
+
+
 def _build_alert_feed(
     config_path: str,
     config: Any,
@@ -436,6 +465,9 @@ def _build_alert_feed(
 
     for job in jobs:
         _append_alert_item(items, seen, _job_to_alert(job))
+        report_alert = _job_report_to_alert(job)
+        if report_alert is not None:
+            _append_alert_item(items, seen, report_alert)
 
     live_context = mode == "live" or any(
         job.get("kind", "").startswith("live") or job.get("name", "").startswith("live")
@@ -1020,11 +1052,14 @@ def start_managed_job(
     job_manager = job_manager or JOB_MANAGER
     project_root = str(Path(config_path).resolve().parent)
     resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
+    effective_state_path = state_path or ""
+    report_mode = "paper"
 
     if job_type == "paper-loop":
+        effective_state_path = state_path or "data/paper-state-ui.json"
         command = build_paper_loop_command(
             config_path=config_path,
-            state_path=state_path or "data/paper-state-ui.json",
+            state_path=effective_state_path,
             warmup_csv=csv_path,
             poll_seconds=poll_seconds,
         )
@@ -1037,22 +1072,28 @@ def start_managed_job(
             max_markets=max_markets,
         )
     elif job_type == "live-daemon":
+        effective_state_path = state_path or "data/live-state-ui.json"
         command = build_live_daemon_command(
             config_path=config_path,
-            state_path=state_path or "data/live-state-ui.json",
+            state_path=effective_state_path,
             warmup_csv=csv_path,
             poll_seconds=poll_seconds,
             reconcile_every_loops=reconcile_every_loops,
         )
+        report_mode = "live"
     elif job_type == "live-supervisor":
+        effective_state_path = state_path or "data/live-state-ui.json"
         command = build_live_supervisor_command(
             config_path=config_path,
-            state_path=state_path or "data/live-state-ui.json",
+            state_path=effective_state_path,
             market=market,
             reconcile_every=reconcile_every,
         )
+        report_mode = "live"
     else:
         return {"error": "unsupported job type", "job_type": job_type}
+
+    resolved_state_path = _resolve_project_path(config_path, effective_state_path) if effective_state_path else ""
 
     return job_manager.start_job(
         name=job_type,
@@ -1062,6 +1103,12 @@ def start_managed_job(
         auto_restart=auto_restart,
         max_restarts=max_restarts,
         restart_backoff_seconds=restart_backoff_seconds,
+        report_on_exit=bool(resolved_state_path),
+        report_config_path=str(Path(config_path).resolve()),
+        report_state_path=resolved_state_path,
+        report_mode=report_mode,
+        report_output_dir=default_reports_dir(config_path),
+        report_label=job_type,
     )
 
 
