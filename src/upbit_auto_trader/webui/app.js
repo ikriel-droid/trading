@@ -17,6 +17,8 @@ const ids = {
   presets: document.getElementById("presets-json"),
   profiles: document.getElementById("profiles-json"),
   jobs: document.getElementById("jobs-json"),
+  jobHealth: document.getElementById("job-health-json"),
+  jobHealthSummary: document.getElementById("job-health-summary"),
   jobPreview: document.getElementById("job-preview-json"),
   logs: document.getElementById("logs-json"),
   jobHistory: document.getElementById("job-history-json"),
@@ -133,6 +135,20 @@ function renderJobs(jobs) {
 
 function renderJobHistory(historyPayload) {
   ids.jobHistory.textContent = pretty(historyPayload?.items || []);
+}
+
+function renderJobHealth(jobHealthPayload) {
+  const summary = jobHealthPayload?.summary || {};
+  ids.jobHealthSummary.innerHTML = `
+    <span class="alert-pill success">healthy ${Number(summary.healthy || 0)}</span>
+    <span class="alert-pill warn">stale ${Number(summary.stale || 0)}</span>
+    <span class="alert-pill warn">missing ${Number(summary.missing || 0)}</span>
+    <span class="alert-pill error">failed ${Number(summary.failed || 0)}</span>
+    <span class="alert-pill info">running ${Number(summary.running || 0)}</span>
+    <span class="alert-pill info">auto restart ${Number(summary.auto_restart || 0)}</span>
+    <span class="alert-pill danger">attention ${Number(summary.requires_attention || 0)}</span>
+  `;
+  ids.jobHealth.textContent = pretty(jobHealthPayload || { summary: {}, items: [] });
 }
 
 function renderAlerts(alertPayload) {
@@ -576,9 +592,10 @@ async function refreshDashboard() {
     ids.signal.textContent = pretty(payload.latest_signal);
     ids.paths.textContent = pretty(payload.paths);
     ids.readiness.textContent = pretty(payload.broker_readiness);
-    renderAlerts(payload.alerts || null);
-    ids.recentTrades.textContent = pretty(payload.activity?.recent_trades || []);
-    ids.recentEvents.textContent = pretty(payload.activity?.recent_events || []);
+      renderAlerts(payload.alerts || null);
+      renderJobHealth(payload.job_health || null);
+      ids.recentTrades.textContent = pretty(payload.activity?.recent_trades || []);
+      ids.recentEvents.textContent = pretty(payload.activity?.recent_events || []);
     ids.selectorSummary.textContent = pretty(payload.selector_summary || {});
     ids.selectorActiveSummary.textContent = pretty(payload.selector_summary?.active_market_summary || {});
     ids.selectorActiveEvents.textContent = pretty(payload.selector_summary?.active_market_activity?.recent_events || []);
@@ -739,6 +756,7 @@ async function refreshJobs() {
   try {
     const payload = await getJson("/api/jobs");
     renderJobs(payload.jobs);
+    renderJobHealth(payload.job_health || null);
     renderJobHistory({ items: payload.history || [] });
   } catch (error) {
     ids.jobs.textContent = `jobs error: ${error.message}`;

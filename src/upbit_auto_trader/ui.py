@@ -570,6 +570,97 @@ def _build_alert_feed(
     }
 
 
+def _build_job_health_summary(
+    jobs: list[Dict[str, Any]],
+    job_history: list[Dict[str, Any]],
+    limit: int = 10,
+) -> Dict[str, Any]:
+    summary = {
+        "total": len(jobs),
+        "running": 0,
+        "healthy": 0,
+        "stale": 0,
+        "missing": 0,
+        "unknown": 0,
+        "failed": 0,
+        "stopped": 0,
+        "auto_restart": 0,
+        "recent_failures": 0,
+        "requires_attention": 0,
+    }
+    items: list[Dict[str, Any]] = []
+
+    for record in job_history:
+        status = str(record.get("status", ""))
+        if status in {"failed", "retrying"}:
+            summary["recent_failures"] += 1
+
+    for job in jobs:
+        running = bool(job.get("running"))
+        heartbeat_status = str(job.get("heartbeat_status", "")).strip() or "unknown"
+        heartbeat = job.get("heartbeat") or {}
+        item = {
+            "name": str(job.get("name", "")),
+            "kind": str(job.get("kind", "")),
+            "running": running,
+            "heartbeat_status": heartbeat_status,
+            "heartbeat_phase": str(heartbeat.get("phase", "")),
+            "heartbeat_age_seconds": job.get("heartbeat_age_seconds"),
+            "returncode": job.get("returncode"),
+            "auto_restart": bool(job.get("auto_restart", False)),
+            "restart_count": int(job.get("restart_count", 0) or 0),
+            "termination_reason": str(job.get("termination_reason", "")),
+        }
+        if item["auto_restart"]:
+            summary["auto_restart"] += 1
+
+        if running:
+            summary["running"] += 1
+            if heartbeat_status == "healthy":
+                summary["healthy"] += 1
+                item["level"] = "success"
+                item["status"] = "healthy"
+            elif heartbeat_status == "stale":
+                summary["stale"] += 1
+                summary["requires_attention"] += 1
+                item["level"] = "warning"
+                item["status"] = "stale"
+            elif heartbeat_status == "missing":
+                summary["missing"] += 1
+                summary["requires_attention"] += 1
+                item["level"] = "warning"
+                item["status"] = "missing"
+            else:
+                summary["unknown"] += 1
+                summary["requires_attention"] += 1
+                item["level"] = "warning"
+                item["status"] = heartbeat_status
+        else:
+            returncode = job.get("returncode")
+            if returncode not in (None, 0):
+                summary["failed"] += 1
+                summary["requires_attention"] += 1
+                item["level"] = "error"
+                item["status"] = "failed"
+            else:
+                summary["stopped"] += 1
+                item["level"] = "info"
+                item["status"] = "stopped"
+
+        items.append(item)
+
+    items.sort(
+        key=lambda item: (
+            {"warning": 0, "error": 1, "success": 2, "info": 3}.get(str(item.get("level", "info")), 9),
+            str(item.get("name", "")),
+        )
+    )
+    return {
+        "summary": summary,
+        "items": items[:limit],
+    }
+
+
 def _chart_points_from_candles(candles: list[Any], limit: int = 120) -> list[Dict[str, Any]]:
     return [
         {
@@ -1076,6 +1167,7 @@ def build_dashboard_payload(
             "items": list_session_reports(config_path),
         },
         "jobs": jobs,
+        "job_health": _build_job_health_summary(jobs, job_history),
         "job_history": {
             "items": job_history,
         },
@@ -1380,7 +1472,15 @@ def _build_handler(
                 )
                 return
             if parsed.path == "/api/jobs":
-                self._write_json({"jobs": JOB_MANAGER.list_jobs(), "history": JOB_MANAGER.list_history()})
+                jobs = JOB_MANAGER.list_jobs()
+                history = JOB_MANAGER.list_history()
+                self._write_json(
+                    {
+                        "jobs": jobs,
+                        "history": history,
+                        "job_health": _build_job_health_summary(jobs, history),
+                    }
+                )
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
 

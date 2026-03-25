@@ -317,6 +317,8 @@ class UiTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["selector_summary"]["active_market_activity"]["recent_events"]), 1)
         self.assertGreaterEqual(len(payload["selector_summary"]["last_scan_results"]), 2)
         self.assertEqual(payload["jobs"], [])
+        self.assertEqual(payload["job_health"]["summary"]["total"], 0)
+        self.assertEqual(payload["job_health"]["summary"]["requires_attention"], 0)
         self.assertEqual(payload["job_history"]["items"], [])
 
     def test_build_dashboard_payload_supports_focus_market(self):
@@ -518,6 +520,9 @@ class UiTests(unittest.TestCase):
         )
 
         self.assertTrue(any(item["headline"] == "Job Heartbeat Stale" for item in payload["alerts"]["items"]))
+        self.assertEqual(payload["job_health"]["summary"]["stale"], 1)
+        self.assertEqual(payload["job_health"]["summary"]["requires_attention"], 1)
+        self.assertEqual(payload["job_health"]["items"][0]["status"], "stale")
 
     def test_backtest_signal_and_optimize_actions_return_expected_keys(self):
         signal = run_signal_action(self.config_path, self.csv_path, market="KRW-BTC")
