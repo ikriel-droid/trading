@@ -22,6 +22,7 @@ from upbit_auto_trader.jobs import (  # noqa: E402
 )
 from upbit_auto_trader.config import load_config  # noqa: E402
 from upbit_auto_trader.datafeed import load_csv_candles  # noqa: E402
+from upbit_auto_trader.reporting import write_runtime_report  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 
 
@@ -32,7 +33,7 @@ class JobTests(unittest.TestCase):
         self.csv_path = PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"
         self.state_path = PROJECT_ROOT / "data" / "test-job-report-state.json"
         self.state_backup_path = pathlib.Path(str(self.state_path) + ".bak")
-        self.reports_dir = PROJECT_ROOT / "data" / "session-reports"
+        self.reports_dir = PROJECT_ROOT / "data" / "test-job-session-reports"
         self.history_path = PROJECT_ROOT / "data" / "test-job-history.jsonl"
         if self.state_path.exists():
             self.state_path.unlink()
@@ -43,6 +44,8 @@ class JobTests(unittest.TestCase):
         if self.reports_dir.exists():
             for path in self.reports_dir.glob("session-report-*-test-job-report*"):
                 path.unlink()
+            if not any(self.reports_dir.iterdir()):
+                self.reports_dir.rmdir()
 
     def tearDown(self):
         for manager in self.managers:
@@ -69,6 +72,8 @@ class JobTests(unittest.TestCase):
         if self.reports_dir.exists():
             for path in self.reports_dir.glob("session-report-*-test-job-report*"):
                 path.unlink()
+            if not any(self.reports_dir.iterdir()):
+                self.reports_dir.rmdir()
 
     def build_manager(self, **kwargs):
         kwargs.setdefault("history_path", str(self.history_path))
@@ -223,6 +228,13 @@ class JobTests(unittest.TestCase):
 
     def test_manager_generates_session_report_when_job_exits(self):
         self._build_runtime_state()
+        older_report = write_runtime_report(
+            config_path=str(self.config_path),
+            state_path=str(self.state_path),
+            mode="paper",
+            output_dir=str(self.reports_dir),
+            label="test-job-report-old",
+        )
         manager = self.build_manager(watchdog_interval_seconds=0.05)
         command = [
             sys.executable,
@@ -241,6 +253,7 @@ class JobTests(unittest.TestCase):
             report_mode="paper",
             report_output_dir=str(self.reports_dir),
             report_label="test-job-report",
+            report_keep_latest=1,
         )
         payload = None
         deadline = time.time() + 2.0
@@ -256,6 +269,10 @@ class JobTests(unittest.TestCase):
         self.assertTrue(pathlib.Path(payload["last_report"]["json_path"]).exists())
         self.assertTrue(pathlib.Path(payload["last_report"]["html_path"]).exists())
         self.assertIn("test-job-report", payload["last_report"]["json_path"])
+        self.assertEqual(payload["last_report"]["retention"]["keep"], 1)
+        self.assertEqual(payload["last_report"]["retention"]["removed_count"], 1)
+        self.assertFalse(pathlib.Path(older_report["json_path"]).exists())
+        self.assertFalse(pathlib.Path(older_report["html_path"]).exists())
         history = list_job_history(history_path=str(self.history_path))
         self.assertEqual(history[0]["status"], "completed")
         self.assertEqual(history[0]["last_report"]["json_path"], payload["last_report"]["json_path"])

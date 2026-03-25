@@ -599,6 +599,93 @@ class MainTests(unittest.TestCase):
             else:
                 JOB_HISTORY_PATH.write_text(original_text, encoding="utf-8")
 
+    def test_cli_session_report_respects_keep_latest(self):
+        state_path = PROJECT_ROOT / "data" / "test-main-retention-state.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
+        reports_dir = PROJECT_ROOT / "data" / "test-main-retention-reports"
+        if state_path.exists():
+            state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
+        if reports_dir.exists():
+            for path in reports_dir.glob("*"):
+                path.unlink()
+            reports_dir.rmdir()
+        try:
+            config = load_config(str(PROJECT_ROOT / "config.example.json"))
+            config.runtime.journal_path = ""
+            runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
+            minimum_history = runtime.strategy.minimum_history()
+            candles = [
+                Candle(
+                    timestamp="2026-03-26T12:{0:02d}:00".format(index),
+                    open=100.0,
+                    high=100.0,
+                    low=100.0,
+                    close=100.0,
+                    volume=1000.0,
+                )
+                for index in range(minimum_history + 2)
+            ]
+            runtime.bootstrap(candles[:minimum_history])
+            for candle in candles[minimum_history:]:
+                runtime.process_candle(candle)
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "session-report",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--state",
+                        str(state_path),
+                        "--output-dir",
+                        str(reports_dir),
+                        "--label",
+                        "test-main-retention-a",
+                        "--keep-latest",
+                        "1",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            first_payload = json.loads(stdout.getvalue())
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "session-report",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--state",
+                        str(state_path),
+                        "--output-dir",
+                        str(reports_dir),
+                        "--label",
+                        "test-main-retention-b",
+                        "--keep-latest",
+                        "1",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            second_payload = json.loads(stdout.getvalue())
+            self.assertEqual(second_payload["retention"]["keep"], 1)
+            self.assertEqual(second_payload["retention"]["removed_count"], 1)
+            self.assertFalse(pathlib.Path(first_payload["json_path"]).exists())
+            self.assertTrue(pathlib.Path(second_payload["json_path"]).exists())
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+            if reports_dir.exists():
+                for path in reports_dir.glob("*"):
+                    path.unlink()
+                reports_dir.rmdir()
+
     def test_cli_job_preview_supports_paper_and_live(self):
         config_path = PROJECT_ROOT / "test-main-job-preview-config.json"
         if config_path.exists():

@@ -151,8 +151,10 @@ Start one saved launch profile without opening the UI:
 Export the current runtime state into JSON and HTML session reports:
 
 ```powershell
-.venv\Scripts\python.exe -m upbit_auto_trader.main session-report --config config.example.json --state data/paper-state.json --label paper-btc-main
+.venv\Scripts\python.exe -m upbit_auto_trader.main session-report --config config.example.json --state data/paper-state.json --label paper-btc-main --keep-latest 20
 ```
+
+Use `--keep-latest` when you want `session-report` to prune older JSON/HTML pairs after each export. For example, `--keep-latest 1` turns the report directory into a rolling single-report snapshot.
 
 List saved session reports:
 
@@ -172,7 +174,7 @@ Delete one saved session report:
 .venv\Scripts\python.exe -m upbit_auto_trader.main report-delete --config config.example.json --report session-report-20260324T0000000000-paper-btc-main.json
 ```
 
-Managed background jobs automatically export a session report when they stop or finish if a runtime `state_path` is available. The latest generated report is also surfaced in the web UI job panel and alert center.
+Managed background jobs automatically export a session report when they stop or finish if a runtime `state_path` is available. Those auto-generated exit reports keep the newest `20` files by default, so the report directory does not grow forever. The latest generated report is also surfaced in the web UI job panel and alert center.
 
 List recent managed job runs:
 

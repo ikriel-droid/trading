@@ -113,6 +113,7 @@ class RecordingJobManager:
         report_mode="paper",
         report_output_dir="",
         report_label="",
+        report_keep_latest=None,
     ):
         payload = {
             "name": name,
@@ -128,6 +129,7 @@ class RecordingJobManager:
             "report_mode": report_mode,
             "report_output_dir": report_output_dir,
             "report_label": report_label,
+            "report_keep_latest": report_keep_latest,
         }
         self.calls.append(payload)
         return payload
@@ -177,6 +179,7 @@ class UiTests(unittest.TestCase):
         self.preset_dir = PROJECT_ROOT / "data" / "strategy-presets"
         self.profile_dir = PROJECT_ROOT / "data" / "operator-profiles"
         self.reports_dir = PROJECT_ROOT / "data" / "session-reports"
+        self.temp_reports_dir = PROJECT_ROOT / "data" / "test-ui-session-reports"
         self.job_heartbeat_path = PROJECT_ROOT / "data" / "webui-jobs" / "test-ui-heartbeat.heartbeat.json"
         if self.state_path.exists():
             self.state_path.unlink()
@@ -194,6 +197,10 @@ class UiTests(unittest.TestCase):
             self.alert_journal_path.unlink()
         if self.job_heartbeat_path.exists():
             self.job_heartbeat_path.unlink()
+        if self.temp_reports_dir.exists():
+            for report_path in self.temp_reports_dir.glob("*"):
+                report_path.unlink()
+            self.temp_reports_dir.rmdir()
         if self.preset_dir.exists():
             for preset_path in self.preset_dir.glob("test-ui-*.json"):
                 preset_path.unlink()
@@ -305,6 +312,10 @@ class UiTests(unittest.TestCase):
             self.alert_journal_path.unlink()
         if self.job_heartbeat_path.exists():
             self.job_heartbeat_path.unlink()
+        if self.temp_reports_dir.exists():
+            for report_path in self.temp_reports_dir.glob("*"):
+                report_path.unlink()
+            self.temp_reports_dir.rmdir()
         if self.preset_dir.exists():
             for preset_path in self.preset_dir.glob("test-ui-*.json"):
                 preset_path.unlink()
@@ -686,10 +697,12 @@ class UiTests(unittest.TestCase):
             state_path=str(self.state_path),
             mode="paper",
             label="test-ui-report",
+            output_dir=str(self.temp_reports_dir),
         )
         loaded = run_show_report_action(
             config_path=str(self.temp_config_path),
             report_ref=exported["json_path"],
+            output_dir=str(self.temp_reports_dir),
         )
 
         self.assertTrue(pathlib.Path(exported["json_path"]).exists())
@@ -697,17 +710,43 @@ class UiTests(unittest.TestCase):
         self.assertEqual(loaded["json_path"], exported["json_path"])
         self.assertIn("recent_events", loaded)
 
+    def test_session_report_action_applies_retention_policy(self):
+        first = run_session_report_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            mode="paper",
+            label="test-ui-retention-a",
+            keep_latest=1,
+            output_dir=str(self.temp_reports_dir),
+        )
+        second = run_session_report_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            mode="paper",
+            label="test-ui-retention-b",
+            keep_latest=1,
+            output_dir=str(self.temp_reports_dir),
+        )
+
+        self.assertEqual(second["retention"]["keep"], 1)
+        self.assertEqual(second["retention"]["removed_count"], 1)
+        self.assertFalse(pathlib.Path(first["json_path"]).exists())
+        self.assertFalse(pathlib.Path(first["html_path"]).exists())
+        self.assertTrue(pathlib.Path(second["json_path"]).exists())
+
     def test_session_report_can_be_deleted(self):
         exported = run_session_report_action(
             config_path=str(self.temp_config_path),
             state_path=str(self.state_path),
             mode="paper",
             label="test-ui-report-delete",
+            output_dir=str(self.temp_reports_dir),
         )
 
         deleted = run_delete_report_action(
             config_path=str(self.temp_config_path),
             report_ref=exported["json_path"],
+            output_dir=str(self.temp_reports_dir),
         )
 
         self.assertTrue(deleted["removed_json"])
@@ -721,17 +760,20 @@ class UiTests(unittest.TestCase):
             state_path=str(self.state_path),
             mode="paper",
             label="test-ui-prune-a",
+            output_dir=str(self.temp_reports_dir),
         )
         second = run_session_report_action(
             config_path=str(self.temp_config_path),
             state_path=str(self.state_path),
             mode="paper",
             label="test-ui-prune-b",
+            output_dir=str(self.temp_reports_dir),
         )
 
         pruned = run_prune_reports_action(
             config_path=str(self.temp_config_path),
             keep=1,
+            output_dir=str(self.temp_reports_dir),
         )
 
         self.assertEqual(pruned["keep"], 1)
@@ -890,10 +932,12 @@ class UiTests(unittest.TestCase):
         self.assertTrue(selector_job["auto_restart"])
         self.assertTrue(selector_job["report_on_exit"])
         self.assertEqual(selector_job["report_mode"], "paper")
+        self.assertEqual(selector_job["report_keep_latest"], 20)
         self.assertIn("run-live-supervisor", supervisor_job["command"])
         self.assertIn("11", supervisor_job["command"])
         self.assertTrue(supervisor_job["report_on_exit"])
         self.assertEqual(supervisor_job["report_mode"], "live")
+        self.assertEqual(supervisor_job["report_keep_latest"], 20)
 
     def test_start_managed_job_blocks_live_when_preflight_fails(self):
         manager = RecordingJobManager()
@@ -941,6 +985,7 @@ class UiTests(unittest.TestCase):
         self.assertTrue(preview["can_start"])
         self.assertIn("run-loop", preview["command"])
         self.assertTrue(preview["report_state_path"].endswith("data\\paper-state-ui.json"))
+        self.assertEqual(preview["report_keep_latest"], 20)
         self.assertTrue(preview["heartbeat_path"].endswith("data\\webui-jobs\\paper-loop.heartbeat.json"))
 
     def test_preview_managed_job_exposes_live_blocking_issues(self):

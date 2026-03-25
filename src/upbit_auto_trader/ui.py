@@ -35,7 +35,7 @@ from .presets import (
     save_current_strategy_preset,
     save_grid_search_best_preset,
 )
-from .reporting import default_reports_dir, write_runtime_report
+from .reporting import DEFAULT_REPORT_KEEP_LATEST, default_reports_dir, write_runtime_report
 from .reporting import delete_session_report, list_session_reports, load_session_report, prune_session_reports
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
@@ -1044,6 +1044,7 @@ def run_session_report_action(
     mode: str = "paper",
     output_dir: Optional[str] = None,
     label: str = "",
+    keep_latest: Optional[int] = None,
 ) -> Dict[str, Any]:
     resolved_state_path = _resolve_project_path(config_path, state_path)
     resolved_output_dir = _resolve_project_path(config_path, output_dir) if output_dir else None
@@ -1055,6 +1056,7 @@ def run_session_report_action(
             mode=mode,
             output_dir=resolved_output_dir,
             label=label,
+            keep_latest=keep_latest,
         ),
     }
 
@@ -1309,6 +1311,7 @@ def start_managed_job(
         "report_mode": report_mode,
         "report_output_dir": default_reports_dir(config_path),
         "report_label": job_type,
+        "report_keep_latest": DEFAULT_REPORT_KEEP_LATEST,
         "heartbeat_path": str(Path(project_root) / "data" / "webui-jobs" / "{0}.heartbeat.json".format(job_type)),
         "blocking_issues": [],
         "warnings": [],
@@ -1351,6 +1354,7 @@ def start_managed_job(
         report_mode=preview["report_mode"],
         report_output_dir=preview["report_output_dir"],
         report_label=preview["report_label"],
+        report_keep_latest=preview["report_keep_latest"],
     )
 
 
@@ -1428,6 +1432,7 @@ def preview_managed_job(
         "report_mode": report_mode,
         "report_output_dir": default_reports_dir(config_path),
         "report_label": job_type,
+        "report_keep_latest": DEFAULT_REPORT_KEEP_LATEST,
         "heartbeat_path": str(Path(project_root) / "data" / "webui-jobs" / "{0}.heartbeat.json".format(job_type)),
         "blocking_issues": [],
         "warnings": [],
@@ -1642,6 +1647,7 @@ def _build_handler(
                         mode=body.get("mode") or mode,
                         output_dir=body.get("output_dir"),
                         label=body.get("label", ""),
+                        keep_latest=(int(body["keep_latest"]) if body.get("keep_latest") not in (None, "") else None),
                     )
                 )
                 return

@@ -8,6 +8,7 @@ from .runtime import TradingRuntime
 
 
 DEFAULT_REPORTS_DIR = "data/session-reports"
+DEFAULT_REPORT_KEEP_LATEST = 20
 
 
 def default_reports_dir(config_path: str) -> str:
@@ -280,6 +281,7 @@ def write_runtime_report(
     mode: str = "paper",
     output_dir: str | None = None,
     label: str = "",
+    keep_latest: int | None = None,
 ) -> Dict[str, Any]:
     report = build_runtime_report(config_path=config_path, state_path=state_path, mode=mode)
     reports_dir = _resolve_reports_dir(config_path, output_dir)
@@ -296,10 +298,19 @@ def write_runtime_report(
     with open(html_path, "w", encoding="utf-8") as handle:
         handle.write(_render_report_html(report))
 
+    retention = None
+    if keep_latest is not None:
+        retention = prune_session_reports(
+            config_path=config_path,
+            output_dir=output_dir,
+            keep=max(1, int(keep_latest)),
+        )
+
     return {
         "generated_at": report["generated_at"],
         "summary": report["summary"],
         "metrics": report["metrics"],
         "json_path": str(json_path),
         "html_path": str(html_path),
+        "retention": retention,
     }

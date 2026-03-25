@@ -119,6 +119,7 @@ class ManagedJob:
     report_mode: str
     report_output_dir: str
     report_label: str
+    report_keep_latest: Optional[int]
     report_generated: bool
     last_report: Optional[Dict[str, Any]]
     heartbeat_path: str
@@ -159,6 +160,7 @@ class BackgroundJobManager:
         report_mode: str = "paper",
         report_output_dir: str = "",
         report_label: str = "",
+        report_keep_latest: Optional[int] = None,
     ) -> Dict[str, Any]:
         with self._lock:
             self._refresh_jobs_locked()
@@ -210,6 +212,7 @@ class BackgroundJobManager:
                 report_mode=report_mode,
                 report_output_dir=report_output_dir,
                 report_label=report_label,
+                report_keep_latest=report_keep_latest,
                 report_generated=False,
                 last_report=None,
                 heartbeat_path=heartbeat_path,
@@ -342,6 +345,7 @@ class BackgroundJobManager:
             "last_exit_at": job.last_exit_at,
             "last_returncode": job.last_returncode,
             "report_on_exit": job.report_on_exit,
+            "report_keep_latest": job.report_keep_latest,
             "last_report": job.last_report,
             "heartbeat_path": job.heartbeat_path,
             "heartbeat": heartbeat,
@@ -524,6 +528,7 @@ class BackgroundJobManager:
                 mode=job.report_mode,
                 output_dir=job.report_output_dir or None,
                 label=job.report_label or job.name,
+                keep_latest=job.report_keep_latest,
             )
             if job.last_report and job.last_report.get("json_path"):
                 job.log_writer.write(

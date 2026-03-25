@@ -13,6 +13,16 @@ from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 
 
 class ReportingTests(unittest.TestCase):
+    def _build_runtime_state(self, state_path: pathlib.Path) -> None:
+        config = load_config(str(PROJECT_ROOT / "config.example.json"))
+        config.runtime.journal_path = ""
+        candles = load_csv_candles(str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"))
+        runtime = TradingRuntime(config=config, mode="paper", state_path=state_path)
+        minimum_history = runtime.strategy.minimum_history()
+        runtime.bootstrap(candles[:minimum_history])
+        for candle in candles[minimum_history : minimum_history + 5]:
+            runtime.process_candle(candle)
+
     def test_write_runtime_report_creates_json_and_html(self):
         config = load_config(str(PROJECT_ROOT / "config.example.json"))
         config.runtime.journal_path = ""
@@ -61,6 +71,53 @@ class ReportingTests(unittest.TestCase):
             self.assertEqual(listed[0]["json_path"], report["json_path"])
             self.assertEqual(loaded["json_path"], report["json_path"])
             self.assertIn("recent_events", loaded)
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+            if reports_dir.exists():
+                for path in reports_dir.glob("*"):
+                    path.unlink()
+                reports_dir.rmdir()
+
+    def test_write_runtime_report_prunes_older_reports_when_keep_latest_is_set(self):
+        state_path = PROJECT_ROOT / "data" / "test-report-retention-state.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
+        reports_dir = PROJECT_ROOT / "data" / "test-report-retention"
+        if state_path.exists():
+            state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
+        if reports_dir.exists():
+            for path in reports_dir.glob("*"):
+                path.unlink()
+            reports_dir.rmdir()
+        try:
+            self._build_runtime_state(state_path)
+            first = write_runtime_report(
+                config_path=str(PROJECT_ROOT / "config.example.json"),
+                state_path=str(state_path),
+                mode="paper",
+                output_dir=str(reports_dir),
+                label="retention-a",
+                keep_latest=1,
+            )
+            second = write_runtime_report(
+                config_path=str(PROJECT_ROOT / "config.example.json"),
+                state_path=str(state_path),
+                mode="paper",
+                output_dir=str(reports_dir),
+                label="retention-b",
+                keep_latest=1,
+            )
+
+            self.assertEqual(second["retention"]["keep"], 1)
+            self.assertEqual(second["retention"]["removed_count"], 1)
+            self.assertFalse(pathlib.Path(first["json_path"]).exists())
+            self.assertFalse(pathlib.Path(first["html_path"]).exists())
+            self.assertTrue(pathlib.Path(second["json_path"]).exists())
+            self.assertTrue(pathlib.Path(second["html_path"]).exists())
         finally:
             if state_path.exists():
                 state_path.unlink()

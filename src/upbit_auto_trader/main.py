@@ -133,6 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--mode", choices=("paper", "live"), default="paper")
     report_parser.add_argument("--output-dir")
     report_parser.add_argument("--label", default="")
+    report_parser.add_argument("--keep-latest", type=int)
 
     report_list_parser = subparsers.add_parser("report-list")
     report_list_parser.add_argument("--config", required=True)
@@ -1164,6 +1165,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         mode=args.mode,
                         output_dir=args.output_dir,
                         label=args.label,
+                        keep_latest=args.keep_latest,
                     ),
                 }
             )
