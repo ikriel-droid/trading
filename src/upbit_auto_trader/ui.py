@@ -125,6 +125,14 @@ def _resolve_project_path(config_path: str, value: str) -> str:
     return str(_project_root(config_path) / path)
 
 
+def _resolve_report_keep_latest(value: Optional[int]) -> int:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        parsed = 0
+    return parsed if parsed > 0 else DEFAULT_REPORT_KEEP_LATEST
+
+
 def _override_market(config: Any, market: Optional[str]) -> Any:
     if market:
         config.market = market
@@ -996,6 +1004,7 @@ def run_preview_profile_action(config_path: str, profile_ref: str) -> Dict[str, 
         auto_restart=profile["auto_restart"],
         max_restarts=profile["max_restarts"],
         restart_backoff_seconds=profile["restart_backoff_seconds"],
+        report_keep_latest=profile["report_keep_latest"] or None,
     )
     return {
         "profile": loaded,
@@ -1029,6 +1038,7 @@ def run_start_profile_action(
         auto_restart=profile["auto_restart"],
         max_restarts=profile["max_restarts"],
         restart_backoff_seconds=profile["restart_backoff_seconds"],
+        report_keep_latest=profile["report_keep_latest"] or None,
         job_manager=job_manager,
     )
     return {
@@ -1211,6 +1221,7 @@ def build_dashboard_payload(
             "auto_restart": False,
             "max_restarts": 2,
             "restart_backoff_seconds": 2.0,
+            "report_keep_latest": DEFAULT_REPORT_KEEP_LATEST,
         },
     }
 
@@ -1250,6 +1261,7 @@ def start_managed_job(
     auto_restart: bool,
     max_restarts: int,
     restart_backoff_seconds: float,
+    report_keep_latest: Optional[int] = None,
     job_manager: Optional[BackgroundJobManager] = None,
 ) -> Dict[str, Any]:
     project_root = str(Path(config_path).resolve().parent)
@@ -1311,7 +1323,7 @@ def start_managed_job(
         "report_mode": report_mode,
         "report_output_dir": default_reports_dir(config_path),
         "report_label": job_type,
-        "report_keep_latest": DEFAULT_REPORT_KEEP_LATEST,
+        "report_keep_latest": _resolve_report_keep_latest(report_keep_latest),
         "heartbeat_path": str(Path(project_root) / "data" / "webui-jobs" / "{0}.heartbeat.json".format(job_type)),
         "blocking_issues": [],
         "warnings": [],
@@ -1373,6 +1385,7 @@ def preview_managed_job(
     auto_restart: bool,
     max_restarts: int,
     restart_backoff_seconds: float,
+    report_keep_latest: Optional[int] = None,
 ) -> Dict[str, Any]:
     project_root = str(Path(config_path).resolve().parent)
     resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
@@ -1432,7 +1445,7 @@ def preview_managed_job(
         "report_mode": report_mode,
         "report_output_dir": default_reports_dir(config_path),
         "report_label": job_type,
-        "report_keep_latest": DEFAULT_REPORT_KEEP_LATEST,
+        "report_keep_latest": _resolve_report_keep_latest(report_keep_latest),
         "heartbeat_path": str(Path(project_root) / "data" / "webui-jobs" / "{0}.heartbeat.json".format(job_type)),
         "blocking_issues": [],
         "warnings": [],
@@ -1703,6 +1716,7 @@ def _build_handler(
                         auto_restart=bool(body.get("auto_restart", False)),
                         max_restarts=int(body.get("max_restarts", 0) or 0),
                         restart_backoff_seconds=float(body.get("restart_backoff_seconds", 0.0) or 0.0),
+                        report_keep_latest=(int(body["report_keep_latest"]) if body.get("report_keep_latest") not in (None, "") else None),
                     )
                 )
                 return
@@ -1731,6 +1745,7 @@ def _build_handler(
                         auto_restart=bool(body.get("auto_restart", False)),
                         max_restarts=int(body.get("max_restarts", 0) or 0),
                         restart_backoff_seconds=float(body.get("restart_backoff_seconds", 0.0) or 0.0),
+                        report_keep_latest=(int(body["report_keep_latest"]) if body.get("report_keep_latest") not in (None, "") else None),
                     )
                 )
                 return

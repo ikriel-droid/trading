@@ -325,6 +325,8 @@ class MainTests(unittest.TestCase):
                         "2",
                         "--restart-backoff-seconds",
                         "1.5",
+                        "--report-keep-latest",
+                        "14",
                     ]
                 )
 
@@ -347,6 +349,7 @@ class MainTests(unittest.TestCase):
             shown = json.loads(stdout.getvalue())
             self.assertEqual(shown["profile"]["job_type"], "paper-loop")
             self.assertTrue(shown["profile"]["auto_restart"])
+            self.assertEqual(shown["profile"]["report_keep_latest"], 14)
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
@@ -379,6 +382,7 @@ class MainTests(unittest.TestCase):
             self.assertEqual(previewed["profile"]["name"], "test-main-paper")
             self.assertTrue(previewed["job_preview"]["can_start"])
             self.assertIn("run-loop", previewed["job_preview"]["command"])
+            self.assertEqual(previewed["job_preview"]["report_keep_latest"], 14)
         finally:
             if config_path.exists():
                 config_path.unlink()
@@ -708,6 +712,8 @@ class MainTests(unittest.TestCase):
                         "data/demo_krw_btc_15m.csv",
                         "--poll-seconds",
                         "15",
+                        "--report-keep-latest",
+                        "8",
                     ]
                 )
 
@@ -716,6 +722,7 @@ class MainTests(unittest.TestCase):
             self.assertTrue(preview["can_start"])
             self.assertIn("run-loop", preview["command"])
             self.assertIn("paper", preview["command"])
+            self.assertEqual(preview["report_keep_latest"], 8)
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):

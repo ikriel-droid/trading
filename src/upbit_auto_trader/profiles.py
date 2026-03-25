@@ -80,6 +80,7 @@ def _normalize_profile_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "auto_restart": bool(payload.get("auto_restart", False)),
         "max_restarts": int(payload.get("max_restarts", 0) or 0),
         "restart_backoff_seconds": float(payload.get("restart_backoff_seconds", 0.0) or 0.0),
+        "report_keep_latest": int(payload.get("report_keep_latest", 0) or 0),
     }
 
 
@@ -90,6 +91,7 @@ def _profile_summary(profile: Dict[str, Any]) -> Dict[str, Any]:
         "preset": profile["preset"],
         "auto_restart": profile["auto_restart"],
         "max_restarts": profile["max_restarts"],
+        "report_keep_latest": profile["report_keep_latest"],
     }
 
 

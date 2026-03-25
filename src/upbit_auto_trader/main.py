@@ -121,6 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
     profile_save_parser.add_argument("--auto-restart", action="store_true")
     profile_save_parser.add_argument("--max-restarts", type=int, default=0)
     profile_save_parser.add_argument("--restart-backoff-seconds", type=float, default=0.0)
+    profile_save_parser.add_argument("--report-keep-latest", type=int, default=0)
     profile_save_parser.add_argument("--notes", default="")
 
     profile_start_parser = subparsers.add_parser("profile-start")
@@ -181,6 +182,7 @@ def build_parser() -> argparse.ArgumentParser:
     job_preview_parser.add_argument("--auto-restart", action="store_true")
     job_preview_parser.add_argument("--max-restarts", type=int, default=0)
     job_preview_parser.add_argument("--restart-backoff-seconds", type=float, default=0.0)
+    job_preview_parser.add_argument("--report-keep-latest", type=int)
 
     web_ui_parser = subparsers.add_parser("web-ui")
     web_ui_parser.add_argument("--config", required=True)
@@ -1145,6 +1147,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         "auto_restart": args.auto_restart,
                         "max_restarts": args.max_restarts,
                         "restart_backoff_seconds": args.restart_backoff_seconds,
+                        "report_keep_latest": args.report_keep_latest,
                     },
                     notes=args.notes,
                 )
@@ -1221,6 +1224,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     auto_restart=args.auto_restart,
                     max_restarts=args.max_restarts,
                     restart_backoff_seconds=args.restart_backoff_seconds,
+                    report_keep_latest=args.report_keep_latest,
                 )
             )
             return 0

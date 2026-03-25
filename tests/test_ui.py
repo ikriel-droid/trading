@@ -412,6 +412,7 @@ class UiTests(unittest.TestCase):
                 "auto_restart": True,
                 "max_restarts": 2,
                 "restart_backoff_seconds": 1.5,
+                "report_keep_latest": 15,
             },
         )
 
@@ -641,6 +642,7 @@ class UiTests(unittest.TestCase):
                 "auto_restart": True,
                 "max_restarts": 4,
                 "restart_backoff_seconds": 1.5,
+                "report_keep_latest": 12,
             },
         )
         loaded_profile = run_load_profile_action(str(self.temp_config_path), saved_profile["path"])
@@ -658,10 +660,12 @@ class UiTests(unittest.TestCase):
         self.assertTrue(started["job"]["auto_restart"])
         self.assertEqual(started["job"]["max_restarts"], 4)
         self.assertEqual(started["job"]["restart_backoff_seconds"], 1.5)
+        self.assertEqual(loaded_profile["profile"]["report_keep_latest"], 12)
         self.assertIn("run-loop", started["job"]["command"])
         self.assertTrue(started["job"]["report_on_exit"])
         self.assertEqual(started["job"]["report_mode"], "paper")
         self.assertEqual(started["job"]["report_state_path"], str(self.state_path))
+        self.assertEqual(started["job"]["report_keep_latest"], 12)
 
     def test_operator_profile_can_be_previewed(self):
         saved_profile = run_save_profile_action(
@@ -682,6 +686,7 @@ class UiTests(unittest.TestCase):
                 "auto_restart": True,
                 "max_restarts": 2,
                 "restart_backoff_seconds": 1.5,
+                "report_keep_latest": 9,
             },
         )
 
@@ -690,6 +695,7 @@ class UiTests(unittest.TestCase):
         self.assertEqual(preview["profile"]["name"], "test-ui-preview-profile")
         self.assertTrue(preview["job_preview"]["can_start"])
         self.assertIn("run-loop", preview["job_preview"]["command"])
+        self.assertEqual(preview["job_preview"]["report_keep_latest"], 9)
 
     def test_session_report_can_be_exported_and_loaded(self):
         exported = run_session_report_action(

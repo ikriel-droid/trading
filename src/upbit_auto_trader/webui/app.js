@@ -64,6 +64,7 @@ const ids = {
   jobAutoRestart: document.getElementById("job-auto-restart-select"),
   jobMaxRestarts: document.getElementById("job-max-restarts-input"),
   jobRestartBackoff: document.getElementById("job-restart-backoff-input"),
+  jobReportKeep: document.getElementById("job-report-keep-input"),
 };
 
 let dashboardState = {
@@ -110,6 +111,7 @@ function currentJobSettings() {
     auto_restart: ids.jobAutoRestart.value === "true",
     max_restarts: Number(ids.jobMaxRestarts.value || "0"),
     restart_backoff_seconds: Number(ids.jobRestartBackoff.value || "0"),
+    report_keep_latest: Number(ids.jobReportKeep.value || String(dashboardState.defaults.report_keep_latest || 20)),
   };
 }
 
@@ -223,6 +225,9 @@ function syncInputsFromDashboard(payload) {
   }
   if (!ids.jobRestartBackoff.value && payload.ui_defaults?.restart_backoff_seconds !== undefined) {
     ids.jobRestartBackoff.value = payload.ui_defaults.restart_backoff_seconds;
+  }
+  if (!ids.jobReportKeep.value && payload.ui_defaults?.report_keep_latest !== undefined) {
+    ids.jobReportKeep.value = payload.ui_defaults.report_keep_latest;
   }
 
   const editableConfig = payload.editable_config || {};
@@ -464,6 +469,7 @@ function applyProfileToForm(profilePayload) {
   ids.jobAutoRestart.value = String(Boolean(profilePayload.auto_restart));
   ids.jobMaxRestarts.value = profilePayload.max_restarts || 0;
   ids.jobRestartBackoff.value = profilePayload.restart_backoff_seconds || 0;
+  ids.jobReportKeep.value = profilePayload.report_keep_latest || dashboardState.defaults.report_keep_latest || 20;
   if (profilePayload.preset) {
     ids.presetSelect.value = profilePayload.preset;
   }
@@ -811,6 +817,7 @@ async function startJob(jobType) {
       auto_restart: jobSettings.auto_restart,
       max_restarts: jobSettings.max_restarts,
       restart_backoff_seconds: jobSettings.restart_backoff_seconds,
+      report_keep_latest: jobSettings.report_keep_latest,
     });
     ids.jobs.textContent = pretty(payload);
     if (payload?.error) {
@@ -841,6 +848,7 @@ async function previewJob(jobType = ids.jobType.value) {
       auto_restart: jobSettings.auto_restart,
       max_restarts: jobSettings.max_restarts,
       restart_backoff_seconds: jobSettings.restart_backoff_seconds,
+      report_keep_latest: jobSettings.report_keep_latest,
     });
     ids.jobPreview.textContent = pretty(payload);
   } catch (error) {
@@ -954,6 +962,7 @@ async function saveProfile() {
         auto_restart: jobSettings.auto_restart,
         max_restarts: jobSettings.max_restarts,
         restart_backoff_seconds: jobSettings.restart_backoff_seconds,
+        report_keep_latest: jobSettings.report_keep_latest,
       },
     });
     ids.profiles.textContent = pretty(payload);

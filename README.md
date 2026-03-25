@@ -133,7 +133,7 @@ List saved launch profiles:
 Save a reusable launch profile from the CLI:
 
 ```powershell
-.venv\Scripts\python.exe -m upbit_auto_trader.main profile-save --config config.example.json --name paper-btc-main --job-type paper-loop --market KRW-BTC --csv data/demo_krw_btc_15m.csv --state data/paper-state.json --auto-restart --max-restarts 2 --restart-backoff-seconds 2
+.venv\Scripts\python.exe -m upbit_auto_trader.main profile-save --config config.example.json --name paper-btc-main --job-type paper-loop --market KRW-BTC --csv data/demo_krw_btc_15m.csv --state data/paper-state.json --auto-restart --max-restarts 2 --restart-backoff-seconds 2 --report-keep-latest 20
 ```
 
 Show one saved launch profile:
@@ -358,7 +358,7 @@ Run the selector from Upbit's real-time candle websocket:
 .venv\Scripts\python.exe -m upbit_auto_trader.main run-selector-stream --config config.example.json --mode paper --selector-state data\selector-state.json --max-markets 10 --max-events 20
 ```
 
-The browser control room can now save launch profiles that capture the selected job type, market, CSV path, state paths, quote currency, selected strategy preset, and watchdog restart settings. A saved profile can be loaded back into the form or started directly with one click.
+The browser control room can now save launch profiles that capture the selected job type, market, CSV path, state paths, quote currency, selected strategy preset, watchdog restart settings, and exit-report retention count. A saved profile can be loaded back into the form or started directly with one click.
 
 Show the saved runtime state:
 
