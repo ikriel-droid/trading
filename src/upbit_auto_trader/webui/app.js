@@ -752,6 +752,22 @@ async function loadSessionReport() {
   }
 }
 
+async function deleteSessionReport() {
+  try {
+    const report = ids.reportSelect.value;
+    if (!report) {
+      ids.report.textContent = "report delete error: select a report first";
+      return;
+    }
+    ids.report.textContent = "Deleting session report...";
+    const payload = await postJson("/api/report-delete", { report });
+    ids.report.textContent = pretty(payload);
+    await refreshDashboard();
+  } catch (error) {
+    ids.report.textContent = `report delete error: ${error.message}`;
+  }
+}
+
 async function refreshJobs() {
   try {
     const payload = await getJson("/api/jobs");
@@ -1013,6 +1029,7 @@ document.getElementById("run-doctor").addEventListener("click", runDoctor);
 document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
 document.getElementById("run-session-report").addEventListener("click", runSessionReport);
 document.getElementById("load-session-report").addEventListener("click", loadSessionReport);
+document.getElementById("delete-session-report").addEventListener("click", deleteSessionReport);
 document.getElementById("save-config").addEventListener("click", saveConfig);
 document.getElementById("save-current-preset").addEventListener("click", saveCurrentPreset);
 document.getElementById("save-best-preset").addEventListener("click", () => runOptimize(true));

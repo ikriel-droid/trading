@@ -166,6 +166,12 @@ Show one saved session report:
 .venv\Scripts\python.exe -m upbit_auto_trader.main report-show --config config.example.json --report session-report-20260324T0000000000-paper-btc-main.json
 ```
 
+Delete one saved session report:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main report-delete --config config.example.json --report session-report-20260324T0000000000-paper-btc-main.json
+```
+
 Managed background jobs automatically export a session report when they stop or finish if a runtime `state_path` is available. The latest generated report is also surfaced in the web UI job panel and alert center.
 
 List recent managed job runs:
@@ -212,7 +218,7 @@ Run a local preflight check before paper or live operation:
 
 `doctor` now also inspects managed-job heartbeat files under `data/webui-jobs` and reports stale workers alongside config, state, and exchange readiness.
 
-The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, a session report center with export and reload, a one-click doctor preflight check, key config editing, strategy preset save or apply controls, launch-profile save or load controls, separate selector-state input, start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs, plus an `Emergency Stop All` control for all managed jobs and a `Clean Stopped Jobs` action that removes finished heartbeat artifacts. Background job logs are rotated automatically under `data/webui-jobs`, and managed jobs can now auto-restart with a watchdog and bounded retry count.
+The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, a session report center with export, reload, and delete actions, a one-click doctor preflight check, key config editing, strategy preset save or apply controls, launch-profile save or load controls, separate selector-state input, start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs, plus an `Emergency Stop All` control for all managed jobs and a `Clean Stopped Jobs` action that removes finished heartbeat artifacts. Background job logs are rotated automatically under `data/webui-jobs`, and managed jobs can now auto-restart with a watchdog and bounded retry count.
 
 Managed jobs now also write heartbeat files under `data/webui-jobs/*.heartbeat.json`, and the control room surfaces stale or missing heartbeats as warnings so a hung process is easier to spot.
 

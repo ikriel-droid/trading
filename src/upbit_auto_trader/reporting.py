@@ -225,6 +225,31 @@ def load_session_report(config_path: str, report_ref: str, output_dir: str | Non
     }
 
 
+def delete_session_report(config_path: str, report_ref: str, output_dir: str | None = None) -> Dict[str, Any]:
+    path = _resolve_report_path(config_path, report_ref, output_dir)
+    html_path = path.with_suffix(".html")
+
+    removed_json = False
+    removed_html = False
+    try:
+        if path.exists():
+            path.unlink()
+            removed_json = True
+        if html_path.exists():
+            html_path.unlink()
+            removed_html = True
+    except OSError as exc:
+        raise ValueError("report delete failed: {0}".format(exc)) from exc
+
+    return {
+        "name": path.stem,
+        "json_path": str(path),
+        "html_path": str(html_path),
+        "removed_json": removed_json,
+        "removed_html": removed_html,
+    }
+
+
 def write_runtime_report(
     config_path: str,
     state_path: str,

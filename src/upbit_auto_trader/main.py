@@ -29,7 +29,13 @@ from .presets import (
     save_grid_search_best_preset,
 )
 from .profiles import default_profile_dir, list_operator_profiles
-from .reporting import default_reports_dir, list_session_reports, load_session_report, write_runtime_report
+from .reporting import (
+    default_reports_dir,
+    delete_session_report,
+    list_session_reports,
+    load_session_report,
+    write_runtime_report,
+)
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
@@ -135,6 +141,11 @@ def build_parser() -> argparse.ArgumentParser:
     report_show_parser.add_argument("--config", required=True)
     report_show_parser.add_argument("--report", required=True)
     report_show_parser.add_argument("--output-dir")
+
+    report_delete_parser = subparsers.add_parser("report-delete")
+    report_delete_parser.add_argument("--config", required=True)
+    report_delete_parser.add_argument("--report", required=True)
+    report_delete_parser.add_argument("--output-dir")
 
     job_history_parser = subparsers.add_parser("job-history")
     job_history_parser.add_argument("--config", required=True)
@@ -1163,6 +1174,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "report-show":
             _print_json(load_session_report(args.config, args.report, output_dir=args.output_dir))
+            return 0
+
+        if args.command == "report-delete":
+            _print_json(delete_session_report(args.config, args.report, output_dir=args.output_dir))
             return 0
 
         if args.command == "job-history":

@@ -471,6 +471,27 @@ class MainTests(unittest.TestCase):
             self.assertEqual(result, 0)
             shown = json.loads(stdout.getvalue())
             self.assertEqual(shown["json_path"], payload["json_path"])
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "report-delete",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--report",
+                        payload["json_path"],
+                        "--output-dir",
+                        str(reports_dir),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            deleted = json.loads(stdout.getvalue())
+            self.assertTrue(deleted["removed_json"])
+            self.assertTrue(deleted["removed_html"])
+            self.assertFalse(pathlib.Path(payload["json_path"]).exists())
+            self.assertFalse(pathlib.Path(payload["html_path"]).exists())
         finally:
             if state_path.exists():
                 state_path.unlink()

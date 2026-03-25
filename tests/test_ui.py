@@ -21,6 +21,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_apply_preset_action,
     run_backtest_action,
     run_doctor_action,
+    run_delete_report_action,
     run_live_reconcile_action,
     run_show_report_action,
     run_load_profile_action,
@@ -694,6 +695,24 @@ class UiTests(unittest.TestCase):
         self.assertTrue(pathlib.Path(exported["html_path"]).exists())
         self.assertEqual(loaded["json_path"], exported["json_path"])
         self.assertIn("recent_events", loaded)
+
+    def test_session_report_can_be_deleted(self):
+        exported = run_session_report_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            mode="paper",
+            label="test-ui-report-delete",
+        )
+
+        deleted = run_delete_report_action(
+            config_path=str(self.temp_config_path),
+            report_ref=exported["json_path"],
+        )
+
+        self.assertTrue(deleted["removed_json"])
+        self.assertTrue(deleted["removed_html"])
+        self.assertFalse(pathlib.Path(exported["json_path"]).exists())
+        self.assertFalse(pathlib.Path(exported["html_path"]).exists())
 
     def test_scan_and_reconcile_actions_return_expected_keys(self):
         broker = FakeUiBroker()
