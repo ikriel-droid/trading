@@ -180,6 +180,12 @@ Emergency-stop all heartbeat-discovered managed jobs from PowerShell:
 .venv\Scripts\python.exe -m upbit_auto_trader.main job-stop-all --config config.example.json --timeout 5
 ```
 
+Clean stopped-job heartbeat artifacts from PowerShell:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main job-cleanup --config config.example.json
+```
+
 Start the browser-based control room UI:
 
 ```powershell
@@ -206,7 +212,7 @@ Run a local preflight check before paper or live operation:
 
 `doctor` now also inspects managed-job heartbeat files under `data/webui-jobs` and reports stale workers alongside config, state, and exchange readiness.
 
-The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, a session report center with export and reload, a one-click doctor preflight check, key config editing, strategy preset save or apply controls, launch-profile save or load controls, separate selector-state input, start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs, plus an `Emergency Stop All` control for all managed jobs. Background job logs are rotated automatically under `data/webui-jobs`, and managed jobs can now auto-restart with a watchdog and bounded retry count.
+The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, a session report center with export and reload, a one-click doctor preflight check, key config editing, strategy preset save or apply controls, launch-profile save or load controls, separate selector-state input, start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs, plus an `Emergency Stop All` control for all managed jobs and a `Clean Stopped Jobs` action that removes finished heartbeat artifacts. Background job logs are rotated automatically under `data/webui-jobs`, and managed jobs can now auto-restart with a watchdog and bounded retry count.
 
 Managed jobs now also write heartbeat files under `data/webui-jobs/*.heartbeat.json`, and the control room surfaces stale or missing heartbeats as warnings so a hung process is easier to spot.
 

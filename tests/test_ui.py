@@ -3,6 +3,7 @@ import pathlib
 import sys
 import json
 import unittest
+from unittest import mock
 
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -15,6 +16,7 @@ from upbit_auto_trader.models import Balance, ClosedTrade  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.ui import (  # noqa: E402
     build_dashboard_payload,
+    cleanup_managed_jobs,
     load_editable_config,
     run_apply_preset_action,
     run_backtest_action,
@@ -92,6 +94,7 @@ class RecordingJobManager:
     def __init__(self):
         self.calls = []
         self.stop_all_calls = 0
+        self.cleanup_calls = []
 
     def start_job(
         self,
@@ -132,6 +135,16 @@ class RecordingJobManager:
         return {
             "requested": len(self.calls),
             "stopped": len(self.calls),
+            "items": list(self.calls),
+        }
+
+    def cleanup_stopped(self, remove_logs=False):
+        self.cleanup_calls.append(remove_logs)
+        return {
+            "removed_jobs": len(self.calls),
+            "removed_heartbeats": len(self.calls),
+            "removed_logs": len(self.calls) if remove_logs else 0,
+            "skipped_running": 0,
             "items": list(self.calls),
         }
 
@@ -949,6 +962,30 @@ class UiTests(unittest.TestCase):
         self.assertEqual(manager.stop_all_calls, 1)
         self.assertEqual(stopped["requested"], 2)
         self.assertEqual(stopped["stopped"], 2)
+
+    def test_cleanup_managed_jobs_returns_manager_payload(self):
+        manager = RecordingJobManager()
+        manager.start_job(
+            name="paper-loop",
+            kind="paper-loop",
+            command=["python", "-m", "upbit_auto_trader.main", "run-loop"],
+        )
+
+        with mock.patch(
+            "upbit_auto_trader.ui.cleanup_job_artifacts",
+            return_value={
+                "removed_jobs": 0,
+                "removed_heartbeats": 0,
+                "removed_logs": 0,
+                "skipped_running": 0,
+                "items": [],
+            },
+        ):
+            cleaned = cleanup_managed_jobs(job_manager=manager, remove_logs=False)
+
+        self.assertEqual(manager.cleanup_calls, [False])
+        self.assertEqual(cleaned["removed_jobs"], 1)
+        self.assertEqual(cleaned["removed_heartbeats"], 1)
 
 
 if __name__ == "__main__":

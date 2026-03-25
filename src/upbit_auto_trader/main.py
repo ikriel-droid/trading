@@ -18,7 +18,7 @@ from .datafeed import (
     write_csv_candles,
 )
 from .doctor import build_doctor_report
-from .jobs import HEARTBEAT_ENV_VAR, list_job_history, stop_jobs_by_heartbeat
+from .jobs import HEARTBEAT_ENV_VAR, cleanup_job_artifacts, list_job_history, stop_jobs_by_heartbeat
 from .optimizer import run_grid_search
 from .notifier import DiscordWebhookNotifier, NotificationError
 from .presets import (
@@ -143,6 +143,10 @@ def build_parser() -> argparse.ArgumentParser:
     job_stop_all_parser = subparsers.add_parser("job-stop-all")
     job_stop_all_parser.add_argument("--config", required=True)
     job_stop_all_parser.add_argument("--timeout", type=float, default=5.0)
+
+    job_cleanup_parser = subparsers.add_parser("job-cleanup")
+    job_cleanup_parser.add_argument("--config", required=True)
+    job_cleanup_parser.add_argument("--remove-logs", action="store_true")
 
     job_preview_parser = subparsers.add_parser("job-preview")
     job_preview_parser.add_argument("--config", required=True)
@@ -1167,6 +1171,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "job-stop-all":
             _print_json(stop_jobs_by_heartbeat(timeout_seconds=args.timeout))
+            return 0
+
+        if args.command == "job-cleanup":
+            _print_json(cleanup_job_artifacts(remove_logs=args.remove_logs))
             return 0
 
         if args.command == "job-preview":

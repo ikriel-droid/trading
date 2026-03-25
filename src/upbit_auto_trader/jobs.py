@@ -272,6 +272,51 @@ class BackgroundJobManager:
             "items": items,
         }
 
+    def cleanup_stopped(self, remove_logs: bool = False) -> Dict[str, Any]:
+        with self._lock:
+            self._refresh_jobs_locked()
+            names = list(self._jobs.keys())
+            items: List[Dict[str, Any]] = []
+            removed_logs = 0
+            skipped_running = 0
+            for name in names:
+                job = self._jobs.get(name)
+                if job is None:
+                    continue
+                if job.process.poll() is None:
+                    skipped_running += 1
+                    continue
+
+                self._finalize_job_resources(job)
+                removed_heartbeat = _remove_file_if_exists(Path(job.heartbeat_path))
+                log_paths = _job_log_paths(Path(job.log_path))
+                cleaned_logs = 0
+                if remove_logs:
+                    for path in log_paths:
+                        if _remove_file_if_exists(path):
+                            cleaned_logs += 1
+                    removed_logs += cleaned_logs
+
+                items.append(
+                    {
+                        "name": job.name,
+                        "kind": job.kind,
+                        "heartbeat_path": job.heartbeat_path,
+                        "removed_heartbeat": removed_heartbeat,
+                        "removed_logs": cleaned_logs,
+                        "running": False,
+                    }
+                )
+                self._jobs.pop(name, None)
+
+        return {
+            "removed_jobs": len(items),
+            "removed_heartbeats": sum(1 for item in items if item.get("removed_heartbeat")),
+            "removed_logs": removed_logs,
+            "skipped_running": skipped_running,
+            "items": items,
+        }
+
     def _serialize_job(self, job: ManagedJob) -> Dict[str, Any]:
         running = job.process.poll() is None
         heartbeat = _load_json_record(Path(job.heartbeat_path))
@@ -660,8 +705,15 @@ def list_job_heartbeats(log_dir: Optional[str] = None, limit: int = DEFAULT_HIST
         phase = str(payload.get("phase", "")).strip()
         if phase == "completed":
             status = "completed"
+            running = False
         else:
-            status = _heartbeat_status(payload, running=True)
+            pid_value = payload.get("pid")
+            try:
+                pid = int(pid_value)
+            except (TypeError, ValueError):
+                pid = None
+            running = _process_exists(pid) if pid is not None else None
+            status = "stopped" if running is False else _heartbeat_status(payload, running=True)
 
         items.append(
             {
@@ -674,6 +726,7 @@ def list_job_heartbeats(log_dir: Optional[str] = None, limit: int = DEFAULT_HIST
                 "stale_after_seconds": payload.get("stale_after_seconds", DEFAULT_HEARTBEAT_STALE_SECONDS),
                 "age_seconds": age_seconds,
                 "status": status,
+                "running": running,
             }
         )
 
@@ -784,6 +837,8 @@ def build_live_supervisor_command(
 
 
 def _process_exists(pid: int) -> bool:
+    if pid is None:
+        return False
     try:
         os.kill(pid, 0)
     except OSError:
@@ -884,5 +939,72 @@ def stop_jobs_by_heartbeat(log_dir: Optional[str] = None, timeout_seconds: float
     return {
         "requested": len(items),
         "stopped": sum(1 for item in items if item.get("status") == "stopped"),
+        "items": items,
+    }
+
+
+def _remove_file_if_exists(path: Path) -> bool:
+    try:
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _job_log_paths(log_path: Path) -> List[Path]:
+    parent = log_path.parent
+    return [log_path, *sorted(parent.glob("{0}.*".format(log_path.name)))]
+
+
+def cleanup_job_artifacts(log_dir: Optional[str] = None, remove_logs: bool = False) -> Dict[str, Any]:
+    path = Path(log_dir) if log_dir else JOB_LOG_DIR
+    if not path.exists():
+        return {
+            "removed_jobs": 0,
+            "removed_heartbeats": 0,
+            "removed_logs": 0,
+            "skipped_running": 0,
+            "items": [],
+        }
+
+    items: List[Dict[str, Any]] = []
+    removed_logs = 0
+    skipped_running = 0
+    for heartbeat in list_job_heartbeats(log_dir=str(path), limit=1000):
+        if heartbeat.get("running") is True:
+            skipped_running += 1
+            continue
+        if heartbeat.get("status") not in {"completed", "stopped"}:
+            continue
+
+        heartbeat_path = Path(str(heartbeat.get("path", "")))
+        removed_heartbeat = _remove_file_if_exists(heartbeat_path)
+        cleaned_logs = 0
+        if remove_logs:
+            log_paths = _job_log_paths(path / "{0}.log".format(str(heartbeat.get("job_name", ""))))
+            for log_path in log_paths:
+                if _remove_file_if_exists(log_path):
+                    cleaned_logs += 1
+            removed_logs += cleaned_logs
+
+        items.append(
+            {
+                "name": str(heartbeat.get("job_name", "")),
+                "kind": str(heartbeat.get("job_kind", "")),
+                "heartbeat_path": str(heartbeat_path),
+                "removed_heartbeat": removed_heartbeat,
+                "removed_logs": cleaned_logs,
+                "running": False,
+                "status": str(heartbeat.get("status", "")),
+            }
+        )
+
+    return {
+        "removed_jobs": len(items),
+        "removed_heartbeats": sum(1 for item in items if item.get("removed_heartbeat")),
+        "removed_logs": removed_logs,
+        "skipped_running": skipped_running,
         "items": items,
     }

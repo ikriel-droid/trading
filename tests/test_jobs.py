@@ -1,3 +1,4 @@
+import json
 import pathlib
 import sys
 import time
@@ -15,6 +16,7 @@ from upbit_auto_trader.jobs import (  # noqa: E402
     RotatingLogWriter,
     build_live_supervisor_command,
     build_paper_selector_command,
+    cleanup_job_artifacts,
     list_job_history,
     stop_jobs_by_heartbeat,
 )
@@ -45,7 +47,7 @@ class JobTests(unittest.TestCase):
     def tearDown(self):
         for manager in self.managers:
             manager.stop_all()
-        for pattern in ("test-job.log*", "test-job-*.log*", "rotation-job.log*", "rotation-*.log*", "restart-job.log*", "heartbeat-stop-job.log*"):
+        for pattern in ("test-job.log*", "test-job-*.log*", "rotation-job.log*", "rotation-*.log*", "restart-job.log*", "heartbeat-stop-job.log*", "cleanup-job.log*", "orphan-cleanup.log*"):
             for path in JOB_LOG_DIR.glob(pattern):
                 if path.exists():
                     path.unlink()
@@ -389,6 +391,61 @@ class JobTests(unittest.TestCase):
         self.assertEqual(stopped["items"][0]["status"], "stopped")
         self.assertIsNotNone(payload)
         self.assertFalse(payload["running"])
+
+    def test_manager_cleanup_stopped_removes_job_heartbeat(self):
+        manager = self.build_manager()
+        command = [
+            sys.executable,
+            "-c",
+            "import time; print('cleanup-job'); time.sleep(0.2)",
+        ]
+
+        started = manager.start_job(
+            name="cleanup-job",
+            kind="test",
+            command=command,
+            cwd=str(PROJECT_ROOT),
+        )
+        time.sleep(0.4)
+
+        cleaned = manager.cleanup_stopped(remove_logs=False)
+
+        self.assertEqual(cleaned["removed_jobs"], 1)
+        self.assertEqual(cleaned["removed_heartbeats"], 1)
+        self.assertEqual(cleaned["items"][0]["name"], "cleanup-job")
+        self.assertFalse(pathlib.Path(started["heartbeat_path"]).exists())
+        self.assertIsNone(manager.get_job("cleanup-job"))
+
+    def test_cleanup_job_artifacts_removes_completed_heartbeat_and_logs(self):
+        heartbeat_path = JOB_LOG_DIR / "orphan-cleanup.heartbeat.json"
+        log_path = JOB_LOG_DIR / "orphan-cleanup.log"
+        archive_path = JOB_LOG_DIR / "orphan-cleanup.log.1"
+        with open(heartbeat_path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "updated_at": "2026-03-25T00:00:00+00:00",
+                    "job_name": "orphan-cleanup",
+                    "job_kind": "paper-loop",
+                    "phase": "completed",
+                    "stale_after_seconds": 10,
+                    "pid": 999999,
+                },
+                handle,
+                ensure_ascii=False,
+                indent=2,
+            )
+            handle.write("\n")
+        log_path.write_text("hello\n", encoding="utf-8")
+        archive_path.write_text("hello-1\n", encoding="utf-8")
+
+        cleaned = cleanup_job_artifacts(log_dir=str(JOB_LOG_DIR), remove_logs=True)
+
+        self.assertEqual(cleaned["removed_jobs"], 1)
+        self.assertEqual(cleaned["removed_heartbeats"], 1)
+        self.assertEqual(cleaned["removed_logs"], 2)
+        self.assertFalse(heartbeat_path.exists())
+        self.assertFalse(log_path.exists())
+        self.assertFalse(archive_path.exists())
 
 
 if __name__ == "__main__":

@@ -841,6 +841,17 @@ async function stopAllJobs() {
   }
 }
 
+async function cleanupJobs() {
+  try {
+    ids.jobs.textContent = "Cleaning stopped job artifacts...";
+    const payload = await postJson("/api/jobs-cleanup", { remove_logs: false });
+    ids.jobs.textContent = pretty(payload);
+    await refreshJobs();
+  } catch (error) {
+    ids.jobs.textContent = `cleanup jobs error: ${error.message}`;
+  }
+}
+
 async function saveConfig() {
   try {
     ids.config.textContent = "Saving config...";
@@ -1037,6 +1048,7 @@ document.getElementById("stop-live-daemon").addEventListener("click", () => stop
 document.getElementById("start-live-supervisor").addEventListener("click", () => startJob("live-supervisor"));
 document.getElementById("stop-live-supervisor").addEventListener("click", () => stopJob("live-supervisor"));
 document.getElementById("stop-all-jobs").addEventListener("click", stopAllJobs);
+document.getElementById("cleanup-jobs").addEventListener("click", cleanupJobs);
 ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 
 renderScanCards(null);

@@ -605,6 +605,36 @@ class MainTests(unittest.TestCase):
         self.assertEqual(payload["requested"], 2)
         self.assertEqual(payload["stopped"], 2)
 
+    def test_cli_job_cleanup_prints_cleanup_summary(self):
+        stdout = io.StringIO()
+        with mock.patch(
+            "upbit_auto_trader.main.cleanup_job_artifacts",
+            return_value={
+                "removed_jobs": 2,
+                "removed_heartbeats": 2,
+                "removed_logs": 0,
+                "skipped_running": 1,
+                "items": [
+                    {"name": "paper-loop"},
+                    {"name": "paper-selector"},
+                ],
+            },
+        ) as patched:
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "job-cleanup",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                    ]
+                )
+
+        self.assertEqual(result, 0)
+        patched.assert_called_once_with(remove_logs=False)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["removed_jobs"], 2)
+        self.assertEqual(payload["skipped_running"], 1)
+
     def test_run_live_daemon_updates_heartbeat_file(self):
         config = load_config(str(PROJECT_ROOT / "config.example.json"))
         config.runtime.journal_path = ""

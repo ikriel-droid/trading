@@ -19,6 +19,7 @@ from .jobs import (
     build_live_supervisor_command,
     build_paper_loop_command,
     build_paper_selector_command,
+    cleanup_job_artifacts,
 )
 from .optimizer import run_grid_search
 from .profiles import (
@@ -1441,6 +1442,22 @@ def stop_all_managed_jobs(job_manager: Optional[BackgroundJobManager] = None) ->
     return job_manager.stop_all()
 
 
+def cleanup_managed_jobs(
+    job_manager: Optional[BackgroundJobManager] = None,
+    remove_logs: bool = False,
+) -> Dict[str, Any]:
+    job_manager = job_manager or JOB_MANAGER
+    local = job_manager.cleanup_stopped(remove_logs=remove_logs)
+    orphan = cleanup_job_artifacts(remove_logs=remove_logs)
+    return {
+        "removed_jobs": int(local.get("removed_jobs", 0)) + int(orphan.get("removed_jobs", 0)),
+        "removed_heartbeats": int(local.get("removed_heartbeats", 0)) + int(orphan.get("removed_heartbeats", 0)),
+        "removed_logs": int(local.get("removed_logs", 0)) + int(orphan.get("removed_logs", 0)),
+        "skipped_running": int(local.get("skipped_running", 0)) + int(orphan.get("skipped_running", 0)),
+        "items": [*local.get("items", []), *orphan.get("items", [])],
+    }
+
+
 def _build_handler(
     config_path: str,
     state_path: Optional[str],
@@ -1680,6 +1697,9 @@ def _build_handler(
                 return
             if self.path == "/api/jobs-stop-all":
                 self._write_json(stop_all_managed_jobs())
+                return
+            if self.path == "/api/jobs-cleanup":
+                self._write_json(cleanup_managed_jobs(remove_logs=bool(body.get("remove_logs", False))))
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
 
