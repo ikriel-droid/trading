@@ -1436,6 +1436,11 @@ def stop_managed_job(job_name: str, job_manager: Optional[BackgroundJobManager] 
     return job_manager.stop_job(job_name)
 
 
+def stop_all_managed_jobs(job_manager: Optional[BackgroundJobManager] = None) -> Dict[str, Any]:
+    job_manager = job_manager or JOB_MANAGER
+    return job_manager.stop_all()
+
+
 def _build_handler(
     config_path: str,
     state_path: Optional[str],
@@ -1672,6 +1677,9 @@ def _build_handler(
                 return
             if self.path == "/api/jobs-stop":
                 self._write_json(stop_managed_job(body.get("job_name", "")))
+                return
+            if self.path == "/api/jobs-stop-all":
+                self._write_json(stop_all_managed_jobs())
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
 

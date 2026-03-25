@@ -6,6 +6,7 @@ import shutil
 import sys
 import unittest
 from contextlib import redirect_stdout
+from unittest import mock
 
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -573,6 +574,36 @@ class MainTests(unittest.TestCase):
         finally:
             if config_path.exists():
                 config_path.unlink()
+
+    def test_cli_job_stop_all_prints_heartbeat_stop_summary(self):
+        stdout = io.StringIO()
+        with mock.patch(
+            "upbit_auto_trader.main.stop_jobs_by_heartbeat",
+            return_value={
+                "requested": 2,
+                "stopped": 2,
+                "items": [
+                    {"job_name": "paper-loop", "status": "stopped"},
+                    {"job_name": "paper-selector", "status": "stopped"},
+                ],
+            },
+        ) as patched:
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "job-stop-all",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--timeout",
+                        "1.5",
+                    ]
+                )
+
+        self.assertEqual(result, 0)
+        patched.assert_called_once_with(timeout_seconds=1.5)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["requested"], 2)
+        self.assertEqual(payload["stopped"], 2)
 
     def test_run_live_daemon_updates_heartbeat_file(self):
         config = load_config(str(PROJECT_ROOT / "config.example.json"))

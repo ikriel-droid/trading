@@ -830,6 +830,17 @@ async function stopJob(jobName) {
   }
 }
 
+async function stopAllJobs() {
+  try {
+    ids.jobs.textContent = "Stopping all managed jobs...";
+    const payload = await postJson("/api/jobs-stop-all", {});
+    ids.jobs.textContent = pretty(payload);
+    await refreshJobs();
+  } catch (error) {
+    ids.jobs.textContent = `stop all jobs error: ${error.message}`;
+  }
+}
+
 async function saveConfig() {
   try {
     ids.config.textContent = "Saving config...";
@@ -1025,6 +1036,7 @@ document.getElementById("start-live-daemon").addEventListener("click", () => sta
 document.getElementById("stop-live-daemon").addEventListener("click", () => stopJob("live-daemon"));
 document.getElementById("start-live-supervisor").addEventListener("click", () => startJob("live-supervisor"));
 document.getElementById("stop-live-supervisor").addEventListener("click", () => stopJob("live-supervisor"));
+document.getElementById("stop-all-jobs").addEventListener("click", stopAllJobs);
 ids.refreshSeconds.addEventListener("change", resetAutoRefresh);
 
 renderScanCards(null);

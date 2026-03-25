@@ -1,5 +1,6 @@
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -183,6 +184,7 @@ class BackgroundJobManager:
                 log_writer=log_writer,
                 heartbeat_path=heartbeat_path,
             )
+            _merge_job_heartbeat(heartbeat_path, pid=process.pid)
             job = ManagedJob(
                 name=name,
                 kind=kind,
@@ -260,11 +262,15 @@ class BackgroundJobManager:
             job = self._jobs.get(name)
             return self._serialize_job(job) if job is not None else None
 
-    def stop_all(self) -> None:
+    def stop_all(self) -> Dict[str, Any]:
         with self._lock:
             names = list(self._jobs.keys())
-        for name in names:
-            self.stop_job(name)
+        items = [self.stop_job(name) for name in names]
+        return {
+            "requested": len(names),
+            "stopped": sum(1 for item in items if item.get("found", True) and not item.get("running", False)),
+            "items": items,
+        }
 
     def _serialize_job(self, job: ManagedJob) -> Dict[str, Any]:
         running = job.process.poll() is None
@@ -438,6 +444,7 @@ class BackgroundJobManager:
                     log_writer=job.log_writer,
                     heartbeat_path=job.heartbeat_path,
                 )
+                _merge_job_heartbeat(job.heartbeat_path, pid=process.pid)
                 job.process = process
                 job.output_thread = output_thread
                 job.started_at = now
@@ -565,6 +572,14 @@ def _seed_job_heartbeat(path: str, name: str, kind: str, phase: str) -> None:
     )
 
 
+def _merge_job_heartbeat(path: str, **fields: Any) -> None:
+    current = _load_json_record(Path(path)) or {}
+    current.update(fields)
+    if "updated_at" not in current:
+        current["updated_at"] = _iso_utc(time.time())
+    _write_json_record(Path(path), current)
+
+
 def _heartbeat_age_seconds(heartbeat: Optional[Dict[str, Any]], now: Optional[float] = None) -> Optional[float]:
     if not heartbeat:
         return None
@@ -652,6 +667,7 @@ def list_job_heartbeats(log_dir: Optional[str] = None, limit: int = DEFAULT_HIST
             {
                 "job_name": str(payload.get("job_name") or heartbeat_path.name.replace(".heartbeat.json", "")),
                 "job_kind": str(payload.get("job_kind") or payload.get("kind") or ""),
+                "pid": payload.get("pid"),
                 "path": str(heartbeat_path),
                 "updated_at": updated_at,
                 "phase": phase,
@@ -765,3 +781,108 @@ def build_live_supervisor_command(
     if reconcile_every is not None:
         command.extend(["--reconcile-every", str(reconcile_every)])
     return command
+
+
+def _process_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _terminate_pid(pid: int, timeout_seconds: float = 5.0) -> Dict[str, Any]:
+    if pid <= 0:
+        return {"ok": False, "status": "invalid_pid", "pid": pid}
+
+    if not _process_exists(pid):
+        return {"ok": False, "status": "not_running", "pid": pid}
+
+    os.kill(pid, signal.SIGTERM)
+    deadline = time.time() + max(0.1, timeout_seconds)
+    while time.time() < deadline and _process_exists(pid):
+        time.sleep(0.05)
+    if _process_exists(pid) and os.name == "nt":
+        completed = subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        time.sleep(0.1)
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        if "access denied" in stderr.lower():
+            return {
+                "ok": True,
+                "status": "stopped",
+                "pid": pid,
+                "returncode": completed.returncode,
+                "stdout": stdout,
+                "stderr": stderr,
+            }
+        return {
+            "ok": not _process_exists(pid),
+            "status": "stopped" if not _process_exists(pid) else "timeout",
+            "pid": pid,
+            "returncode": completed.returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+    if _process_exists(pid):
+        os.kill(pid, signal.SIGKILL)
+        time.sleep(0.05)
+    return {
+        "ok": not _process_exists(pid),
+        "status": "stopped" if not _process_exists(pid) else "timeout",
+        "pid": pid,
+    }
+
+
+def stop_jobs_by_heartbeat(log_dir: Optional[str] = None, timeout_seconds: float = 5.0) -> Dict[str, Any]:
+    items = []
+    for heartbeat in list_job_heartbeats(log_dir=log_dir, limit=1000):
+        if heartbeat.get("status") == "completed":
+            items.append(
+                {
+                    "job_name": heartbeat.get("job_name", ""),
+                    "job_kind": heartbeat.get("job_kind", ""),
+                    "heartbeat_path": heartbeat.get("path", ""),
+                    "pid": heartbeat.get("pid"),
+                    "status": "completed",
+                    "ok": False,
+                }
+            )
+            continue
+
+        pid_value = heartbeat.get("pid")
+        try:
+            pid = int(pid_value)
+        except (TypeError, ValueError):
+            items.append(
+                {
+                    "job_name": heartbeat.get("job_name", ""),
+                    "job_kind": heartbeat.get("job_kind", ""),
+                    "heartbeat_path": heartbeat.get("path", ""),
+                    "pid": pid_value,
+                    "status": "missing_pid",
+                    "ok": False,
+                }
+            )
+            continue
+
+        result = _terminate_pid(pid, timeout_seconds=timeout_seconds)
+        items.append(
+            {
+                "job_name": heartbeat.get("job_name", ""),
+                "job_kind": heartbeat.get("job_kind", ""),
+                "heartbeat_path": heartbeat.get("path", ""),
+                **result,
+            }
+        )
+
+    return {
+        "requested": len(items),
+        "stopped": sum(1 for item in items if item.get("status") == "stopped"),
+        "items": items,
+    }

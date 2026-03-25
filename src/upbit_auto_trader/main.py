@@ -18,7 +18,7 @@ from .datafeed import (
     write_csv_candles,
 )
 from .doctor import build_doctor_report
-from .jobs import HEARTBEAT_ENV_VAR, list_job_history
+from .jobs import HEARTBEAT_ENV_VAR, list_job_history, stop_jobs_by_heartbeat
 from .optimizer import run_grid_search
 from .notifier import DiscordWebhookNotifier, NotificationError
 from .presets import (
@@ -139,6 +139,10 @@ def build_parser() -> argparse.ArgumentParser:
     job_history_parser = subparsers.add_parser("job-history")
     job_history_parser.add_argument("--config", required=True)
     job_history_parser.add_argument("--limit", type=int, default=12)
+
+    job_stop_all_parser = subparsers.add_parser("job-stop-all")
+    job_stop_all_parser.add_argument("--config", required=True)
+    job_stop_all_parser.add_argument("--timeout", type=float, default=5.0)
 
     job_preview_parser = subparsers.add_parser("job-preview")
     job_preview_parser.add_argument("--config", required=True)
@@ -362,6 +366,7 @@ def _write_heartbeat(kind: str, phase: str, stale_after_seconds: float, **payloa
         "kind": kind,
         "phase": phase,
         "stale_after_seconds": round(max(0.05, float(stale_after_seconds)), 3),
+        "pid": os.getpid(),
     }
     for key, value in payload.items():
         if value is None:
@@ -1158,6 +1163,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "job-history":
             _print_json({"items": list_job_history(limit=args.limit)})
+            return 0
+
+        if args.command == "job-stop-all":
+            _print_json(stop_jobs_by_heartbeat(timeout_seconds=args.timeout))
             return 0
 
         if args.command == "job-preview":

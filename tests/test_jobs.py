@@ -16,6 +16,7 @@ from upbit_auto_trader.jobs import (  # noqa: E402
     build_live_supervisor_command,
     build_paper_selector_command,
     list_job_history,
+    stop_jobs_by_heartbeat,
 )
 from upbit_auto_trader.config import load_config  # noqa: E402
 from upbit_auto_trader.datafeed import load_csv_candles  # noqa: E402
@@ -44,7 +45,7 @@ class JobTests(unittest.TestCase):
     def tearDown(self):
         for manager in self.managers:
             manager.stop_all()
-        for pattern in ("test-job.log*", "rotation-job.log*", "rotation-*.log*", "restart-job.log*"):
+        for pattern in ("test-job.log*", "test-job-*.log*", "rotation-job.log*", "rotation-*.log*", "restart-job.log*", "heartbeat-stop-job.log*"):
             for path in JOB_LOG_DIR.glob(pattern):
                 if path.exists():
                     path.unlink()
@@ -338,6 +339,56 @@ class JobTests(unittest.TestCase):
 
         history = list_job_history(history_path=str(self.history_path), limit=5)
         self.assertTrue(any(item["status"] == "retrying" and item["exit_reason"] == "stale_heartbeat" for item in history))
+
+    def test_manager_stop_all_returns_stopped_jobs(self):
+        manager = self.build_manager()
+        command = [
+            sys.executable,
+            "-c",
+            "import time; print('job-a'); time.sleep(1.0)",
+        ]
+        second_command = [
+            sys.executable,
+            "-c",
+            "import time; print('job-b'); time.sleep(1.0)",
+        ]
+
+        manager.start_job(name="test-job-a", kind="test", command=command, cwd=str(PROJECT_ROOT))
+        manager.start_job(name="test-job-b", kind="test", command=second_command, cwd=str(PROJECT_ROOT))
+        time.sleep(0.1)
+
+        stopped = manager.stop_all()
+
+        self.assertEqual(stopped["requested"], 2)
+        self.assertEqual(stopped["stopped"], 2)
+        self.assertEqual(len(stopped["items"]), 2)
+        self.assertTrue(all(not item["running"] for item in stopped["items"]))
+
+    def test_stop_jobs_by_heartbeat_terminates_running_jobs(self):
+        manager = self.build_manager(watchdog_interval_seconds=0.05)
+        command = [
+            sys.executable,
+            "-c",
+            "import time; print('heartbeat-stop'); time.sleep(10.0)",
+        ]
+        manager.start_job(
+            name="heartbeat-stop-job",
+            kind="test",
+            command=command,
+            cwd=str(PROJECT_ROOT),
+        )
+        time.sleep(0.2)
+
+        stopped = stop_jobs_by_heartbeat(log_dir=str(JOB_LOG_DIR), timeout_seconds=2.0)
+        time.sleep(0.2)
+        payload = manager.get_job("heartbeat-stop-job")
+
+        self.assertEqual(stopped["requested"], 1)
+        self.assertEqual(stopped["stopped"], 1)
+        self.assertEqual(stopped["items"][0]["job_name"], "heartbeat-stop-job")
+        self.assertEqual(stopped["items"][0]["status"], "stopped")
+        self.assertIsNotNone(payload)
+        self.assertFalse(payload["running"])
 
 
 if __name__ == "__main__":

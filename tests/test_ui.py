@@ -33,6 +33,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_signal_action,
     preview_managed_job,
     start_managed_job,
+    stop_all_managed_jobs,
     update_editable_config,
 )
 
@@ -90,6 +91,7 @@ class FakeUiBroker:
 class RecordingJobManager:
     def __init__(self):
         self.calls = []
+        self.stop_all_calls = 0
 
     def start_job(
         self,
@@ -124,6 +126,14 @@ class RecordingJobManager:
         }
         self.calls.append(payload)
         return payload
+
+    def stop_all(self):
+        self.stop_all_calls += 1
+        return {
+            "requested": len(self.calls),
+            "stopped": len(self.calls),
+            "items": list(self.calls),
+        }
 
 
 class StaticJobManager:
@@ -920,6 +930,25 @@ class UiTests(unittest.TestCase):
 
         self.assertTrue(started["report_on_exit"])
         self.assertTrue(started["report_state_path"].endswith("data\\paper-state-ui.json"))
+
+    def test_stop_all_managed_jobs_returns_manager_payload(self):
+        manager = RecordingJobManager()
+        manager.start_job(
+            name="paper-loop",
+            kind="paper-loop",
+            command=["python", "-m", "upbit_auto_trader.main", "run-loop"],
+        )
+        manager.start_job(
+            name="paper-selector",
+            kind="paper-selector",
+            command=["python", "-m", "upbit_auto_trader.main", "run-selector"],
+        )
+
+        stopped = stop_all_managed_jobs(job_manager=manager)
+
+        self.assertEqual(manager.stop_all_calls, 1)
+        self.assertEqual(stopped["requested"], 2)
+        self.assertEqual(stopped["stopped"], 2)
 
 
 if __name__ == "__main__":
