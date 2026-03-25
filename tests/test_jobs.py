@@ -9,6 +9,7 @@ import uuid
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+import upbit_auto_trader.jobs as jobs_module  # noqa: E402
 from upbit_auto_trader.jobs import (  # noqa: E402
     BackgroundJobManager,
     HEARTBEAT_ENV_VAR,
@@ -27,6 +28,27 @@ from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 
 
 class JobTests(unittest.TestCase):
+    TEST_JOB_PATTERNS = (
+        "test-job.log*",
+        "test-job-*.log*",
+        "rotation-job.log*",
+        "rotation-*.log*",
+        "restart-job.log*",
+        "stale-heartbeat-job.log*",
+        "heartbeat-stop-job.log*",
+        "cleanup-job.log*",
+        "orphan-cleanup.log*",
+        "test-job.heartbeat.json",
+        "test-job-*.heartbeat.json",
+        "rotation-job.heartbeat.json",
+        "rotation-*.heartbeat.json",
+        "restart-job.heartbeat.json",
+        "stale-heartbeat-job.heartbeat.json",
+        "heartbeat-stop-job.heartbeat.json",
+        "cleanup-job.heartbeat.json",
+        "orphan-cleanup.heartbeat.json",
+    )
+
     def setUp(self):
         self.managers = []
         self.config_path = PROJECT_ROOT / "config.example.json"
@@ -35,6 +57,11 @@ class JobTests(unittest.TestCase):
         self.state_backup_path = pathlib.Path(str(self.state_path) + ".bak")
         self.reports_dir = PROJECT_ROOT / "data" / "test-job-session-reports"
         self.history_path = PROJECT_ROOT / "data" / "test-job-history.jsonl"
+        self.original_job_log_dir = jobs_module.JOB_LOG_DIR
+        self.job_log_dir = PROJECT_ROOT / "data" / "test-webui-jobs-{0}".format(uuid.uuid4().hex)
+        self.job_log_dir.mkdir(parents=True, exist_ok=True)
+        jobs_module.JOB_LOG_DIR = self.job_log_dir
+        self._cleanup_test_job_artifacts()
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
@@ -50,13 +77,10 @@ class JobTests(unittest.TestCase):
     def tearDown(self):
         for manager in self.managers:
             manager.stop_all()
-        for pattern in ("test-job.log*", "test-job-*.log*", "rotation-job.log*", "rotation-*.log*", "restart-job.log*", "heartbeat-stop-job.log*", "cleanup-job.log*", "orphan-cleanup.log*"):
-            for path in JOB_LOG_DIR.glob(pattern):
-                if path.exists():
-                    path.unlink()
-        for path in JOB_LOG_DIR.glob("*.heartbeat.json"):
-            if path.exists():
-                path.unlink()
+        self._cleanup_test_job_artifacts()
+        if self.job_log_dir.exists() and not any(self.job_log_dir.iterdir()):
+            self.job_log_dir.rmdir()
+        jobs_module.JOB_LOG_DIR = self.original_job_log_dir
         flag_path = PROJECT_ROOT / "data" / "test-job-restart-flag.txt"
         if flag_path.exists():
             flag_path.unlink()
@@ -80,6 +104,12 @@ class JobTests(unittest.TestCase):
         manager = BackgroundJobManager(**kwargs)
         self.managers.append(manager)
         return manager
+
+    def _cleanup_test_job_artifacts(self):
+        for pattern in self.TEST_JOB_PATTERNS:
+            for path in self.job_log_dir.glob(pattern):
+                if path.exists():
+                    path.unlink()
 
     def _build_runtime_state(self):
         config = load_config(str(self.config_path))
@@ -151,7 +181,7 @@ class JobTests(unittest.TestCase):
 
     def test_rotating_log_writer_rotates_when_max_size_is_exceeded(self):
         log_name = "rotation-{0}.log".format(uuid.uuid4().hex)
-        log_path = JOB_LOG_DIR / log_name
+        log_path = self.job_log_dir / log_name
         writer = RotatingLogWriter(str(log_path), max_bytes=60, backup_count=2)
         try:
             writer.write("A" * 40)
@@ -161,10 +191,10 @@ class JobTests(unittest.TestCase):
             writer.close()
 
         self.assertTrue(log_path.exists())
-        self.assertTrue((JOB_LOG_DIR / "{0}.1".format(log_name)).exists())
-        self.assertIn(str(JOB_LOG_DIR / "{0}.1".format(log_name)), writer.list_archives())
+        self.assertTrue((self.job_log_dir / "{0}.1".format(log_name)).exists())
+        self.assertIn(str(self.job_log_dir / "{0}.1".format(log_name)), writer.list_archives())
 
-        for path in [log_path, JOB_LOG_DIR / "{0}.1".format(log_name), JOB_LOG_DIR / "{0}.2".format(log_name)]:
+        for path in [log_path, self.job_log_dir / "{0}.1".format(log_name), self.job_log_dir / "{0}.2".format(log_name)]:
             if path.exists():
                 path.unlink()
 
@@ -217,8 +247,18 @@ class JobTests(unittest.TestCase):
             max_restarts=1,
             restart_backoff_seconds=0.05,
         )
-        time.sleep(0.4)
-        payload = manager.get_job("restart-job")
+        payload = None
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            payload = manager.get_job("restart-job")
+            if (
+                payload is not None
+                and payload["restart_count"] == 1
+                and not payload["running"]
+                and payload["returncode"] == 0
+            ):
+                break
+            time.sleep(0.05)
 
         self.assertIsNotNone(payload)
         self.assertEqual(payload["restart_count"], 1)
@@ -398,10 +438,18 @@ class JobTests(unittest.TestCase):
         )
         time.sleep(0.2)
 
-        stopped = stop_jobs_by_heartbeat(log_dir=str(JOB_LOG_DIR), timeout_seconds=2.0)
+        stopped = None
+        deadline = time.time() + 2.5
+        while time.time() < deadline:
+            stopped = stop_jobs_by_heartbeat(log_dir=str(self.job_log_dir), timeout_seconds=2.0)
+            if stopped["stopped"] == 1:
+                break
+            time.sleep(0.05)
+
         time.sleep(0.2)
         payload = manager.get_job("heartbeat-stop-job")
 
+        self.assertIsNotNone(stopped)
         self.assertEqual(stopped["requested"], 1)
         self.assertEqual(stopped["stopped"], 1)
         self.assertEqual(stopped["items"][0]["job_name"], "heartbeat-stop-job")
@@ -434,9 +482,9 @@ class JobTests(unittest.TestCase):
         self.assertIsNone(manager.get_job("cleanup-job"))
 
     def test_cleanup_job_artifacts_removes_completed_heartbeat_and_logs(self):
-        heartbeat_path = JOB_LOG_DIR / "orphan-cleanup.heartbeat.json"
-        log_path = JOB_LOG_DIR / "orphan-cleanup.log"
-        archive_path = JOB_LOG_DIR / "orphan-cleanup.log.1"
+        heartbeat_path = self.job_log_dir / "orphan-cleanup.heartbeat.json"
+        log_path = self.job_log_dir / "orphan-cleanup.log"
+        archive_path = self.job_log_dir / "orphan-cleanup.log.1"
         with open(heartbeat_path, "w", encoding="utf-8") as handle:
             json.dump(
                 {
@@ -455,7 +503,7 @@ class JobTests(unittest.TestCase):
         log_path.write_text("hello\n", encoding="utf-8")
         archive_path.write_text("hello-1\n", encoding="utf-8")
 
-        cleaned = cleanup_job_artifacts(log_dir=str(JOB_LOG_DIR), remove_logs=True)
+        cleaned = cleanup_job_artifacts(log_dir=str(self.job_log_dir), remove_logs=True)
 
         self.assertEqual(cleaned["removed_jobs"], 1)
         self.assertEqual(cleaned["removed_heartbeats"], 1)

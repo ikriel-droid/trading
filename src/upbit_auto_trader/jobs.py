@@ -844,8 +844,27 @@ def build_live_supervisor_command(
 def _process_exists(pid: int) -> bool:
     if pid is None:
         return False
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not handle:
+            return False
+        try:
+            exit_code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return True
+            return int(exit_code.value) == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
+    except PermissionError:
+        return True
     except OSError:
         return False
     return True
@@ -858,10 +877,18 @@ def _terminate_pid(pid: int, timeout_seconds: float = 5.0) -> Dict[str, Any]:
     if not _process_exists(pid):
         return {"ok": False, "status": "not_running", "pid": pid}
 
-    os.kill(pid, signal.SIGTERM)
+    term_requested = False
+    try:
+        os.kill(pid, signal.SIGTERM)
+        term_requested = True
+    except PermissionError:
+        if os.name != "nt":
+            return {"ok": False, "status": "access_denied", "pid": pid}
+
     deadline = time.time() + max(0.1, timeout_seconds)
-    while time.time() < deadline and _process_exists(pid):
+    while term_requested and time.time() < deadline and _process_exists(pid):
         time.sleep(0.05)
+
     if _process_exists(pid) and os.name == "nt":
         completed = subprocess.run(
             ["taskkill", "/PID", str(pid), "/T", "/F"],
@@ -869,21 +896,15 @@ def _terminate_pid(pid: int, timeout_seconds: float = 5.0) -> Dict[str, Any]:
             text=True,
             check=False,
         )
-        time.sleep(0.1)
+        taskkill_deadline = time.time() + min(max(0.2, timeout_seconds), 1.0)
+        while time.time() < taskkill_deadline and _process_exists(pid):
+            time.sleep(0.05)
         stderr = completed.stderr.strip()
         stdout = completed.stdout.strip()
-        if "access denied" in stderr.lower():
-            return {
-                "ok": True,
-                "status": "stopped",
-                "pid": pid,
-                "returncode": completed.returncode,
-                "stdout": stdout,
-                "stderr": stderr,
-            }
+        running_after_taskkill = _process_exists(pid)
         return {
-            "ok": not _process_exists(pid),
-            "status": "stopped" if not _process_exists(pid) else "timeout",
+            "ok": not running_after_taskkill,
+            "status": "stopped" if not running_after_taskkill else "timeout",
             "pid": pid,
             "returncode": completed.returncode,
             "stdout": stdout,

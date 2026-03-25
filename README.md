@@ -218,6 +218,14 @@ Or use the browser-opening launcher:
 .\launch_control_room.cmd
 ```
 
+Run the remaining completion workflow from Git Bash:
+
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' .\complete_remaining.sh all-safe
+```
+
+The script also supports smaller stages such as `roadmap`, `verify`, `paper-preflight`, `paper-start`, `paper-report`, `live-preflight`, `live-start`, `status`, and `all`. `all-safe` only runs non-live stages. `live-start` is blocked unless `UPBIT_AUTO_TRADER_ALLOW_LIVE=1` is set on purpose.
+
 Run a local preflight check before paper or live operation:
 
 ```powershell
