@@ -27,6 +27,7 @@ from .profiles import (
     default_profile_dir,
     list_operator_profiles,
     load_operator_profile,
+    record_operator_profile_start,
     save_operator_profile,
 )
 from .presets import (
@@ -1046,6 +1047,8 @@ def run_start_profile_action(
         report_keep_latest=profile["report_keep_latest"] or None,
         job_manager=job_manager,
     )
+    if not job.get("error"):
+        loaded = record_operator_profile_start(config_path, loaded["path"])
     return {
         "profile": loaded,
         "preset_applied": preset_applied,

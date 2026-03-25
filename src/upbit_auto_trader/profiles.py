@@ -84,6 +84,15 @@ def _normalize_profile_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _normalize_profile_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "created_at": str(payload.get("created_at") or ""),
+        "last_started_at": str(payload.get("last_started_at") or ""),
+        "start_count": int(payload.get("start_count", 0) or 0),
+        "notes": str(payload.get("notes") or ""),
+    }
+
+
 def _profile_summary(profile: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "job_type": profile["job_type"],
@@ -114,14 +123,14 @@ def list_operator_profiles(config_path: str) -> List[Dict[str, Any]]:
                 "name": str(payload.get("name") or path.stem),
                 "slug": str(payload.get("slug") or path.stem),
                 "path": str(path),
-                "created_at": str(payload.get("created_at") or ""),
-                "notes": str(payload.get("notes") or ""),
+                **_normalize_profile_metadata(payload),
                 "summary": _profile_summary(profile),
             }
         )
 
     items.sort(
         key=lambda item: (
+            str(item.get("last_started_at", "")),
             str(item.get("created_at", "")),
             str(item.get("name", "")),
         ),
@@ -140,8 +149,7 @@ def load_operator_profile(config_path: str, profile_ref: str) -> Dict[str, Any]:
         "name": str(payload.get("name") or path.stem),
         "slug": str(payload.get("slug") or path.stem),
         "path": str(path),
-        "created_at": str(payload.get("created_at") or ""),
-        "notes": str(payload.get("notes") or ""),
+        **_normalize_profile_metadata(payload),
         "profile": profile,
         "summary": _profile_summary(profile),
     }
@@ -156,13 +164,43 @@ def save_operator_profile(
     profile = _normalize_profile_payload(profile_payload)
     path = _profile_path_for_name(config_path, name)
     path.parent.mkdir(parents=True, exist_ok=True)
+    existing_payload: Dict[str, Any] = {}
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            if isinstance(loaded, dict):
+                existing_payload = loaded
+        except (OSError, json.JSONDecodeError):
+            existing_payload = {}
+    metadata = _normalize_profile_metadata(existing_payload)
 
     payload = {
         "name": str(name).strip(),
         "slug": _slugify_profile_name(name),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": metadata["created_at"] or datetime.now(timezone.utc).isoformat(),
+        "last_started_at": metadata["last_started_at"],
+        "start_count": metadata["start_count"],
         "notes": notes,
         "profile": profile,
+    }
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    return load_operator_profile(config_path, str(path))
+
+
+def record_operator_profile_start(config_path: str, profile_ref: str) -> Dict[str, Any]:
+    loaded = load_operator_profile(config_path, profile_ref)
+    path = Path(loaded["path"])
+    payload = {
+        "name": loaded["name"],
+        "slug": loaded["slug"],
+        "created_at": loaded["created_at"],
+        "last_started_at": datetime.now(timezone.utc).isoformat(),
+        "start_count": int(loaded["start_count"] or 0) + 1,
+        "notes": loaded["notes"],
+        "profile": loaded["profile"],
     }
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False)

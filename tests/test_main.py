@@ -353,6 +353,8 @@ class MainTests(unittest.TestCase):
             self.assertTrue(shown["profile"]["auto_restart"])
             self.assertEqual(shown["profile"]["report_keep_latest"], 14)
             self.assertEqual(shown["notes"], "main paper profile")
+            self.assertEqual(shown["start_count"], 0)
+            self.assertEqual(shown["last_started_at"], "")
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
@@ -367,6 +369,7 @@ class MainTests(unittest.TestCase):
             self.assertEqual(result, 0)
             listed = json.loads(stdout.getvalue())
             self.assertTrue(any(item["name"] == "test-main-paper" for item in listed["items"]))
+            self.assertTrue(any(item["start_count"] == 0 for item in listed["items"] if item["name"] == "test-main-paper"))
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
@@ -384,6 +387,7 @@ class MainTests(unittest.TestCase):
             previewed = json.loads(stdout.getvalue())
             self.assertEqual(previewed["profile"]["name"], "test-main-paper")
             self.assertEqual(previewed["profile"]["notes"], "main paper profile")
+            self.assertEqual(previewed["profile"]["start_count"], 0)
             self.assertTrue(previewed["job_preview"]["can_start"])
             self.assertIn("run-loop", previewed["job_preview"]["command"])
             self.assertEqual(previewed["job_preview"]["report_keep_latest"], 14)

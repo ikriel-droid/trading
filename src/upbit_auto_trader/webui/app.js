@@ -426,11 +426,13 @@ function renderProfiles(profilePayload) {
   ids.profileSelect.innerHTML = items
     .map((item) => {
       const summary = item.summary || {};
+      const runs = Number(item.start_count || 0);
       const label = [
         item.name || "profile",
         summary.job_type || "",
         summary.market || "",
         summary.report_keep_latest ? `keep ${summary.report_keep_latest}` : "",
+        runs > 0 ? `runs ${runs}` : "",
       ].filter(Boolean).join(" | ");
       return `<option value="${escapeXml(item.path)}">${escapeXml(label)}</option>`;
     })

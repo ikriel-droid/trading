@@ -430,6 +430,7 @@ class UiTests(unittest.TestCase):
         self.assertTrue(payload["operator_profiles"]["dir"].endswith("data\\operator-profiles"))
         self.assertTrue(any(item["name"] == "test-ui-paper" for item in payload["operator_profiles"]["items"]))
         self.assertTrue(any(item["notes"] == "ui dashboard profile" for item in payload["operator_profiles"]["items"]))
+        self.assertTrue(any(item["start_count"] == 0 for item in payload["operator_profiles"]["items"] if item["name"] == "test-ui-paper"))
 
     def test_build_dashboard_payload_exposes_session_reports(self):
         run_session_report_action(
@@ -660,7 +661,10 @@ class UiTests(unittest.TestCase):
 
         self.assertEqual(loaded_profile["profile"]["job_type"], "paper-loop")
         self.assertEqual(loaded_profile["notes"], "paper main profile")
+        self.assertEqual(loaded_profile["start_count"], 0)
         self.assertEqual(started["profile"]["name"], "test-ui-profile")
+        self.assertEqual(started["profile"]["start_count"], 1)
+        self.assertTrue(started["profile"]["last_started_at"])
         self.assertEqual(updated.strategy.buy_threshold, preset["strategy"]["buy_threshold"])
         self.assertTrue(started["job"]["auto_restart"])
         self.assertEqual(started["job"]["max_restarts"], 4)
