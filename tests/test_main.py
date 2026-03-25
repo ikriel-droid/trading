@@ -492,6 +492,63 @@ class MainTests(unittest.TestCase):
             self.assertTrue(deleted["removed_html"])
             self.assertFalse(pathlib.Path(payload["json_path"]).exists())
             self.assertFalse(pathlib.Path(payload["html_path"]).exists())
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "session-report",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--state",
+                        str(state_path),
+                        "--output-dir",
+                        str(reports_dir),
+                        "--label",
+                        "test-main-prune-a",
+                    ]
+                )
+            self.assertEqual(result, 0)
+            first_payload = json.loads(stdout.getvalue())
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "session-report",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--state",
+                        str(state_path),
+                        "--output-dir",
+                        str(reports_dir),
+                        "--label",
+                        "test-main-prune-b",
+                    ]
+                )
+            self.assertEqual(result, 0)
+            second_payload = json.loads(stdout.getvalue())
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "report-prune",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                        "--output-dir",
+                        str(reports_dir),
+                        "--keep",
+                        "1",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            pruned = json.loads(stdout.getvalue())
+            self.assertEqual(pruned["keep"], 1)
+            self.assertEqual(pruned["removed_count"], 1)
+            self.assertFalse(pathlib.Path(first_payload["json_path"]).exists())
+            self.assertTrue(pathlib.Path(second_payload["json_path"]).exists())
         finally:
             if state_path.exists():
                 state_path.unlink()

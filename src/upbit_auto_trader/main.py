@@ -34,6 +34,7 @@ from .reporting import (
     delete_session_report,
     list_session_reports,
     load_session_report,
+    prune_session_reports,
     write_runtime_report,
 )
 from .runtime import TradingRuntime
@@ -146,6 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
     report_delete_parser.add_argument("--config", required=True)
     report_delete_parser.add_argument("--report", required=True)
     report_delete_parser.add_argument("--output-dir")
+
+    report_prune_parser = subparsers.add_parser("report-prune")
+    report_prune_parser.add_argument("--config", required=True)
+    report_prune_parser.add_argument("--keep", type=int, default=10)
+    report_prune_parser.add_argument("--output-dir")
 
     job_history_parser = subparsers.add_parser("job-history")
     job_history_parser.add_argument("--config", required=True)
@@ -1178,6 +1184,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "report-delete":
             _print_json(delete_session_report(args.config, args.report, output_dir=args.output_dir))
+            return 0
+
+        if args.command == "report-prune":
+            _print_json(prune_session_reports(args.config, output_dir=args.output_dir, keep=args.keep))
             return 0
 
         if args.command == "job-history":

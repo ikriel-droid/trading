@@ -250,6 +250,30 @@ def delete_session_report(config_path: str, report_ref: str, output_dir: str | N
     }
 
 
+def prune_session_reports(config_path: str, output_dir: str | None = None, keep: int = 10) -> Dict[str, Any]:
+    keep = max(0, int(keep))
+    reports_dir = _resolve_reports_dir(config_path, output_dir)
+    items = list_session_reports(config_path, output_dir=output_dir, limit=1000)
+    kept = items[:keep]
+    removed = []
+    for item in items[keep:]:
+        removed.append(
+            delete_session_report(
+                config_path=config_path,
+                report_ref=str(item.get("json_path", "")),
+                output_dir=output_dir,
+            )
+        )
+
+    return {
+        "reports_dir": str(reports_dir),
+        "keep": keep,
+        "kept_count": len(kept),
+        "removed_count": len(removed),
+        "removed": removed,
+    }
+
+
 def write_runtime_report(
     config_path: str,
     state_path: str,

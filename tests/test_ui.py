@@ -29,6 +29,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_scan_action,
     run_save_profile_action,
     run_save_current_preset_action,
+    run_prune_reports_action,
     run_session_report_action,
     run_start_profile_action,
     run_sync_candles_action,
@@ -713,6 +714,31 @@ class UiTests(unittest.TestCase):
         self.assertTrue(deleted["removed_html"])
         self.assertFalse(pathlib.Path(exported["json_path"]).exists())
         self.assertFalse(pathlib.Path(exported["html_path"]).exists())
+
+    def test_session_reports_can_be_pruned(self):
+        first = run_session_report_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            mode="paper",
+            label="test-ui-prune-a",
+        )
+        second = run_session_report_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            mode="paper",
+            label="test-ui-prune-b",
+        )
+
+        pruned = run_prune_reports_action(
+            config_path=str(self.temp_config_path),
+            keep=1,
+        )
+
+        self.assertEqual(pruned["keep"], 1)
+        self.assertEqual(pruned["removed_count"], 1)
+        self.assertFalse(pathlib.Path(first["json_path"]).exists())
+        self.assertFalse(pathlib.Path(first["html_path"]).exists())
+        self.assertTrue(pathlib.Path(second["json_path"]).exists())
 
     def test_scan_and_reconcile_actions_return_expected_keys(self):
         broker = FakeUiBroker()

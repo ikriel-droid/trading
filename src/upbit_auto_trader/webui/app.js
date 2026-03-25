@@ -57,6 +57,7 @@ const ids = {
   presetName: document.getElementById("preset-name-input"),
   presetSelect: document.getElementById("preset-select"),
   reportSelect: document.getElementById("report-select"),
+  reportKeep: document.getElementById("report-keep-input"),
   profileName: document.getElementById("profile-name-input"),
   profileSelect: document.getElementById("profile-select"),
   jobType: document.getElementById("job-type-select"),
@@ -768,6 +769,18 @@ async function deleteSessionReport() {
   }
 }
 
+async function pruneSessionReports() {
+  try {
+    ids.report.textContent = "Pruning old session reports...";
+    const keep = Number(ids.reportKeep.value || "10");
+    const payload = await postJson("/api/report-prune", { keep });
+    ids.report.textContent = pretty(payload);
+    await refreshDashboard();
+  } catch (error) {
+    ids.report.textContent = `report prune error: ${error.message}`;
+  }
+}
+
 async function refreshJobs() {
   try {
     const payload = await getJson("/api/jobs");
@@ -1030,6 +1043,7 @@ document.getElementById("run-sync-candles").addEventListener("click", runSyncCan
 document.getElementById("run-session-report").addEventListener("click", runSessionReport);
 document.getElementById("load-session-report").addEventListener("click", loadSessionReport);
 document.getElementById("delete-session-report").addEventListener("click", deleteSessionReport);
+document.getElementById("prune-session-reports").addEventListener("click", pruneSessionReports);
 document.getElementById("save-config").addEventListener("click", saveConfig);
 document.getElementById("save-current-preset").addEventListener("click", saveCurrentPreset);
 document.getElementById("save-best-preset").addEventListener("click", () => runOptimize(true));

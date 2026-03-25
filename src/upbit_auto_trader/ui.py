@@ -36,7 +36,7 @@ from .presets import (
     save_grid_search_best_preset,
 )
 from .reporting import default_reports_dir, write_runtime_report
-from .reporting import delete_session_report, list_session_reports, load_session_report
+from .reporting import delete_session_report, list_session_reports, load_session_report, prune_session_reports
 from .runtime import TradingRuntime
 from .scanner import MarketScanner
 from .strategy import ProfessionalCryptoStrategy
@@ -1077,6 +1077,15 @@ def run_delete_report_action(
     return delete_session_report(config_path=config_path, report_ref=report_ref, output_dir=resolved_output_dir)
 
 
+def run_prune_reports_action(
+    config_path: str,
+    keep: int = 10,
+    output_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+    resolved_output_dir = _resolve_project_path(config_path, output_dir) if output_dir else None
+    return prune_session_reports(config_path=config_path, keep=keep, output_dir=resolved_output_dir)
+
+
 def run_live_reconcile_action(
     config_path: str,
     state_path: Optional[str],
@@ -1650,6 +1659,15 @@ def _build_handler(
                     run_delete_report_action(
                         config_path=config_path,
                         report_ref=body.get("report", ""),
+                        output_dir=body.get("output_dir"),
+                    )
+                )
+                return
+            if self.path == "/api/report-prune":
+                self._write_json(
+                    run_prune_reports_action(
+                        config_path=config_path,
+                        keep=int(body.get("keep", 10) or 10),
                         output_dir=body.get("output_dir"),
                     )
                 )
