@@ -142,6 +142,12 @@ Show one saved launch profile:
 .venv\Scripts\python.exe -m upbit_auto_trader.main profile-show --config config.example.json --profile paper-btc-main
 ```
 
+Delete one saved launch profile:
+
+```powershell
+.venv\Scripts\python.exe -m upbit_auto_trader.main profile-delete --config config.example.json --profile paper-btc-main
+```
+
 Start one saved launch profile without opening the UI:
 
 ```powershell

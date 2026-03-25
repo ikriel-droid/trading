@@ -989,6 +989,22 @@ async function loadProfile() {
   }
 }
 
+async function deleteProfile() {
+  try {
+    const profile = ids.profileSelect.value;
+    if (!profile) {
+      ids.profiles.textContent = "profile delete error: select a profile first";
+      return;
+    }
+    ids.profiles.textContent = "Deleting profile...";
+    const payload = await postJson("/api/profile-delete", { profile });
+    ids.profiles.textContent = pretty(payload);
+    await refreshDashboard();
+  } catch (error) {
+    ids.profiles.textContent = `profile delete error: ${error.message}`;
+  }
+}
+
 async function previewProfile() {
   try {
     const profile = ids.profileSelect.value;
@@ -1059,6 +1075,7 @@ document.getElementById("save-best-preset").addEventListener("click", () => runO
 document.getElementById("apply-preset").addEventListener("click", applyPreset);
 document.getElementById("save-profile").addEventListener("click", saveProfile);
 document.getElementById("load-profile").addEventListener("click", loadProfile);
+document.getElementById("delete-profile").addEventListener("click", deleteProfile);
 document.getElementById("preview-profile").addEventListener("click", previewProfile);
 document.getElementById("start-profile").addEventListener("click", startProfile);
 document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);

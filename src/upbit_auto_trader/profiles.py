@@ -168,3 +168,22 @@ def save_operator_profile(
         json.dump(payload, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
     return load_operator_profile(config_path, str(path))
+
+
+def delete_operator_profile(config_path: str, profile_ref: str) -> Dict[str, Any]:
+    loaded = load_operator_profile(config_path, profile_ref)
+    path = Path(loaded["path"])
+    removed = False
+    try:
+        if path.exists():
+            path.unlink()
+            removed = True
+    except OSError as exc:
+        raise ValueError("profile delete failed: {0}".format(exc)) from exc
+
+    return {
+        "name": loaded["name"],
+        "slug": loaded["slug"],
+        "path": str(path),
+        "removed": removed,
+    }

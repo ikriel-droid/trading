@@ -383,6 +383,24 @@ class MainTests(unittest.TestCase):
             self.assertTrue(previewed["job_preview"]["can_start"])
             self.assertIn("run-loop", previewed["job_preview"]["command"])
             self.assertEqual(previewed["job_preview"]["report_keep_latest"], 14)
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "profile-delete",
+                        "--config",
+                        str(config_path),
+                        "--profile",
+                        "test-main-paper",
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            deleted = json.loads(stdout.getvalue())
+            self.assertEqual(deleted["name"], "test-main-paper")
+            self.assertTrue(deleted["removed"])
+            self.assertFalse(profile_path.exists())
         finally:
             if config_path.exists():
                 config_path.unlink()

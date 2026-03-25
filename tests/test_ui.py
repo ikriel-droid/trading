@@ -22,6 +22,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_backtest_action,
     run_doctor_action,
     run_delete_report_action,
+    run_delete_profile_action,
     run_live_reconcile_action,
     run_show_report_action,
     run_load_profile_action,
@@ -696,6 +697,35 @@ class UiTests(unittest.TestCase):
         self.assertTrue(preview["job_preview"]["can_start"])
         self.assertIn("run-loop", preview["job_preview"]["command"])
         self.assertEqual(preview["job_preview"]["report_keep_latest"], 9)
+
+    def test_operator_profile_can_be_deleted(self):
+        saved_profile = run_save_profile_action(
+            config_path=str(self.temp_config_path),
+            profile_name="test-ui-delete-profile",
+            profile_payload={
+                "job_type": "paper-loop",
+                "market": "KRW-BTC",
+                "csv_path": self.csv_path,
+                "state_path": str(self.state_path),
+                "selector_state_path": str(self.selector_state_path),
+                "quote_currency": "KRW",
+                "max_markets": 8,
+                "poll_seconds": 6.0,
+                "reconcile_every": 11,
+                "reconcile_every_loops": 3,
+                "preset": "",
+                "auto_restart": False,
+                "max_restarts": 0,
+                "restart_backoff_seconds": 0.0,
+                "report_keep_latest": 5,
+            },
+        )
+
+        deleted = run_delete_profile_action(str(self.temp_config_path), saved_profile["path"])
+
+        self.assertEqual(deleted["name"], "test-ui-delete-profile")
+        self.assertTrue(deleted["removed"])
+        self.assertFalse(pathlib.Path(saved_profile["path"]).exists())
 
     def test_session_report_can_be_exported_and_loaded(self):
         exported = run_session_report_action(

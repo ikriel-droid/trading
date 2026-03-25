@@ -23,6 +23,7 @@ from .jobs import (
 )
 from .optimizer import run_grid_search
 from .profiles import (
+    delete_operator_profile,
     default_profile_dir,
     list_operator_profiles,
     load_operator_profile,
@@ -986,6 +987,10 @@ def run_load_profile_action(config_path: str, profile_ref: str) -> Dict[str, Any
     return load_operator_profile(config_path, profile_ref)
 
 
+def run_delete_profile_action(config_path: str, profile_ref: str) -> Dict[str, Any]:
+    return delete_operator_profile(config_path, profile_ref)
+
+
 def run_preview_profile_action(config_path: str, profile_ref: str) -> Dict[str, Any]:
     loaded = load_operator_profile(config_path, profile_ref)
     profile = loaded["profile"]
@@ -1639,6 +1644,9 @@ def _build_handler(
                 return
             if self.path == "/api/profile-load":
                 self._write_json(run_load_profile_action(config_path, body.get("profile", "")))
+                return
+            if self.path == "/api/profile-delete":
+                self._write_json(run_delete_profile_action(config_path, body.get("profile", "")))
                 return
             if self.path == "/api/profile-preview":
                 self._write_json(run_preview_profile_action(config_path, body.get("profile", "")))

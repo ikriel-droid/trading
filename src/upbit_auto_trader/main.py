@@ -42,6 +42,7 @@ from .scanner import MarketScanner
 from .selector import RotatingMarketSelector, StreamingMarketSelector
 from .strategy import ProfessionalCryptoStrategy
 from .ui import (
+    run_delete_profile_action,
     preview_managed_job,
     run_load_profile_action,
     run_preview_profile_action,
@@ -99,6 +100,10 @@ def build_parser() -> argparse.ArgumentParser:
     profile_show_parser = subparsers.add_parser("profile-show")
     profile_show_parser.add_argument("--config", required=True)
     profile_show_parser.add_argument("--profile", required=True)
+
+    profile_delete_parser = subparsers.add_parser("profile-delete")
+    profile_delete_parser.add_argument("--config", required=True)
+    profile_delete_parser.add_argument("--profile", required=True)
 
     profile_preview_parser = subparsers.add_parser("profile-preview")
     profile_preview_parser.add_argument("--config", required=True)
@@ -1121,6 +1126,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "profile-show":
             _print_json(run_load_profile_action(args.config, args.profile))
+            return 0
+
+        if args.command == "profile-delete":
+            _print_json(run_delete_profile_action(args.config, args.profile))
             return 0
 
         if args.command == "profile-preview":
