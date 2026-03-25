@@ -154,6 +154,10 @@ body {
   margin-top: 18px;
 }
 
+.field-span-2 {
+  grid-column: span 2;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -556,6 +560,10 @@ body {
   .alerts-feed,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .field-span-2 {
+    grid-column: span 1;
   }
 }
 

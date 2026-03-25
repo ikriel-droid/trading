@@ -59,6 +59,7 @@ const ids = {
   reportSelect: document.getElementById("report-select"),
   reportKeep: document.getElementById("report-keep-input"),
   profileName: document.getElementById("profile-name-input"),
+  profileNotes: document.getElementById("profile-notes-input"),
   profileSelect: document.getElementById("profile-select"),
   jobType: document.getElementById("job-type-select"),
   jobAutoRestart: document.getElementById("job-auto-restart-select"),
@@ -423,13 +424,30 @@ function renderProfiles(profilePayload) {
   }
 
   ids.profileSelect.innerHTML = items
-    .map((item) => `<option value="${escapeXml(item.path)}">${escapeXml(item.name)}</option>`)
+    .map((item) => {
+      const summary = item.summary || {};
+      const label = [
+        item.name || "profile",
+        summary.job_type || "",
+        summary.market || "",
+        summary.report_keep_latest ? `keep ${summary.report_keep_latest}` : "",
+      ].filter(Boolean).join(" | ");
+      return `<option value="${escapeXml(item.path)}">${escapeXml(label)}</option>`;
+    })
     .join("");
 
   const nextValue = items.some((item) => item.path === currentValue)
     ? currentValue
     : items[0].path;
   ids.profileSelect.value = nextValue;
+}
+
+function applyLoadedProfileMeta(payload) {
+  if (!payload) {
+    return;
+  }
+  ids.profileName.value = payload.name || ids.profileName.value;
+  ids.profileNotes.value = payload.notes || "";
 }
 
 function renderReports(reportPayload) {
@@ -964,8 +982,10 @@ async function saveProfile() {
         restart_backoff_seconds: jobSettings.restart_backoff_seconds,
         report_keep_latest: jobSettings.report_keep_latest,
       },
+      notes: ids.profileNotes.value.trim(),
     });
     ids.profiles.textContent = pretty(payload);
+    applyLoadedProfileMeta(payload);
     await refreshDashboard();
   } catch (error) {
     ids.profiles.textContent = `profile save error: ${error.message}`;
@@ -982,6 +1002,7 @@ async function loadProfile() {
     ids.profiles.textContent = "Loading profile...";
     const payload = await postJson("/api/profile-load", { profile });
     ids.profiles.textContent = pretty(payload);
+    applyLoadedProfileMeta(payload);
     applyProfileToForm(payload.profile);
     await refreshDashboard();
   } catch (error) {
@@ -1015,6 +1036,9 @@ async function previewProfile() {
     ids.jobPreview.textContent = "Previewing profile...";
     const payload = await postJson("/api/profile-preview", { profile });
     ids.jobPreview.textContent = pretty(payload);
+    if (payload.profile) {
+      applyLoadedProfileMeta(payload.profile);
+    }
     if (payload.profile?.profile) {
       applyProfileToForm(payload.profile.profile);
     }
@@ -1033,6 +1057,9 @@ async function startProfile() {
     ids.jobs.textContent = "Starting profile...";
     const payload = await postJson("/api/profile-start", { profile });
     ids.jobs.textContent = pretty(payload);
+    if (payload.profile) {
+      applyLoadedProfileMeta(payload.profile);
+    }
     if (payload.profile?.profile) {
       applyProfileToForm(payload.profile.profile);
     }

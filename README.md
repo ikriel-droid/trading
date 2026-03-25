@@ -364,7 +364,7 @@ Run the selector from Upbit's real-time candle websocket:
 .venv\Scripts\python.exe -m upbit_auto_trader.main run-selector-stream --config config.example.json --mode paper --selector-state data\selector-state.json --max-markets 10 --max-events 20
 ```
 
-The browser control room can now save launch profiles that capture the selected job type, market, CSV path, state paths, quote currency, selected strategy preset, watchdog restart settings, and exit-report retention count. A saved profile can be loaded back into the form or started directly with one click.
+The browser control room can now save launch profiles that capture the selected job type, market, CSV path, state paths, quote currency, selected strategy preset, watchdog restart settings, exit-report retention count, and a short operator note. A saved profile can be loaded back into the form or started directly with one click.
 
 Show the saved runtime state:
 

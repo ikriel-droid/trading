@@ -327,6 +327,8 @@ class MainTests(unittest.TestCase):
                         "1.5",
                         "--report-keep-latest",
                         "14",
+                        "--notes",
+                        "main paper profile",
                     ]
                 )
 
@@ -350,6 +352,7 @@ class MainTests(unittest.TestCase):
             self.assertEqual(shown["profile"]["job_type"], "paper-loop")
             self.assertTrue(shown["profile"]["auto_restart"])
             self.assertEqual(shown["profile"]["report_keep_latest"], 14)
+            self.assertEqual(shown["notes"], "main paper profile")
 
             stdout = io.StringIO()
             with redirect_stdout(stdout):
@@ -380,6 +383,7 @@ class MainTests(unittest.TestCase):
             self.assertEqual(result, 0)
             previewed = json.loads(stdout.getvalue())
             self.assertEqual(previewed["profile"]["name"], "test-main-paper")
+            self.assertEqual(previewed["profile"]["notes"], "main paper profile")
             self.assertTrue(previewed["job_preview"]["can_start"])
             self.assertIn("run-loop", previewed["job_preview"]["command"])
             self.assertEqual(previewed["job_preview"]["report_keep_latest"], 14)

@@ -415,6 +415,7 @@ class UiTests(unittest.TestCase):
                 "restart_backoff_seconds": 1.5,
                 "report_keep_latest": 15,
             },
+            notes="ui dashboard profile",
         )
 
         payload = build_dashboard_payload(
@@ -428,6 +429,7 @@ class UiTests(unittest.TestCase):
 
         self.assertTrue(payload["operator_profiles"]["dir"].endswith("data\\operator-profiles"))
         self.assertTrue(any(item["name"] == "test-ui-paper" for item in payload["operator_profiles"]["items"]))
+        self.assertTrue(any(item["notes"] == "ui dashboard profile" for item in payload["operator_profiles"]["items"]))
 
     def test_build_dashboard_payload_exposes_session_reports(self):
         run_session_report_action(
@@ -645,6 +647,7 @@ class UiTests(unittest.TestCase):
                 "restart_backoff_seconds": 1.5,
                 "report_keep_latest": 12,
             },
+            notes="paper main profile",
         )
         loaded_profile = run_load_profile_action(str(self.temp_config_path), saved_profile["path"])
         manager = RecordingJobManager()
@@ -656,6 +659,7 @@ class UiTests(unittest.TestCase):
         updated = load_config(str(self.temp_config_path))
 
         self.assertEqual(loaded_profile["profile"]["job_type"], "paper-loop")
+        self.assertEqual(loaded_profile["notes"], "paper main profile")
         self.assertEqual(started["profile"]["name"], "test-ui-profile")
         self.assertEqual(updated.strategy.buy_threshold, preset["strategy"]["buy_threshold"])
         self.assertTrue(started["job"]["auto_restart"])
@@ -689,11 +693,13 @@ class UiTests(unittest.TestCase):
                 "restart_backoff_seconds": 1.5,
                 "report_keep_latest": 9,
             },
+            notes="preview profile note",
         )
 
         preview = run_preview_profile_action(str(self.temp_config_path), saved_profile["path"])
 
         self.assertEqual(preview["profile"]["name"], "test-ui-preview-profile")
+        self.assertEqual(preview["profile"]["notes"], "preview profile note")
         self.assertTrue(preview["job_preview"]["can_start"])
         self.assertIn("run-loop", preview["job_preview"]["command"])
         self.assertEqual(preview["job_preview"]["report_keep_latest"], 9)
