@@ -54,6 +54,9 @@ class JobTests(unittest.TestCase):
         flag_path = PROJECT_ROOT / "data" / "test-job-restart-flag.txt"
         if flag_path.exists():
             flag_path.unlink()
+        stale_flag_path = PROJECT_ROOT / "data" / "test-job-stale-heartbeat-flag.txt"
+        if stale_flag_path.exists():
+            stale_flag_path.unlink()
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
@@ -283,6 +286,58 @@ class JobTests(unittest.TestCase):
         self.assertEqual(payload["heartbeat"]["phase"], "loop")
         self.assertEqual(payload["heartbeat_status"], "healthy")
         self.assertTrue(payload["heartbeat_healthy"])
+
+    def test_manager_restarts_stale_heartbeat_job_when_enabled(self):
+        manager = self.build_manager(watchdog_interval_seconds=0.05)
+        flag_path = PROJECT_ROOT / "data" / "test-job-stale-heartbeat-flag.txt"
+        if flag_path.exists():
+            flag_path.unlink()
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; "
+                "import json, os, time, datetime, sys; "
+                "flag = Path(r'{0}'); "
+                "first = not flag.exists(); "
+                "flag.write_text('seen', encoding='utf-8'); "
+                "hb = os.environ[{1!r}]; "
+                "payload = {{'updated_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'phase': 'loop', 'stale_after_seconds': (0.05 if first else 300)}}; "
+                "handle = open(hb, 'w', encoding='utf-8'); "
+                "json.dump(payload, handle); "
+                "handle.close(); "
+                "print('first-run' if first else 'second-run'); "
+                "time.sleep(0.6 if first else 0.05); "
+                "sys.exit(0)"
+            ).format(flag_path, HEARTBEAT_ENV_VAR),
+        ]
+
+        manager.start_job(
+            name="stale-heartbeat-job",
+            kind="test",
+            command=command,
+            cwd=str(PROJECT_ROOT),
+            auto_restart=True,
+            max_restarts=1,
+            restart_backoff_seconds=0.05,
+        )
+
+        payload = None
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            payload = manager.get_job("stale-heartbeat-job")
+            if payload is not None and not payload["running"] and payload["restart_count"] == 1:
+                break
+            time.sleep(0.05)
+
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["restart_count"], 1)
+        self.assertFalse(payload["running"])
+        self.assertEqual(payload["returncode"], 0)
+        self.assertIn("second-run", payload["log_tail"])
+
+        history = list_job_history(history_path=str(self.history_path), limit=5)
+        self.assertTrue(any(item["status"] == "retrying" and item["exit_reason"] == "stale_heartbeat" for item in history))
 
 
 if __name__ == "__main__":

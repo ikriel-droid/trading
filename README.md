@@ -202,6 +202,8 @@ The UI now includes runtime cards, an alert center for blocked entries, fills, j
 
 Managed jobs now also write heartbeat files under `data/webui-jobs/*.heartbeat.json`, and the control room surfaces stale or missing heartbeats as warnings so a hung process is easier to spot.
 
+When watchdog restart is enabled, a stale heartbeat is also treated as a restartable failure, so hung jobs can be recycled automatically instead of only showing up as running forever.
+
 Live background jobs are now preflight-gated. If `doctor` finds blocking issues such as `live_enabled=false`, missing live state, unreadable state, or unresolved API keys, the UI and profile launcher will refuse to start the live job and return the full preflight report instead.
 
 The control-room UI also includes a `Preview Launch` action so you can inspect the exact command, report paths, and any live preflight blockers before starting a background job.

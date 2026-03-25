@@ -361,7 +361,7 @@ def _write_heartbeat(kind: str, phase: str, stale_after_seconds: float, **payloa
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "kind": kind,
         "phase": phase,
-        "stale_after_seconds": round(max(5.0, float(stale_after_seconds)), 3),
+        "stale_after_seconds": round(max(0.05, float(stale_after_seconds)), 3),
     }
     for key, value in payload.items():
         if value is None:

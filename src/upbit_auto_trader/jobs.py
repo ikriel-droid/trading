@@ -121,6 +121,7 @@ class ManagedJob:
     report_generated: bool
     last_report: Optional[Dict[str, Any]]
     heartbeat_path: str
+    termination_reason: str
 
 
 class BackgroundJobManager:
@@ -210,6 +211,7 @@ class BackgroundJobManager:
                 report_generated=False,
                 last_report=None,
                 heartbeat_path=heartbeat_path,
+                termination_reason="",
             )
             self._jobs[name] = job
             return self._serialize_job(job)
@@ -225,6 +227,7 @@ class BackgroundJobManager:
 
             job.manual_stop = True
             job.next_restart_at = 0.0
+            job.termination_reason = "manual_stop"
             if job.process.poll() is None:
                 job.process.terminate()
                 try:
@@ -294,6 +297,7 @@ class BackgroundJobManager:
             "heartbeat_age_seconds": heartbeat_age_seconds,
             "heartbeat_status": heartbeat_status,
             "heartbeat_healthy": heartbeat_status == "healthy",
+            "termination_reason": job.termination_reason,
         }
 
     def _tail_log(self, log_path: str, max_lines: int = 40) -> str:
@@ -364,6 +368,22 @@ class BackgroundJobManager:
         for job in self._jobs.values():
             returncode = job.process.poll()
             if returncode is None:
+                heartbeat = _load_json_record(Path(job.heartbeat_path))
+                if (
+                    job.auto_restart
+                    and not job.manual_stop
+                    and not job.termination_reason
+                    and _heartbeat_status(heartbeat, running=True) == "stale"
+                ):
+                    heartbeat_age_seconds = _heartbeat_age_seconds(heartbeat)
+                    job.termination_reason = "stale_heartbeat"
+                    job.log_writer.write(
+                        "\n[{0}] stale heartbeat detected age={1}s; terminating for restart\n".format(
+                            time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "{0:.3f}".format(heartbeat_age_seconds) if heartbeat_age_seconds is not None else "unknown",
+                        )
+                    )
+                    job.process.terminate()
                 continue
 
             if not job.exit_processed:
@@ -371,16 +391,18 @@ class BackgroundJobManager:
                 job.last_returncode = returncode
                 job.last_exit_at = now
                 job.exit_processed = True
+                restartable_failure = returncode != 0 or job.termination_reason == "stale_heartbeat"
                 job.log_writer.write(
-                    "\n[{0}] exited rc={1}\n".format(
+                    "\n[{0}] exited rc={1}{2}\n".format(
                         time.strftime("%Y-%m-%d %H:%M:%S"),
                         returncode,
+                        " reason={0}".format(job.termination_reason) if job.termination_reason else "",
                     )
                 )
                 if (
                     not job.manual_stop
                     and job.auto_restart
-                    and returncode != 0
+                    and restartable_failure
                     and job.restart_count < job.max_restarts
                 ):
                     will_restart = True
@@ -397,7 +419,7 @@ class BackgroundJobManager:
                 else:
                     will_restart = False
                     self._maybe_generate_exit_report(job)
-                status = "retrying" if will_restart else ("completed" if returncode == 0 else "failed")
+                status = "retrying" if will_restart else ("completed" if returncode == 0 and not job.termination_reason else "failed")
                 self._append_history_entry(job, status=status, will_restart=will_restart)
 
             if (
@@ -426,6 +448,7 @@ class BackgroundJobManager:
                 job.exit_processed = False
                 job.report_generated = False
                 job.last_report = None
+                job.termination_reason = ""
                 job.log_writer.write(
                     "[{0}] restarted ({1}/{2})\n".format(
                         time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -492,6 +515,7 @@ class BackgroundJobManager:
             "heartbeat": heartbeat,
             "heartbeat_phase": str(heartbeat.get("phase", "")) if heartbeat else "",
             "heartbeat_age_seconds": _heartbeat_age_seconds(heartbeat, now=finished_at),
+            "exit_reason": job.termination_reason or ("completed" if job.last_returncode == 0 else "process_exit"),
         }
         _append_job_history_record(
             history_path=self._history_path,
@@ -566,7 +590,7 @@ def _heartbeat_status(heartbeat: Optional[Dict[str, Any]], running: bool) -> str
     if heartbeat_age_seconds is None:
         return "unknown"
     try:
-        stale_after_seconds = max(5.0, float(heartbeat.get("stale_after_seconds", DEFAULT_HEARTBEAT_STALE_SECONDS)))
+        stale_after_seconds = max(0.05, float(heartbeat.get("stale_after_seconds", DEFAULT_HEARTBEAT_STALE_SECONDS)))
     except (TypeError, ValueError):
         stale_after_seconds = DEFAULT_HEARTBEAT_STALE_SECONDS
     if heartbeat_age_seconds > stale_after_seconds:
