@@ -198,6 +198,8 @@ Run a local preflight check before paper or live operation:
 .venv\Scripts\python.exe -m upbit_auto_trader.main doctor --config config.example.json --state data\paper-state.json --selector-state data\selector-state.json
 ```
 
+`doctor` now also inspects managed-job heartbeat files under `data/webui-jobs` and reports stale workers alongside config, state, and exchange readiness.
+
 The UI now includes runtime cards, an alert center for blocked entries, fills, job failures, and live-readiness warnings, a price chart with buy or sell markers, recent trade and event panels, card-based market scan results with focus-market selection, selector state and active-market tracking with its own chart and recent events, focus-market-aware dashboard refresh, signal and backtest actions, candle sync, live reconcile, a session report center with export and reload, a one-click doctor preflight check, key config editing, strategy preset save or apply controls, launch-profile save or load controls, separate selector-state input, and start or stop controls for background paper loop, paper selector, live daemon, and live supervisor jobs. Background job logs are rotated automatically under `data/webui-jobs`, and managed jobs can now auto-restart with a watchdog and bounded retry count.
 
 Managed jobs now also write heartbeat files under `data/webui-jobs/*.heartbeat.json`, and the control room surfaces stale or missing heartbeats as warnings so a hung process is easier to spot.

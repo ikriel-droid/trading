@@ -3,6 +3,7 @@ from typing import Optional
 
 from .brokers.upbit import UpbitBroker
 from .config import AppConfig
+from .jobs import JOB_LOG_DIR, list_job_heartbeats
 from .runtime import TradingRuntime
 
 
@@ -64,6 +65,18 @@ def build_doctor_report(config_path: str, config: AppConfig, state_path: Optiona
         "enabled_levels": list(config.notifications.enabled_levels),
         "enabled_event_types": list(config.notifications.enabled_event_types),
     }
+    managed_job_items = list_job_heartbeats(limit=12)
+    managed_jobs_report = {
+        "path": str(JOB_LOG_DIR),
+        "items": managed_job_items,
+        "summary": {
+            "healthy": sum(1 for item in managed_job_items if item.get("status") == "healthy"),
+            "stale": sum(1 for item in managed_job_items if item.get("status") == "stale"),
+            "completed": sum(1 for item in managed_job_items if item.get("status") == "completed"),
+            "unknown": sum(1 for item in managed_job_items if item.get("status") == "unknown"),
+            "missing": sum(1 for item in managed_job_items if item.get("status") == "missing"),
+        },
+    }
 
     readiness = broker.readiness_report()
     private_issues = list(readiness.get("private_issues", []))
@@ -88,6 +101,9 @@ def build_doctor_report(config_path: str, config: AppConfig, state_path: Optiona
         issues.append("state_unreadable")
     if config.notifications.enabled_event_types and not notification_report["discord_webhook_configured"]:
         issues.append("discord_webhook_not_configured")
+    for item in managed_job_items:
+        if item.get("status") == "stale":
+            issues.append("job_heartbeat_stale:{0}".format(item.get("job_name", "")))
 
     return {
         "ok": len(issues) == 0,
@@ -102,5 +118,6 @@ def build_doctor_report(config_path: str, config: AppConfig, state_path: Optiona
             "poll_seconds": config.runtime.poll_seconds,
             "pending_order_max_bars": config.runtime.pending_order_max_bars,
         },
+        "managed_jobs": managed_jobs_report,
         "config_path": config_path,
     }

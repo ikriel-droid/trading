@@ -152,6 +152,7 @@ class UiTests(unittest.TestCase):
         self.preset_dir = PROJECT_ROOT / "data" / "strategy-presets"
         self.profile_dir = PROJECT_ROOT / "data" / "operator-profiles"
         self.reports_dir = PROJECT_ROOT / "data" / "session-reports"
+        self.job_heartbeat_path = PROJECT_ROOT / "data" / "webui-jobs" / "test-ui-heartbeat.heartbeat.json"
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
@@ -166,6 +167,8 @@ class UiTests(unittest.TestCase):
             self.temp_csv_path.unlink()
         if self.alert_journal_path.exists():
             self.alert_journal_path.unlink()
+        if self.job_heartbeat_path.exists():
+            self.job_heartbeat_path.unlink()
         if self.preset_dir.exists():
             for preset_path in self.preset_dir.glob("test-ui-*.json"):
                 preset_path.unlink()
@@ -275,6 +278,8 @@ class UiTests(unittest.TestCase):
             self.temp_csv_path.unlink()
         if self.alert_journal_path.exists():
             self.alert_journal_path.unlink()
+        if self.job_heartbeat_path.exists():
+            self.job_heartbeat_path.unlink()
         if self.preset_dir.exists():
             for preset_path in self.preset_dir.glob("test-ui-*.json"):
                 preset_path.unlink()
@@ -704,6 +709,33 @@ class UiTests(unittest.TestCase):
 
         self.assertIn("access_key_missing", report["upbit"]["private_issues"])
         self.assertIn("secret_key_missing", report["upbit"]["private_issues"])
+
+    def test_doctor_action_reports_stale_job_heartbeats(self):
+        self.job_heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.job_heartbeat_path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "updated_at": "2026-03-01T00:00:00+00:00",
+                    "job_name": "test-ui-heartbeat",
+                    "job_kind": "paper-loop",
+                    "phase": "loop",
+                    "stale_after_seconds": 10,
+                },
+                handle,
+                ensure_ascii=False,
+                indent=2,
+            )
+            handle.write("\n")
+
+        report = run_doctor_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+        )
+
+        self.assertEqual(report["managed_jobs"]["summary"]["stale"], 1)
+        self.assertEqual(report["managed_jobs"]["items"][0]["job_name"], "test-ui-heartbeat")
+        self.assertIn("job_heartbeat_stale:test-ui-heartbeat", report["issues"])
 
     def test_editable_config_can_be_loaded_and_saved(self):
         before = load_editable_config(str(self.temp_config_path))

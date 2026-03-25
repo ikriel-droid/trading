@@ -629,6 +629,42 @@ def list_job_history(history_path: Optional[str] = None, limit: int = DEFAULT_HI
     return items
 
 
+def list_job_heartbeats(log_dir: Optional[str] = None, limit: int = DEFAULT_HISTORY_LIMIT) -> List[Dict[str, Any]]:
+    path = Path(log_dir) if log_dir else JOB_LOG_DIR
+    if not path.exists():
+        return []
+
+    items: List[Dict[str, Any]] = []
+    for heartbeat_path in path.glob("*.heartbeat.json"):
+        payload = _load_json_record(heartbeat_path)
+        if not payload:
+            continue
+
+        updated_at = str(payload.get("updated_at", "")).strip()
+        age_seconds = _heartbeat_age_seconds(payload)
+        phase = str(payload.get("phase", "")).strip()
+        if phase == "completed":
+            status = "completed"
+        else:
+            status = _heartbeat_status(payload, running=True)
+
+        items.append(
+            {
+                "job_name": str(payload.get("job_name") or heartbeat_path.name.replace(".heartbeat.json", "")),
+                "job_kind": str(payload.get("job_kind") or payload.get("kind") or ""),
+                "path": str(heartbeat_path),
+                "updated_at": updated_at,
+                "phase": phase,
+                "stale_after_seconds": payload.get("stale_after_seconds", DEFAULT_HEARTBEAT_STALE_SECONDS),
+                "age_seconds": age_seconds,
+                "status": status,
+            }
+        )
+
+    items.sort(key=lambda item: str(item.get("updated_at", "")), reverse=True)
+    return items[: max(1, limit)]
+
+
 def build_paper_loop_command(
     config_path: str,
     state_path: str,
