@@ -16,6 +16,7 @@ $requiredPaths = @(
     "inputs\config.redacted.json",
     "inputs\env.redacted.txt",
     "diagnostics\control-room-status.json",
+    "diagnostics\environment-snapshot.json",
     "support-manifest.json"
 )
 

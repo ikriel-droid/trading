@@ -20,6 +20,7 @@ $ResolvedStatePath = Join-Path $ProjectRoot $StatePath
 $ResolvedSelectorStatePath = Join-Path $ProjectRoot $SelectorStatePath
 $EnvPath = Join-Path $ProjectRoot ".env"
 $StatusScript = Join-Path $ProjectRoot "status_control_room.ps1"
+$SnapshotScript = Join-Path $ProjectRoot "snapshot_control_room_environment.ps1"
 $PythonExe = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
 $JobHistoryPath = Join-Path $ProjectRoot "data\webui-job-history.jsonl"
 $SessionReportsDir = Join-Path $ProjectRoot "data\session-reports"
@@ -263,6 +264,16 @@ if (Test-Path $StatusScript) {
     }
     catch {
         Write-TextIntoSupportBundle -Content $_.Exception.Message -RelativePath "diagnostics\control-room-status.error.txt" -ManifestEntries $manifestEntries
+    }
+}
+
+if (Test-Path $SnapshotScript) {
+    try {
+        $snapshotOutput = & $env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File $SnapshotScript -ConfigPath $ConfigPath -StatePath $StatePath -SelectorStatePath $SelectorStatePath -AsJson
+        Write-TextIntoSupportBundle -Content ($snapshotOutput -join [Environment]::NewLine) -RelativePath "diagnostics\environment-snapshot.json" -ManifestEntries $manifestEntries
+    }
+    catch {
+        Write-TextIntoSupportBundle -Content $_.Exception.Message -RelativePath "diagnostics\environment-snapshot.error.txt" -ManifestEntries $manifestEntries
     }
 }
 

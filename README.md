@@ -306,6 +306,12 @@ Build a redacted support bundle with logs, state snapshots, control-room status,
 .\build_control_room_support_bundle.cmd -CreateZip
 ```
 
+Export a standalone environment snapshot with versions, git state, file presence, and current control-room status:
+
+```powershell
+.\snapshot_control_room_environment.cmd -AsJson
+```
+
 Verify that the support bundle manifest, SHA256 checksums, and key diagnostic files are present:
 
 ```powershell
