@@ -76,6 +76,18 @@ Install the package in editable mode:
 .venv\Scripts\python.exe -m pip install -e .
 ```
 
+Or run the one-time Windows setup script to create `.venv`, install the package, prepare `.env`, and optionally install shortcuts in one pass:
+
+```powershell
+.\setup_control_room.cmd
+```
+
+If you also want desktop shortcuts during setup:
+
+```powershell
+.\setup_control_room.cmd -InstallShortcuts
+```
+
 Optional: create `.env` from the example file so API keys and webhook settings load automatically from the project root:
 
 ```powershell
