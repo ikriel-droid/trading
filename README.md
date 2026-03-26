@@ -300,6 +300,18 @@ Create the same bundle and zip it for transfer or backup:
 .\build_control_room_bundle.cmd -CreateZip
 ```
 
+Verify that the bundle manifest and required files are present:
+
+```powershell
+.\verify_control_room_bundle.cmd -RequireZip
+```
+
+Clean the generated bundle directory and zip when you are done:
+
+```powershell
+.\clean_control_room_bundle.cmd
+```
+
 Run the remaining completion workflow from Git Bash:
 
 ```powershell
