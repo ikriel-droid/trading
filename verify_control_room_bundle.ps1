@@ -18,6 +18,7 @@ $requiredPaths = @(
     "config.example.json",
     "pyproject.toml",
     "release-metadata.json",
+    "release-notes.md",
     "setup_control_room.cmd",
     "launch_control_room_hidden.cmd",
     "status_control_room.cmd",

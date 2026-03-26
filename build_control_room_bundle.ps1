@@ -11,6 +11,7 @@ $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ResolvedOutputDirectory = Join-Path $ProjectRoot $OutputDirectory
 $ResolvedZipPath = Join-Path $ProjectRoot $ZipPath
 $ReleaseMetadataScript = Join-Path $ProjectRoot "export_control_room_release_metadata.ps1"
+$ReleaseNotesScript = Join-Path $ProjectRoot "export_control_room_release_notes.ps1"
 
 $filesToCopy = @(
     ".env.example",
@@ -115,6 +116,13 @@ if (Test-Path $ReleaseMetadataScript) {
         -ExecutionPolicy Bypass `
         -File $ReleaseMetadataScript `
         -OutputPath (Join-Path $OutputDirectory "release-metadata.json") | Out-Null
+}
+
+if (Test-Path $ReleaseNotesScript) {
+    & $env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe `
+        -ExecutionPolicy Bypass `
+        -File $ReleaseNotesScript `
+        -OutputPath (Join-Path $OutputDirectory "release-notes.md") | Out-Null
 }
 
 if ($CreateZip) {

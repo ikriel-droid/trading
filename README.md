@@ -306,6 +306,12 @@ Export release metadata with version, git commit, tool versions, and main entryp
 .\export_control_room_release_metadata.cmd -AsJson
 ```
 
+Export handoff-style release notes in Markdown:
+
+```powershell
+.\export_control_room_release_notes.cmd -Print
+```
+
 Build a redacted support bundle with logs, state snapshots, control-room status, doctor output, and recent reports:
 
 ```powershell
