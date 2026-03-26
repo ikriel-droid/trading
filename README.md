@@ -218,6 +218,12 @@ Or use the browser-opening launcher:
 .\launch_control_room.cmd
 ```
 
+Check whether the control room is reachable and whether the PID file still matches the managed launcher process:
+
+```powershell
+.\status_control_room.cmd
+```
+
 Or use the hidden-window launcher:
 
 ```powershell

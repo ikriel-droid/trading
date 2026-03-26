@@ -20,6 +20,7 @@ $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $StartScript = Join-Path $ProjectRoot "start_control_room.ps1"
+$CommonScript = Join-Path $ProjectRoot "control_room_common.ps1"
 $ServerUrl = "http://{0}:{1}" -f $BindHost, $Port
 $ResolvedStdoutLog = Join-Path $ProjectRoot $StdoutLog
 $ResolvedStderrLog = Join-Path $ProjectRoot $StderrLog
@@ -29,90 +30,11 @@ if (-not (Test-Path $StartScript)) {
     throw "Control room starter not found: $StartScript"
 }
 
-function Test-ControlRoomReady {
-    param(
-        [string]$Url
-    )
-
-    try {
-        Invoke-WebRequest -UseBasicParsing "$Url/" -TimeoutSec 2 | Out-Null
-        return $true
-    }
-    catch {
-        return $false
-    }
+if (-not (Test-Path $CommonScript)) {
+    throw "Control room helper not found: $CommonScript"
 }
 
-function Get-ControlRoomPid {
-    param(
-        [string]$Path
-    )
-
-    if (-not (Test-Path $Path)) {
-        return $null
-    }
-
-    $raw = (Get-Content $Path -ErrorAction SilentlyContinue | Select-Object -First 1)
-    if (-not $raw) {
-        return $null
-    }
-
-    $pidValue = 0
-    if ([int]::TryParse($raw.Trim(), [ref]$pidValue)) {
-        return $pidValue
-    }
-    return $null
-}
-
-function Test-ProcessAlive {
-    param(
-        [int]$PidValue
-    )
-
-    if ($PidValue -le 0) {
-        return $false
-    }
-
-    try {
-        $null = Get-Process -Id $PidValue -ErrorAction Stop
-        return $true
-    }
-    catch {
-        return $false
-    }
-}
-
-function Get-ProcessCommandLine {
-    param(
-        [int]$PidValue
-    )
-
-    if ($PidValue -le 0) {
-        return $null
-    }
-
-    try {
-        $processRecord = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $PidValue) -ErrorAction Stop
-        return $processRecord.CommandLine
-    }
-    catch {
-        return $null
-    }
-}
-
-function Test-ControlRoomOwnedProcess {
-    param(
-        [int]$PidValue,
-        [int]$ExpectedPort
-    )
-
-    $commandLine = Get-ProcessCommandLine -PidValue $PidValue
-    if (-not $commandLine) {
-        return $false
-    }
-
-    return ($commandLine -like "*start_control_room.ps1*") -and ($commandLine -like ("*-Port* {0}*" -f $ExpectedPort))
-}
+. $CommonScript
 
 if (Test-ControlRoomReady -Url $ServerUrl) {
     $existingPid = Get-ControlRoomPid -Path $ResolvedPidFile
