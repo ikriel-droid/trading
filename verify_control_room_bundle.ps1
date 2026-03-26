@@ -55,6 +55,18 @@ if ($manifest.file_count -ne @($manifest.files).Count) {
     throw "Bundle manifest file_count does not match the listed files."
 }
 
+foreach ($entry in $manifest.files) {
+    $targetPath = Join-Path $ResolvedBundleDirectory $entry.path
+    if (-not (Test-Path $targetPath)) {
+        throw "Bundle manifest references a missing file: $targetPath"
+    }
+
+    $actualHash = (Get-FileHash -Algorithm SHA256 -Path $targetPath).Hash
+    if ($actualHash -ne $entry.sha256) {
+        throw "Bundle checksum mismatch: $($entry.path)"
+    }
+}
+
 if ($RequireZip -and -not (Test-Path $ResolvedZipPath)) {
     throw "Bundle zip does not exist: $ResolvedZipPath"
 }

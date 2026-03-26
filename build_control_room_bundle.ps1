@@ -77,6 +77,7 @@ if (Test-Path $ResolvedOutputDirectory) {
 New-Item -ItemType Directory -Path $ResolvedOutputDirectory -Force | Out-Null
 
 $copiedFiles = @()
+$manifestFiles = @()
 
 foreach ($relativePath in $filesToCopy) {
     $sourcePath = Join-Path $ProjectRoot $relativePath
@@ -92,6 +93,10 @@ foreach ($relativePath in $filesToCopy) {
 
     Copy-Item -Path $sourcePath -Destination $destinationPath -Force
     $copiedFiles += $relativePath
+    $manifestFiles += [pscustomobject]@{
+        path = $relativePath
+        sha256 = (Get-FileHash -Algorithm SHA256 -Path $destinationPath).Hash
+    }
 }
 
 $manifest = [pscustomobject]@{
@@ -99,7 +104,7 @@ $manifest = [pscustomobject]@{
     project_root = $ProjectRoot
     output_directory = $ResolvedOutputDirectory
     file_count = $copiedFiles.Count
-    files = $copiedFiles
+    files = $manifestFiles
 }
 
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $ResolvedOutputDirectory "bundle-manifest.json") -Encoding utf8
