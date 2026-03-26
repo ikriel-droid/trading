@@ -288,6 +288,18 @@ Remove the installed desktop shortcuts:
 .\uninstall_control_room_shortcuts.cmd
 ```
 
+Build a manual-distribution bundle with the control-room scripts, source, config template, and sample data:
+
+```powershell
+.\build_control_room_bundle.cmd
+```
+
+Create the same bundle and zip it for transfer or backup:
+
+```powershell
+.\build_control_room_bundle.cmd -CreateZip
+```
+
 Run the remaining completion workflow from Git Bash:
 
 ```powershell
