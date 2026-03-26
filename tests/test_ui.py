@@ -25,6 +25,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_delete_profile_action,
     run_live_reconcile_action,
     run_show_report_action,
+    preview_completion_workflow_action,
     run_load_profile_action,
     run_preview_profile_action,
     run_scan_action,
@@ -32,6 +33,7 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_save_current_preset_action,
     run_prune_reports_action,
     run_session_report_action,
+    start_completion_workflow_action,
     run_start_profile_action,
     run_sync_candles_action,
     run_optimize_action,
@@ -353,6 +355,8 @@ class UiTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["selector_summary"]["active_market_chart"]["points"]), 1)
         self.assertGreaterEqual(len(payload["selector_summary"]["active_market_activity"]["recent_events"]), 1)
         self.assertGreaterEqual(len(payload["selector_summary"]["last_scan_results"]), 2)
+        self.assertEqual(payload["completion_workflow"]["default_stage"], "verify")
+        self.assertTrue(any(item["stage"] == "all-safe" for item in payload["completion_workflow"]["items"]))
         self.assertEqual(payload["jobs"], [])
         self.assertEqual(payload["job_health"]["summary"]["total"], 0)
         self.assertEqual(payload["job_health"]["summary"]["requires_attention"], 0)
@@ -1055,6 +1059,51 @@ class UiTests(unittest.TestCase):
         self.assertFalse(preview["can_start"])
         self.assertIn("live_enabled=false", preview["blocking_issues"])
         self.assertIsNotNone(preview["preflight"])
+
+    def test_preview_completion_workflow_returns_windows_wrapper_command(self):
+        preview = preview_completion_workflow_action(
+            config_path=self.config_path,
+            stage="verify",
+        )
+
+        self.assertEqual(preview["job_type"], "completion-workflow")
+        self.assertEqual(preview["stage"], "verify")
+        self.assertEqual(preview["command"][:3], ["cmd.exe", "/c", "complete_remaining.cmd"])
+        self.assertEqual(preview["command"][-1], "verify")
+        self.assertTrue(preview["script_path"].endswith("complete_remaining.cmd"))
+        self.assertTrue(preview["can_start"])
+
+    def test_preview_completion_workflow_marks_all_safe_as_job_starting(self):
+        preview = preview_completion_workflow_action(
+            config_path=self.config_path,
+            stage="all-safe",
+        )
+
+        self.assertIn("starts_managed_jobs", preview["warnings"])
+
+    def test_start_completion_workflow_uses_job_manager(self):
+        manager = RecordingJobManager()
+
+        started = start_completion_workflow_action(
+            config_path=self.config_path,
+            stage="paper-preflight",
+            job_manager=manager,
+        )
+
+        self.assertEqual(started["workflow"]["stage"], "paper-preflight")
+        self.assertEqual(started["job"]["name"], "workflow-paper-preflight")
+        self.assertEqual(started["job"]["kind"], "completion-workflow")
+        self.assertEqual(started["job"]["command"][-1], "paper-preflight")
+        self.assertFalse(started["job"]["report_on_exit"])
+
+    def test_preview_completion_workflow_rejects_unknown_stage(self):
+        preview = preview_completion_workflow_action(
+            config_path=self.config_path,
+            stage="live-start",
+        )
+
+        self.assertEqual(preview["error"], "unsupported_workflow_stage")
+        self.assertIn("verify", preview["supported_stages"])
 
     def test_start_managed_job_uses_default_state_path_for_reports(self):
         manager = RecordingJobManager()

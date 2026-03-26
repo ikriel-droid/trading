@@ -16,6 +16,7 @@ const ids = {
   config: document.getElementById("config-json"),
   presets: document.getElementById("presets-json"),
   profiles: document.getElementById("profiles-json"),
+  workflow: document.getElementById("workflow-json"),
   jobs: document.getElementById("jobs-json"),
   jobHealth: document.getElementById("job-health-json"),
   jobHealthSummary: document.getElementById("job-health-summary"),
@@ -61,6 +62,7 @@ const ids = {
   profileName: document.getElementById("profile-name-input"),
   profileNotes: document.getElementById("profile-notes-input"),
   profileSelect: document.getElementById("profile-select"),
+  workflowStage: document.getElementById("workflow-stage-select"),
   jobType: document.getElementById("job-type-select"),
   jobAutoRestart: document.getElementById("job-auto-restart-select"),
   jobMaxRestarts: document.getElementById("job-max-restarts-input"),
@@ -444,6 +446,27 @@ function renderProfiles(profilePayload) {
   ids.profileSelect.value = nextValue;
 }
 
+function renderCompletionWorkflow(workflowPayload) {
+  const items = workflowPayload?.items || [];
+  ids.workflow.textContent = pretty(workflowPayload || { items: [] });
+
+  const currentValue = ids.workflowStage.value;
+  if (!items.length) {
+    ids.workflowStage.innerHTML = '<option value="">No stages</option>';
+    return;
+  }
+
+  ids.workflowStage.innerHTML = items
+    .map((item) => `<option value="${escapeXml(item.stage)}">${escapeXml(item.label)} | ${escapeXml(item.description)}</option>`)
+    .join("");
+
+  const fallbackValue = workflowPayload?.default_stage || items[0].stage;
+  const nextValue = items.some((item) => item.stage === currentValue)
+    ? currentValue
+    : fallbackValue;
+  ids.workflowStage.value = nextValue;
+}
+
 function applyLoadedProfileMeta(payload) {
   if (!payload) {
     return;
@@ -629,6 +652,7 @@ async function refreshDashboard() {
     renderSelectorCards(payload.selector_summary || null);
     renderPresets(payload.strategy_presets || null);
     renderProfiles(payload.operator_profiles || null);
+    renderCompletionWorkflow(payload.completion_workflow || null);
     renderReports(payload.session_reports || null);
     renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, payload.selector_summary?.active_market_chart);
     renderJobs(payload.jobs);
@@ -1075,6 +1099,41 @@ async function startProfile() {
   }
 }
 
+async function previewWorkflow() {
+  try {
+    const stage = ids.workflowStage.value;
+    if (!stage) {
+      ids.workflow.textContent = "workflow preview error: select a stage first";
+      return;
+    }
+    ids.workflow.textContent = `Previewing workflow stage ${stage}...`;
+    const payload = await postJson("/api/workflow-preview", { stage });
+    ids.workflow.textContent = pretty(payload);
+  } catch (error) {
+    ids.workflow.textContent = `workflow preview error: ${error.message}`;
+  }
+}
+
+async function startWorkflow() {
+  try {
+    const stage = ids.workflowStage.value;
+    if (!stage) {
+      ids.workflow.textContent = "workflow start error: select a stage first";
+      return;
+    }
+    ids.workflow.textContent = `Starting workflow stage ${stage}...`;
+    const payload = await postJson("/api/workflow-start", { stage });
+    ids.workflow.textContent = pretty(payload);
+    if (payload?.error) {
+      return;
+    }
+    await refreshJobs();
+    await refreshDashboard();
+  } catch (error) {
+    ids.workflow.textContent = `workflow start error: ${error.message}`;
+  }
+}
+
 function resetAutoRefresh() {
   if (refreshTimer) {
     clearInterval(refreshTimer);
@@ -1107,6 +1166,8 @@ document.getElementById("load-profile").addEventListener("click", loadProfile);
 document.getElementById("delete-profile").addEventListener("click", deleteProfile);
 document.getElementById("preview-profile").addEventListener("click", previewProfile);
 document.getElementById("start-profile").addEventListener("click", startProfile);
+document.getElementById("preview-workflow").addEventListener("click", previewWorkflow);
+document.getElementById("start-workflow").addEventListener("click", startWorkflow);
 document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);
 document.getElementById("preview-job").addEventListener("click", () => previewJob());
 ids.scanCards.addEventListener("click", (event) => {
@@ -1141,6 +1202,7 @@ renderScanCards(null);
 renderSelectorCards(null);
 renderPresets(null);
 renderProfiles(null);
+renderCompletionWorkflow(null);
 renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, null);
 refreshDashboard();
 resetAutoRefresh();

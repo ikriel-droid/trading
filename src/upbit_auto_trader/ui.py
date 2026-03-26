@@ -46,6 +46,7 @@ from .strategy import ProfessionalCryptoStrategy
 
 WEBUI_DIR = Path(__file__).with_name("webui")
 JOB_MANAGER = BackgroundJobManager()
+WORKFLOW_SCRIPT_CMD = "complete_remaining.cmd"
 EDITABLE_CONFIG_FIELDS = {
     "strategy.buy_threshold": float,
     "strategy.sell_threshold": float,
@@ -83,6 +84,51 @@ JOURNAL_ALERT_TYPES = {
     "pending_order_cancel_requested",
 }
 NON_BLOCKING_PREFLIGHT_ISSUES = {"discord_webhook_not_configured"}
+COMPLETION_WORKFLOW_STAGES = [
+    {
+        "stage": "verify",
+        "label": "Verify",
+        "description": "compileall, node --check, unittest",
+        "starts_jobs": False,
+    },
+    {
+        "stage": "paper-preflight",
+        "label": "Paper Preflight",
+        "description": "doctor, save paper profile, preview paper launch",
+        "starts_jobs": False,
+    },
+    {
+        "stage": "paper-report",
+        "label": "Paper Report",
+        "description": "export the current paper session report",
+        "starts_jobs": False,
+    },
+    {
+        "stage": "live-preflight",
+        "label": "Live Preflight",
+        "description": "doctor, save live profile, preview live blockers",
+        "starts_jobs": False,
+    },
+    {
+        "stage": "status",
+        "label": "Status",
+        "description": "list profiles, reports, and job history",
+        "starts_jobs": False,
+    },
+    {
+        "stage": "all-safe",
+        "label": "All Safe",
+        "description": "run verify, paper preflight, paper start, report, and status",
+        "starts_jobs": True,
+    },
+    {
+        "stage": "roadmap",
+        "label": "Roadmap",
+        "description": "print the remaining completion roadmap",
+        "starts_jobs": False,
+    },
+]
+COMPLETION_WORKFLOW_STAGE_MAP = {item["stage"]: item for item in COMPLETION_WORKFLOW_STAGES}
 
 
 def _default_selector_state_path(config_path: str) -> str:
@@ -133,6 +179,17 @@ def _resolve_report_keep_latest(value: Optional[int]) -> int:
     except (TypeError, ValueError):
         parsed = 0
     return parsed if parsed > 0 else DEFAULT_REPORT_KEEP_LATEST
+
+
+def _completion_workflow_script_path(config_path: str) -> str:
+    return str(_project_root(config_path) / WORKFLOW_SCRIPT_CMD)
+
+
+def _validate_completion_workflow_stage(stage: str) -> Dict[str, Any]:
+    normalized = str(stage or "").strip()
+    if normalized in COMPLETION_WORKFLOW_STAGE_MAP:
+        return COMPLETION_WORKFLOW_STAGE_MAP[normalized]
+    return {}
 
 
 def _override_market(config: Any, market: Optional[str]) -> Any:
@@ -1149,6 +1206,78 @@ def run_doctor_action(
     )
 
 
+def preview_completion_workflow_action(config_path: str, stage: str) -> Dict[str, Any]:
+    stage_meta = _validate_completion_workflow_stage(stage)
+    if not stage_meta:
+        return {
+            "error": "unsupported_workflow_stage",
+            "stage": stage,
+            "supported_stages": [item["stage"] for item in COMPLETION_WORKFLOW_STAGES],
+        }
+
+    script_path = _completion_workflow_script_path(config_path)
+    if not Path(script_path).exists():
+        return {
+            "error": "workflow_script_missing",
+            "stage": stage_meta["stage"],
+            "script_path": script_path,
+        }
+
+    project_root = str(_project_root(config_path))
+    job_name = "workflow-{0}".format(stage_meta["stage"])
+    warnings = []
+    if stage_meta.get("starts_jobs"):
+        warnings.append("starts_managed_jobs")
+
+    return {
+        "job_type": "completion-workflow",
+        "stage": stage_meta["stage"],
+        "label": stage_meta["label"],
+        "description": stage_meta["description"],
+        "command": ["cmd.exe", "/c", WORKFLOW_SCRIPT_CMD, stage_meta["stage"]],
+        "cwd": project_root,
+        "script_path": script_path,
+        "job_name": job_name,
+        "report_on_exit": False,
+        "report_keep_latest": None,
+        "heartbeat_path": str(Path(project_root) / "data" / "webui-jobs" / "{0}.heartbeat.json".format(job_name)),
+        "warnings": warnings,
+        "can_start": True,
+    }
+
+
+def start_completion_workflow_action(
+    config_path: str,
+    stage: str,
+    job_manager: Optional[BackgroundJobManager] = None,
+) -> Dict[str, Any]:
+    preview = preview_completion_workflow_action(config_path, stage)
+    if preview.get("error"):
+        return preview
+
+    job_manager = job_manager or JOB_MANAGER
+    job = job_manager.start_job(
+        name=str(preview["job_name"]),
+        kind="completion-workflow",
+        command=list(preview["command"]),
+        cwd=str(preview["cwd"]),
+        auto_restart=False,
+        max_restarts=0,
+        restart_backoff_seconds=0.0,
+        report_on_exit=False,
+        report_config_path="",
+        report_state_path="",
+        report_mode="paper",
+        report_output_dir="",
+        report_label=str(preview["stage"]),
+        report_keep_latest=None,
+    )
+    return {
+        "workflow": preview,
+        "job": job,
+    }
+
+
 def build_dashboard_payload(
     config_path: str,
     state_path: Optional[str],
@@ -1200,6 +1329,11 @@ def build_dashboard_payload(
         "operator_profiles": {
             "dir": default_profile_dir(config_path),
             "items": list_operator_profiles(config_path),
+        },
+        "completion_workflow": {
+            "script_path": _completion_workflow_script_path(config_path),
+            "default_stage": COMPLETION_WORKFLOW_STAGES[0]["stage"],
+            "items": COMPLETION_WORKFLOW_STAGES,
         },
         "session_reports": {
             "dir": default_reports_dir(config_path),
@@ -1659,6 +1793,18 @@ def _build_handler(
                     run_start_profile_action(
                         config_path=config_path,
                         profile_ref=body.get("profile", ""),
+                        job_manager=JOB_MANAGER,
+                    )
+                )
+                return
+            if self.path == "/api/workflow-preview":
+                self._write_json(preview_completion_workflow_action(config_path, body.get("stage", "")))
+                return
+            if self.path == "/api/workflow-start":
+                self._write_json(
+                    start_completion_workflow_action(
+                        config_path=config_path,
+                        stage=body.get("stage", ""),
                         job_manager=JOB_MANAGER,
                     )
                 )
