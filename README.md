@@ -300,6 +300,12 @@ Create the same bundle and zip it for transfer or backup:
 .\build_control_room_bundle.cmd -CreateZip
 ```
 
+Build a redacted support bundle with logs, state snapshots, control-room status, doctor output, and recent reports:
+
+```powershell
+.\build_control_room_support_bundle.cmd -CreateZip
+```
+
 Verify that the bundle manifest, SHA256 checksums, and required files are present:
 
 ```powershell
