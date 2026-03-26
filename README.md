@@ -300,6 +300,12 @@ Create the same bundle and zip it for transfer or backup:
 .\build_control_room_bundle.cmd -CreateZip
 ```
 
+Export release metadata with version, git commit, tool versions, and main entrypoints:
+
+```powershell
+.\export_control_room_release_metadata.cmd -AsJson
+```
+
 Build a redacted support bundle with logs, state snapshots, control-room status, doctor output, and recent reports:
 
 ```powershell

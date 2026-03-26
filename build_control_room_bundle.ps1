@@ -10,6 +10,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ResolvedOutputDirectory = Join-Path $ProjectRoot $OutputDirectory
 $ResolvedZipPath = Join-Path $ProjectRoot $ZipPath
+$ReleaseMetadataScript = Join-Path $ProjectRoot "export_control_room_release_metadata.ps1"
 
 $filesToCopy = @(
     ".env.example",
@@ -108,6 +109,13 @@ $manifest = [pscustomobject]@{
 }
 
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $ResolvedOutputDirectory "bundle-manifest.json") -Encoding utf8
+
+if (Test-Path $ReleaseMetadataScript) {
+    & $env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe `
+        -ExecutionPolicy Bypass `
+        -File $ReleaseMetadataScript `
+        -OutputPath (Join-Path $OutputDirectory "release-metadata.json") | Out-Null
+}
 
 if ($CreateZip) {
     $zipDirectory = Split-Path -Parent $ResolvedZipPath
