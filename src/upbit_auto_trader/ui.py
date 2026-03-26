@@ -729,6 +729,176 @@ def _build_job_health_summary(
     }
 
 
+def _checklist_item(
+    key: str,
+    status: str,
+    title: str,
+    detail: str,
+    action: str = "",
+) -> Dict[str, Any]:
+    return {
+        "key": key,
+        "status": status,
+        "title": title,
+        "detail": detail,
+        "action": action,
+    }
+
+
+def _build_operator_checklist(
+    config_path: str,
+    config: Any,
+    state_path: Optional[str],
+    selector_state_path: Optional[str],
+    broker_readiness: Dict[str, Any],
+    job_health: Dict[str, Any],
+) -> Dict[str, Any]:
+    resolved_selector_state_path = _resolve_project_path(config_path, selector_state_path) if selector_state_path else None
+    resolved_state_path = _resolve_project_path(config_path, state_path) if state_path else None
+    resolved_live_state_path = _resolve_project_path(config_path, "data/live-state.json")
+    workflow_script_path = _completion_workflow_script_path(config_path)
+    live_report = build_doctor_report(
+        config_path=config_path,
+        config=config,
+        state_path=resolved_live_state_path,
+        selector_state_path=resolved_selector_state_path,
+    )
+
+    items: list[Dict[str, Any]] = []
+    next_steps: list[str] = []
+
+    workflow_ok = Path(workflow_script_path).exists()
+    items.append(
+        _checklist_item(
+            key="workflow_script",
+            status="success" if workflow_ok else "error",
+            title="Completion workflow wrapper",
+            detail=workflow_script_path if workflow_ok else "missing completion workflow wrapper",
+            action="Run .\\complete_remaining.cmd all-safe" if workflow_ok else "restore complete_remaining.cmd",
+        )
+    )
+    if not workflow_ok:
+        next_steps.append("complete_remaining.cmd 를 복구한 뒤 all-safe workflow를 다시 실행하세요.")
+
+    current_state_exists = bool(resolved_state_path and Path(resolved_state_path).exists())
+    current_state_ready = current_state_exists
+    items.append(
+        _checklist_item(
+            key="paper_state",
+            status="success" if current_state_ready else "warning",
+            title="Current paper state",
+            detail=resolved_state_path or "state path not selected",
+            action="paper-preflight 또는 paper-loop 로 상태 파일을 준비하세요." if not current_state_ready else "paper state loaded",
+        )
+    )
+    if not current_state_ready:
+        next_steps.append("paper 상태 파일을 준비하려면 paper-preflight 또는 paper-loop 를 먼저 실행하세요.")
+
+    job_health_summary = job_health.get("summary", {}) if isinstance(job_health, dict) else {}
+    attention_count = int(job_health_summary.get("requires_attention", 0) or 0)
+    items.append(
+        _checklist_item(
+            key="managed_jobs",
+            status="success" if attention_count == 0 else "warning",
+            title="Managed jobs",
+            detail="attention={0}, running={1}".format(
+                attention_count,
+                int(job_health_summary.get("running", 0) or 0),
+            ),
+            action="Job Health 패널에서 stale/failed job 을 정리하세요." if attention_count else "job health clear",
+        )
+    )
+    if attention_count:
+        next_steps.append("Job Health 경고가 있으면 Emergency Stop All 또는 Clean Stopped Jobs 로 먼저 정리하세요.")
+
+    private_ready = bool(broker_readiness.get("private_ready", False))
+    private_issues = [str(item) for item in broker_readiness.get("private_issues", [])]
+    items.append(
+        _checklist_item(
+            key="live_api",
+            status="success" if private_ready else "error",
+            title="Live API readiness",
+            detail=", ".join(private_issues) if private_issues else "private API ready",
+            action="Upbit access/secret key 와 live 설정을 확인하세요." if not private_ready else "private API ready",
+        )
+    )
+    if not private_ready:
+        next_steps.append("Upbit access/secret key 를 .env 또는 config 에 넣고 doctor 를 다시 실행하세요.")
+
+    live_enabled = bool(getattr(config.upbit, "live_enabled", False))
+    items.append(
+        _checklist_item(
+            key="live_enabled",
+            status="success" if live_enabled else "warning",
+            title="Live trading switch",
+            detail="upbit.live_enabled={0}".format(str(live_enabled).lower()),
+            action="실거래 직전까지는 false 로 두고, 준비가 끝나면 true 로 바꾸세요." if not live_enabled else "live switch enabled",
+        )
+    )
+
+    live_state_report = live_report.get("state", {}) if isinstance(live_report, dict) else {}
+    live_state_ok = bool(live_state_report.get("load_ok"))
+    live_state_exists = bool(live_state_report.get("exists"))
+    live_state_detail = str(live_state_report.get("path", resolved_live_state_path))
+    if not live_state_exists:
+        live_state_detail = "{0} (missing)".format(live_state_detail)
+    elif not live_state_ok:
+        live_state_detail = "{0} (unreadable)".format(live_state_detail)
+    items.append(
+        _checklist_item(
+            key="live_state",
+            status="success" if live_state_ok else "error",
+            title="Live state file",
+            detail=live_state_detail,
+            action="live-state.json 을 준비하거나 live-preflight 로 상태를 확인하세요." if not live_state_ok else "live state ready",
+        )
+    )
+    if not live_state_ok:
+        next_steps.append("실거래 전에 data/live-state.json 을 준비하고 live-preflight 결과를 확인하세요.")
+
+    notifications = live_report.get("notifications", {}) if isinstance(live_report, dict) else {}
+    discord_configured = bool(notifications.get("discord_webhook_configured"))
+    items.append(
+        _checklist_item(
+            key="discord_notifications",
+            status="success" if discord_configured else "warning",
+            title="Discord notifications",
+            detail="configured" if discord_configured else "discord webhook not configured",
+            action="선택 사항이지만 체결/에러 알림을 받으려면 webhook 을 설정하세요." if not discord_configured else "notifications ready",
+        )
+    )
+    if not discord_configured:
+        next_steps.append("선택 사항이지만 Discord webhook 을 넣어두면 체결과 에러를 바로 받을 수 있습니다.")
+
+    summary = {
+        "success": sum(1 for item in items if item["status"] == "success"),
+        "warning": sum(1 for item in items if item["status"] == "warning"),
+        "error": sum(1 for item in items if item["status"] == "error"),
+        "info": sum(1 for item in items if item["status"] == "info"),
+    }
+    summary["requires_attention"] = summary["warning"] + summary["error"]
+    if summary["error"] == 0 and summary["warning"] == 0:
+        summary["overall_status"] = "ready"
+    elif summary["error"] == 0:
+        summary["overall_status"] = "paper_ready"
+    else:
+        summary["overall_status"] = "needs_setup"
+
+    deduped_steps = []
+    seen_steps = set()
+    for step in next_steps:
+        if step in seen_steps:
+            continue
+        seen_steps.add(step)
+        deduped_steps.append(step)
+
+    return {
+        "summary": summary,
+        "items": items,
+        "next_steps": deduped_steps[:5],
+    }
+
+
 def _chart_points_from_candles(candles: list[Any], limit: int = 120) -> list[Dict[str, Any]]:
     return [
         {
@@ -1296,6 +1466,7 @@ def build_dashboard_payload(
     jobs = job_manager.list_jobs()
     job_history = job_manager.list_history()
     broker_readiness = broker.readiness_report()
+    job_health = _build_job_health_summary(jobs, job_history)
     suggested_market_csv_path = _default_market_csv_path(config_path, config.market, config.upbit.candle_unit)
     effective_csv_path = _resolve_project_path(
         config_path,
@@ -1340,7 +1511,15 @@ def build_dashboard_payload(
             "items": list_session_reports(config_path),
         },
         "jobs": jobs,
-        "job_health": _build_job_health_summary(jobs, job_history),
+        "job_health": job_health,
+        "operator_checklist": _build_operator_checklist(
+            config_path=config_path,
+            config=config,
+            state_path=state_path,
+            selector_state_path=resolved_selector_state_path,
+            broker_readiness=broker_readiness,
+            job_health=job_health,
+        ),
         "job_history": {
             "items": job_history,
         },

@@ -25,6 +25,8 @@ const ids = {
   jobHistory: document.getElementById("job-history-json"),
   paths: document.getElementById("paths-json"),
   readiness: document.getElementById("readiness-json"),
+  checklistSummary: document.getElementById("checklist-summary"),
+  checklistFeed: document.getElementById("checklist-feed"),
   alertsSummary: document.getElementById("alerts-summary"),
   alertsFeed: document.getElementById("alerts-feed"),
   recentTrades: document.getElementById("recent-trades-json"),
@@ -184,6 +186,52 @@ function renderAlerts(alertPayload) {
       <div class="alert-meta">${escapeXml(item.timestamp || "timestamp unavailable")}</div>
     </article>
   `).join("");
+}
+
+function renderChecklist(checklistPayload) {
+  const summary = checklistPayload?.summary || {};
+  const items = checklistPayload?.items || [];
+  const nextSteps = checklistPayload?.next_steps || [];
+
+  ids.checklistSummary.innerHTML = `
+    <span class="alert-pill success">success ${Number(summary.success || 0)}</span>
+    <span class="alert-pill warn">warning ${Number(summary.warning || 0)}</span>
+    <span class="alert-pill error">error ${Number(summary.error || 0)}</span>
+    <span class="alert-pill info">status ${escapeXml(summary.overall_status || "unknown")}</span>
+  `;
+
+  if (!items.length) {
+    ids.checklistFeed.innerHTML = '<div class="empty-state">No checklist items.</div>';
+    return;
+  }
+
+  const cards = items.map((item) => `
+    <article class="alert-card ${escapeXml(item.status || "info")}">
+      <div class="alert-card-head">
+        <span class="chip ${escapeXml(item.status || "info")}">${escapeXml(item.status || "info")}</span>
+        <span class="alert-source">${escapeXml(item.key || "item")}</span>
+      </div>
+      <h3>${escapeXml(item.title || "Checklist item")}</h3>
+      <p>${escapeXml(item.detail || "")}</p>
+      <div class="alert-meta">${escapeXml(item.action || "")}</div>
+    </article>
+  `);
+
+  if (nextSteps.length) {
+    cards.push(`
+      <article class="alert-card info">
+        <div class="alert-card-head">
+          <span class="chip info">next</span>
+          <span class="alert-source">operator guide</span>
+        </div>
+        <h3>Next Steps</h3>
+        <p>${nextSteps.map((item, index) => `${index + 1}. ${escapeXml(item)}`).join("<br>")}</p>
+        <div class="alert-meta">Use Completion Workflow or Process Control to apply the next step.</div>
+      </article>
+    `);
+  }
+
+  ids.checklistFeed.innerHTML = cards.join("");
 }
 
 function syncInputsFromDashboard(payload) {
@@ -643,6 +691,7 @@ async function refreshDashboard() {
     ids.paths.textContent = pretty(payload.paths);
     ids.readiness.textContent = pretty(payload.broker_readiness);
       renderAlerts(payload.alerts || null);
+      renderChecklist(payload.operator_checklist || null);
       renderJobHealth(payload.job_health || null);
       ids.recentTrades.textContent = pretty(payload.activity?.recent_trades || []);
       ids.recentEvents.textContent = pretty(payload.activity?.recent_events || []);
@@ -1203,6 +1252,7 @@ renderSelectorCards(null);
 renderPresets(null);
 renderProfiles(null);
 renderCompletionWorkflow(null);
+renderChecklist(null);
 renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, null);
 refreshDashboard();
 resetAutoRefresh();

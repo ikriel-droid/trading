@@ -357,10 +357,27 @@ class UiTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["selector_summary"]["last_scan_results"]), 2)
         self.assertEqual(payload["completion_workflow"]["default_stage"], "verify")
         self.assertTrue(any(item["stage"] == "all-safe" for item in payload["completion_workflow"]["items"]))
+        self.assertIn("operator_checklist", payload)
+        self.assertIn(payload["operator_checklist"]["summary"]["overall_status"], {"ready", "paper_ready", "needs_setup"})
         self.assertEqual(payload["jobs"], [])
         self.assertEqual(payload["job_health"]["summary"]["total"], 0)
         self.assertEqual(payload["job_health"]["summary"]["requires_attention"], 0)
         self.assertEqual(payload["job_history"]["items"], [])
+
+    def test_build_dashboard_payload_exposes_operator_checklist(self):
+        payload = build_dashboard_payload(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="paper",
+            job_manager=BackgroundJobManager(),
+        )
+
+        checklist = payload["operator_checklist"]
+        self.assertTrue(any(item["key"] == "workflow_script" and item["status"] == "success" for item in checklist["items"]))
+        self.assertTrue(any(item["key"] == "live_api" and item["status"] == "error" for item in checklist["items"]))
+        self.assertTrue(any("Upbit access/secret key" in item for item in checklist["next_steps"]))
 
     def test_build_dashboard_payload_supports_focus_market(self):
         payload = build_dashboard_payload(

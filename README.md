@@ -240,6 +240,8 @@ The script also supports smaller stages such as `roadmap`, `verify`, `paper-pref
 
 The browser control room now also exposes a `Completion Workflow` panel so you can preview or run safe finish stages such as `verify`, `paper-preflight`, `live-preflight`, `status`, and `all-safe` without leaving the UI.
 
+The control room also includes an `Operator Checklist` panel that turns current state, live readiness, workflow availability, job health, and notification setup into a small next-step list so you can see what is blocking paper or live operation at a glance.
+
 Run a local preflight check before paper or live operation:
 
 ```powershell
