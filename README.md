@@ -232,6 +232,12 @@ Or use the hidden-window launcher:
 
 Launching the hidden-window command again now reuses the running server on the same host or port instead of opening duplicate control-room instances.
 
+Restart the hidden control-room instance on the same host or port:
+
+```powershell
+.\restart_control_room.cmd
+```
+
 Or double-click the silent launcher:
 
 ```text
@@ -245,6 +251,18 @@ To stop a hidden control-room instance cleanly:
 ```
 
 If the PID file is stale, the stop script now clears it without killing an unrelated reused PID.
+
+Tail the hidden control-room logs:
+
+```powershell
+.\tail_control_room_logs.cmd
+```
+
+Follow the error log live:
+
+```powershell
+.\tail_control_room_logs.cmd -Stream stderr -Follow
+```
 
 Run the remaining completion workflow from Git Bash:
 
