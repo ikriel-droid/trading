@@ -312,6 +312,12 @@ Export handoff-style release notes in Markdown:
 .\export_control_room_release_notes.cmd -Print
 ```
 
+Build a top-level release pack that includes release metadata, release notes, a verified release bundle, and optionally a verified support bundle:
+
+```powershell
+.\build_control_room_release_pack.cmd -IncludeSupportBundle -CreateZip
+```
+
 Build a redacted support bundle with logs, state snapshots, control-room status, doctor output, and recent reports:
 
 ```powershell
