@@ -4,6 +4,7 @@ import sys
 import time
 import unittest
 import uuid
+from unittest import mock
 
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -197,6 +198,21 @@ class JobTests(unittest.TestCase):
         for path in [log_path, self.job_log_dir / "{0}.1".format(log_name), self.job_log_dir / "{0}.2".format(log_name)]:
             if path.exists():
                 path.unlink()
+
+    def test_rotating_log_writer_keeps_writing_when_rotation_is_locked(self):
+        log_name = "rotation-locked-{0}.log".format(uuid.uuid4().hex)
+        log_path = self.job_log_dir / log_name
+        writer = RotatingLogWriter(str(log_path), max_bytes=60, backup_count=2)
+        try:
+            writer.write("A" * 40)
+            with mock.patch("upbit_auto_trader.jobs.Path.replace", side_effect=PermissionError("locked")):
+                writer.write("B" * 40)
+        finally:
+            writer.close()
+
+        text = log_path.read_text(encoding="utf-8")
+        self.assertIn("A" * 40, text)
+        self.assertIn("B" * 40, text)
 
     def test_manager_exposes_rotated_log_archives(self):
         manager = self.build_manager(log_max_bytes=80, log_backup_count=2)

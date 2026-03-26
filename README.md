@@ -218,6 +218,18 @@ Or use the browser-opening launcher:
 .\launch_control_room.cmd
 ```
 
+Or use the hidden-window launcher:
+
+```powershell
+.\launch_control_room_hidden.cmd
+```
+
+Or double-click the silent launcher:
+
+```text
+launch_control_room_silent.vbs
+```
+
 Run the remaining completion workflow from Git Bash:
 
 ```powershell

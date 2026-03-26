@@ -11,6 +11,7 @@ dist/
 data/*.json
 data/*.jsonl
 data/*.log
+data/*.pid
 data/*.bak
 data/webui-jobs/
 data/strategy-presets/

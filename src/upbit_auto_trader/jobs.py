@@ -70,22 +70,27 @@ class RotatingLogWriter:
         if self._handle is not None and not self._handle.closed:
             self._handle.flush()
             self._handle.close()
+        try:
+            if self.backup_count > 0:
+                oldest = self.path.with_name("{0}.{1}".format(self.path.name, self.backup_count))
+                if oldest.exists():
+                    oldest.unlink()
 
-        if self.backup_count > 0:
-            oldest = self.path.with_name("{0}.{1}".format(self.path.name, self.backup_count))
-            if oldest.exists():
-                oldest.unlink()
+                for index in range(self.backup_count - 1, 0, -1):
+                    source = self.path.with_name("{0}.{1}".format(self.path.name, index))
+                    target = self.path.with_name("{0}.{1}".format(self.path.name, index + 1))
+                    if source.exists():
+                        source.replace(target)
 
-            for index in range(self.backup_count - 1, 0, -1):
-                source = self.path.with_name("{0}.{1}".format(self.path.name, index))
-                target = self.path.with_name("{0}.{1}".format(self.path.name, index + 1))
-                if source.exists():
-                    source.replace(target)
-
-            if self.path.exists():
-                self.path.replace(self.path.with_name("{0}.1".format(self.path.name)))
-        elif self.path.exists():
-            self.path.unlink()
+                if self.path.exists():
+                    self.path.replace(self.path.with_name("{0}.1".format(self.path.name)))
+            elif self.path.exists():
+                self.path.unlink()
+        except OSError:
+            # On Windows a concurrent reader can temporarily lock the file.
+            # In that case keep appending to the active log instead of crashing
+            # the background output thread.
+            pass
 
         self._open_handle()
 
