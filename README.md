@@ -306,6 +306,18 @@ Build a redacted support bundle with logs, state snapshots, control-room status,
 .\build_control_room_support_bundle.cmd -CreateZip
 ```
 
+Verify that the support bundle manifest, SHA256 checksums, and key diagnostic files are present:
+
+```powershell
+.\verify_control_room_support_bundle.cmd -RequireZip
+```
+
+Clean the generated support bundle directory and zip when you are done:
+
+```powershell
+.\clean_control_room_support_bundle.cmd
+```
+
 Verify that the bundle manifest, SHA256 checksums, and required files are present:
 
 ```powershell
