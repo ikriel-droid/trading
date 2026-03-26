@@ -264,6 +264,18 @@ Follow the error log live:
 .\tail_control_room_logs.cmd -Stream stderr -Follow
 ```
 
+Install desktop shortcuts for launch, status, restart, stop, and log tail:
+
+```powershell
+.\install_control_room_shortcuts.cmd
+```
+
+Remove the installed desktop shortcuts:
+
+```powershell
+.\uninstall_control_room_shortcuts.cmd
+```
+
 Run the remaining completion workflow from Git Bash:
 
 ```powershell
