@@ -224,11 +224,21 @@ Or use the hidden-window launcher:
 .\launch_control_room_hidden.cmd
 ```
 
+Launching the hidden-window command again now reuses the running server on the same host or port instead of opening duplicate control-room instances.
+
 Or double-click the silent launcher:
 
 ```text
 launch_control_room_silent.vbs
 ```
+
+To stop a hidden control-room instance cleanly:
+
+```powershell
+.\stop_control_room.cmd
+```
+
+If the PID file is stale, the stop script now clears it without killing an unrelated reused PID.
 
 Run the remaining completion workflow from Git Bash:
 

@@ -29,6 +29,115 @@ if (-not (Test-Path $StartScript)) {
     throw "Control room starter not found: $StartScript"
 }
 
+function Test-ControlRoomReady {
+    param(
+        [string]$Url
+    )
+
+    try {
+        Invoke-WebRequest -UseBasicParsing "$Url/" -TimeoutSec 2 | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-ControlRoomPid {
+    param(
+        [string]$Path
+    )
+
+    if (-not (Test-Path $Path)) {
+        return $null
+    }
+
+    $raw = (Get-Content $Path -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if (-not $raw) {
+        return $null
+    }
+
+    $pidValue = 0
+    if ([int]::TryParse($raw.Trim(), [ref]$pidValue)) {
+        return $pidValue
+    }
+    return $null
+}
+
+function Test-ProcessAlive {
+    param(
+        [int]$PidValue
+    )
+
+    if ($PidValue -le 0) {
+        return $false
+    }
+
+    try {
+        $null = Get-Process -Id $PidValue -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-ProcessCommandLine {
+    param(
+        [int]$PidValue
+    )
+
+    if ($PidValue -le 0) {
+        return $null
+    }
+
+    try {
+        $processRecord = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $PidValue) -ErrorAction Stop
+        return $processRecord.CommandLine
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-ControlRoomOwnedProcess {
+    param(
+        [int]$PidValue,
+        [int]$ExpectedPort
+    )
+
+    $commandLine = Get-ProcessCommandLine -PidValue $PidValue
+    if (-not $commandLine) {
+        return $false
+    }
+
+    return ($commandLine -like "*start_control_room.ps1*") -and ($commandLine -like ("*-Port* {0}*" -f $ExpectedPort))
+}
+
+if (Test-ControlRoomReady -Url $ServerUrl) {
+    $existingPid = Get-ControlRoomPid -Path $ResolvedPidFile
+    if ($OpenBrowser) {
+        Start-Process $ServerUrl | Out-Null
+    }
+    Write-Host ("Control room already running: {0}" -f $ServerUrl)
+    if ($existingPid) {
+        Write-Host ("Existing PID: {0}" -f $existingPid)
+    }
+    exit 0
+}
+
+$existingPid = Get-ControlRoomPid -Path $ResolvedPidFile
+if ($existingPid -and (Test-ProcessAlive -PidValue $existingPid)) {
+    if (Test-ControlRoomOwnedProcess -PidValue $existingPid -ExpectedPort $Port) {
+        Stop-Process -Id $existingPid -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 300
+    }
+    else {
+        Write-Host ("Ignoring stale PID file that points to another process: {0}" -f $existingPid)
+    }
+}
+Remove-Item -Force $ResolvedPidFile -ErrorAction SilentlyContinue
+
 $argumentList = @(
     "-ExecutionPolicy",
     "Bypass",
@@ -66,7 +175,7 @@ if ($HiddenServerWindow) {
     if (-not (Test-Path $logDirectory)) {
         New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
     }
-    Remove-Item -Force $ResolvedStdoutLog, $ResolvedStderrLog, $ResolvedPidFile -ErrorAction SilentlyContinue
+    Remove-Item -Force $ResolvedStdoutLog, $ResolvedStderrLog -ErrorAction SilentlyContinue
     $startProcessParams.WindowStyle = "Hidden"
     $startProcessParams.RedirectStandardOutput = $ResolvedStdoutLog
     $startProcessParams.RedirectStandardError = $ResolvedStderrLog
@@ -78,12 +187,9 @@ Set-Content -Path $ResolvedPidFile -Value $process.Id -Encoding ascii
 $ready = $false
 for ($index = 0; $index -lt $StartupWaitSeconds; $index++) {
     Start-Sleep -Seconds 1
-    try {
-        Invoke-WebRequest -UseBasicParsing "$ServerUrl/" -TimeoutSec 2 | Out-Null
+    if (Test-ControlRoomReady -Url $ServerUrl) {
         $ready = $true
         break
-    }
-    catch {
     }
 }
 
