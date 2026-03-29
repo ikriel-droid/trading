@@ -17,6 +17,8 @@ const ids = {
   presets: document.getElementById("presets-json"),
   profiles: document.getElementById("profiles-json"),
   workflow: document.getElementById("workflow-json"),
+  releaseArtifactsSummary: document.getElementById("release-artifacts-summary"),
+  releaseArtifacts: document.getElementById("release-artifacts-json"),
   jobs: document.getElementById("jobs-json"),
   jobHealth: document.getElementById("job-health-json"),
   jobHealthSummary: document.getElementById("job-health-summary"),
@@ -515,6 +517,23 @@ function renderCompletionWorkflow(workflowPayload) {
   ids.workflowStage.value = nextValue;
 }
 
+function renderReleaseArtifacts(releasePayload) {
+  const payload = releasePayload || {};
+  const status = String(payload.status || "missing");
+  const statusClass = status === "ready" ? "success" : status === "partial" ? "warn" : "error";
+  const manifestState = payload.manifest_exists ? "manifest ok" : "manifest missing";
+  const zipState = payload.zip_exists ? "zip ok" : "zip missing";
+  const supportState = payload.support_zip_exists ? "support ok" : "support missing";
+
+  ids.releaseArtifactsSummary.innerHTML = `
+    <span class="alert-pill ${statusClass}">status ${escapeXml(status)}</span>
+    <span class="alert-pill info">${escapeXml(manifestState)}</span>
+    <span class="alert-pill info">${escapeXml(zipState)}</span>
+    <span class="alert-pill info">${escapeXml(supportState)}</span>
+  `;
+  ids.releaseArtifacts.textContent = pretty(payload);
+}
+
 function applyLoadedProfileMeta(payload) {
   if (!payload) {
     return;
@@ -702,6 +721,7 @@ async function refreshDashboard() {
     renderPresets(payload.strategy_presets || null);
     renderProfiles(payload.operator_profiles || null);
     renderCompletionWorkflow(payload.completion_workflow || null);
+    renderReleaseArtifacts(payload.release_artifacts || null);
     renderReports(payload.session_reports || null);
     renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, payload.selector_summary?.active_market_chart);
     renderJobs(payload.jobs);
@@ -1183,6 +1203,21 @@ async function startWorkflow() {
   }
 }
 
+async function runReleaseWorkflow(stage) {
+  try {
+    ids.releaseArtifacts.textContent = `Running ${stage}...`;
+    const payload = await postJson("/api/workflow-start", { stage });
+    ids.releaseArtifacts.textContent = pretty(payload);
+    if (payload?.error) {
+      return;
+    }
+    await refreshJobs();
+    await refreshDashboard();
+  } catch (error) {
+    ids.releaseArtifacts.textContent = `release workflow error: ${error.message}`;
+  }
+}
+
 function resetAutoRefresh() {
   if (refreshTimer) {
     clearInterval(refreshTimer);
@@ -1217,6 +1252,9 @@ document.getElementById("preview-profile").addEventListener("click", previewProf
 document.getElementById("start-profile").addEventListener("click", startProfile);
 document.getElementById("preview-workflow").addEventListener("click", previewWorkflow);
 document.getElementById("start-workflow").addEventListener("click", startWorkflow);
+document.getElementById("run-release-pack").addEventListener("click", () => runReleaseWorkflow("release-pack"));
+document.getElementById("run-release-verify").addEventListener("click", () => runReleaseWorkflow("release-verify"));
+document.getElementById("run-release-clean").addEventListener("click", () => runReleaseWorkflow("release-clean"));
 document.getElementById("refresh-jobs").addEventListener("click", refreshJobs);
 document.getElementById("preview-job").addEventListener("click", () => previewJob());
 ids.scanCards.addEventListener("click", (event) => {
@@ -1252,6 +1290,7 @@ renderSelectorCards(null);
 renderPresets(null);
 renderProfiles(null);
 renderCompletionWorkflow(null);
+renderReleaseArtifacts(null);
 renderChecklist(null);
 renderChart(ids.selectorActiveChart, ids.selectorActiveChartMeta, null);
 refreshDashboard();
