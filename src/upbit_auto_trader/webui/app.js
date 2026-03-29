@@ -73,6 +73,7 @@ const ids = {
   jobMaxRestarts: document.getElementById("job-max-restarts-input"),
   jobRestartBackoff: document.getElementById("job-restart-backoff-input"),
   jobReportKeep: document.getElementById("job-report-keep-input"),
+  runReleaseRecommended: document.getElementById("run-release-recommended"),
   runReleasePack: document.getElementById("run-release-pack"),
   runReleaseVerify: document.getElementById("run-release-verify"),
   runReleaseClean: document.getElementById("run-release-clean"),
@@ -82,6 +83,7 @@ let dashboardState = {
   paths: {},
   app: {},
   defaults: {},
+  releaseRecommendedStage: "release-pack",
 };
 let refreshTimer = null;
 
@@ -553,6 +555,8 @@ function renderReleaseArtifacts(releasePayload) {
     <p>${escapeXml(recommendation)}</p>
     <div class="release-next-step-meta">Suggested stage: ${escapeXml(recommendedStage)}</div>
   `;
+  dashboardState.releaseRecommendedStage = recommendedStage;
+  ids.runReleaseRecommended.textContent = `Run ${recommendedStage}`;
   ids.runReleasePack.classList.toggle("recommended", recommendedStage === "release-pack");
   ids.runReleaseVerify.classList.toggle("recommended", recommendedStage === "release-verify");
   ids.runReleaseClean.classList.toggle("recommended", recommendedStage === "release-clean");
@@ -1277,6 +1281,7 @@ document.getElementById("preview-profile").addEventListener("click", previewProf
 document.getElementById("start-profile").addEventListener("click", startProfile);
 document.getElementById("preview-workflow").addEventListener("click", previewWorkflow);
 document.getElementById("start-workflow").addEventListener("click", startWorkflow);
+document.getElementById("run-release-recommended").addEventListener("click", () => runReleaseWorkflow(dashboardState.releaseRecommendedStage || "release-pack"));
 document.getElementById("run-release-pack").addEventListener("click", () => runReleaseWorkflow("release-pack"));
 document.getElementById("run-release-verify").addEventListener("click", () => runReleaseWorkflow("release-verify"));
 document.getElementById("run-release-clean").addEventListener("click", () => runReleaseWorkflow("release-clean"));

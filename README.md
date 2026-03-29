@@ -389,6 +389,7 @@ The script also supports smaller stages such as `roadmap`, `verify`, `paper-pref
 The browser control room now also exposes a `Completion Workflow` panel so you can preview or run finish stages such as `verify`, `paper-preflight`, `live-preflight`, `release-pack`, `release-verify`, `release-clean`, `status`, and `all-safe` without leaving the UI.
 The operator checklist now also shows whether the latest release pack artifacts are missing, partial, or ready, and points you to `release-pack` / `release-verify` when distribution output needs attention.
 The same UI now includes a `Release Center` card with direct `Build Pack`, `Verify Pack`, and `Clean Pack` buttons plus the current release artifact paths and readiness state.
+`Release Center` also exposes a `Run Recommended` button that follows the current artifact state and triggers the suggested release workflow stage directly.
 
 The control room also includes an `Operator Checklist` panel that turns current state, live readiness, workflow availability, job health, and notification setup into a small next-step list so you can see what is blocking paper or live operation at a glance.
 
