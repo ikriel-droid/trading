@@ -8,10 +8,28 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ResolvedOutputDirectory = Join-Path $ProjectRoot $OutputDirectory
-$ResolvedZipPath = Join-Path $ProjectRoot $ZipPath
+$PowerShellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $ReleaseMetadataScript = Join-Path $ProjectRoot "export_control_room_release_metadata.ps1"
 $ReleaseNotesScript = Join-Path $ProjectRoot "export_control_room_release_notes.ps1"
+
+function Resolve-ProjectPath {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $ProjectRoot
+    }
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+
+    return Join-Path $ProjectRoot $Path
+}
+
+$ResolvedOutputDirectory = Resolve-ProjectPath -Path $OutputDirectory
+$ResolvedZipPath = Resolve-ProjectPath -Path $ZipPath
 
 $filesToCopy = @(
     ".env.example",
@@ -42,10 +60,34 @@ $filesToCopy = @(
     "complete_remaining.sh",
     "complete_remaining.ps1",
     "complete_remaining.cmd",
+    "build_control_room_bundle.ps1",
+    "build_control_room_bundle.cmd",
+    "build_control_room_support_bundle.ps1",
+    "build_control_room_support_bundle.cmd",
+    "verify_control_room_bundle.ps1",
+    "verify_control_room_bundle.cmd",
+    "clean_control_room_bundle.ps1",
+    "clean_control_room_bundle.cmd",
+    "verify_control_room_support_bundle.ps1",
+    "verify_control_room_support_bundle.cmd",
+    "clean_control_room_support_bundle.ps1",
+    "clean_control_room_support_bundle.cmd",
+    "build_control_room_release_pack.ps1",
+    "build_control_room_release_pack.cmd",
+    "verify_control_room_release_pack.ps1",
+    "verify_control_room_release_pack.cmd",
+    "clean_control_room_release_pack.ps1",
+    "clean_control_room_release_pack.cmd",
+    "export_control_room_release_metadata.ps1",
+    "export_control_room_release_metadata.cmd",
+    "export_control_room_release_notes.ps1",
+    "export_control_room_release_notes.cmd",
+    "snapshot_control_room_environment.ps1",
+    "snapshot_control_room_environment.cmd",
     "start_profile.ps1",
     "src/upbit_auto_trader/__init__.py",
     "src/upbit_auto_trader/backtest.py",
-    "src/upbit_auto_trader/brokers/base.py",
+    "src/upbit_auto_trader/brokers/__init__.py",
     "src/upbit_auto_trader/brokers/upbit.py",
     "src/upbit_auto_trader/config.py",
     "src/upbit_auto_trader/datafeed.py",
@@ -56,7 +98,6 @@ $filesToCopy = @(
     "src/upbit_auto_trader/models.py",
     "src/upbit_auto_trader/notifier.py",
     "src/upbit_auto_trader/optimizer.py",
-    "src/upbit_auto_trader/paper.py",
     "src/upbit_auto_trader/presets.py",
     "src/upbit_auto_trader/profiles.py",
     "src/upbit_auto_trader/reporting.py",
@@ -112,17 +153,17 @@ $manifest = [pscustomobject]@{
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $ResolvedOutputDirectory "bundle-manifest.json") -Encoding utf8
 
 if (Test-Path $ReleaseMetadataScript) {
-    & $env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe `
+    & $PowerShellExe `
         -ExecutionPolicy Bypass `
         -File $ReleaseMetadataScript `
-        -OutputPath (Join-Path $OutputDirectory "release-metadata.json") | Out-Null
+        -OutputPath (Join-Path $ResolvedOutputDirectory "release-metadata.json") | Out-Null
 }
 
 if (Test-Path $ReleaseNotesScript) {
-    & $env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe `
+    & $PowerShellExe `
         -ExecutionPolicy Bypass `
         -File $ReleaseNotesScript `
-        -OutputPath (Join-Path $OutputDirectory "release-notes.md") | Out-Null
+        -OutputPath (Join-Path $ResolvedOutputDirectory "release-notes.md") | Out-Null
 }
 
 if ($CreateZip) {

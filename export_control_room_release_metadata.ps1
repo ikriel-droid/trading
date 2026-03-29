@@ -12,6 +12,22 @@ $ReadmePath = Join-Path $ProjectRoot "README.md"
 $VenvPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
 $NodeExe = Join-Path ${env:ProgramFiles} "nodejs\node.exe"
 
+function Resolve-ProjectPath {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $ProjectRoot
+    }
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+
+    return Join-Path $ProjectRoot $Path
+}
+
 function Get-ToolText {
     param(
         [string]$CommandPath,
@@ -112,7 +128,7 @@ $metadata = [pscustomobject]@{
 $json = $metadata | ConvertTo-Json -Depth 6
 
 if ($OutputPath) {
-    $resolvedOutputPath = Join-Path $ProjectRoot $OutputPath
+    $resolvedOutputPath = Resolve-ProjectPath -Path $OutputPath
     $outputDirectory = Split-Path -Parent $resolvedOutputPath
     if ($outputDirectory -and -not (Test-Path $outputDirectory)) {
         New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null

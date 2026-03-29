@@ -1,6 +1,6 @@
 param(
-    [string]$BundleDirectory = "dist/upbit-control-room-support",
-    [string]$ZipPath = "dist/upbit-control-room-support.zip"
+    [string]$PackDirectory = "dist/upbit-control-room-release-pack",
+    [string]$ZipPath = "dist/upbit-control-room-release-pack.zip"
 )
 
 Set-StrictMode -Version Latest
@@ -24,14 +24,14 @@ function Resolve-ProjectPath {
     return Join-Path $ProjectRoot $Path
 }
 
-$ResolvedBundleDirectory = Resolve-ProjectPath -Path $BundleDirectory
+$ResolvedPackDirectory = Resolve-ProjectPath -Path $PackDirectory
 $ResolvedZipPath = Resolve-ProjectPath -Path $ZipPath
 
 $removed = @()
 
-if (Test-Path $ResolvedBundleDirectory) {
-    Remove-Item -Recurse -Force $ResolvedBundleDirectory
-    $removed += $ResolvedBundleDirectory
+if (Test-Path $ResolvedPackDirectory) {
+    Remove-Item -Recurse -Force $ResolvedPackDirectory
+    $removed += $ResolvedPackDirectory
 }
 
 if (Test-Path $ResolvedZipPath) {
@@ -40,11 +40,11 @@ if (Test-Path $ResolvedZipPath) {
 }
 
 if ($removed.Count -eq 0) {
-    Write-Host "No control room support bundle artifacts were found."
+    Write-Host "No control room release pack artifacts were found."
     exit 0
 }
 
-Write-Host "Removed control room support bundle artifacts:"
+Write-Host "Removed control room release pack artifacts:"
 foreach ($path in $removed) {
     Write-Host ("- {0}" -f $path)
 }

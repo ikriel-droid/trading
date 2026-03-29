@@ -9,9 +9,6 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ResolvedOutputDirectory = Join-Path $ProjectRoot $OutputDirectory
-$ResolvedZipPath = Join-Path $ProjectRoot $ZipPath
-
 $ReleaseMetadataScript = Join-Path $ProjectRoot "export_control_room_release_metadata.ps1"
 $ReleaseNotesScript = Join-Path $ProjectRoot "export_control_room_release_notes.ps1"
 $BuildBundleScript = Join-Path $ProjectRoot "build_control_room_bundle.ps1"
@@ -19,6 +16,25 @@ $VerifyBundleScript = Join-Path $ProjectRoot "verify_control_room_bundle.ps1"
 $BuildSupportBundleScript = Join-Path $ProjectRoot "build_control_room_support_bundle.ps1"
 $VerifySupportBundleScript = Join-Path $ProjectRoot "verify_control_room_support_bundle.ps1"
 $PowerShellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+
+function Resolve-ProjectPath {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $ProjectRoot
+    }
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+
+    return Join-Path $ProjectRoot $Path
+}
+
+$ResolvedOutputDirectory = Resolve-ProjectPath -Path $OutputDirectory
+$ResolvedZipPath = Resolve-ProjectPath -Path $ZipPath
 
 function Ensure-Directory {
     param(

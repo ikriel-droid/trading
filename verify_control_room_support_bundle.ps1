@@ -8,8 +8,25 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ResolvedBundleDirectory = Join-Path $ProjectRoot $BundleDirectory
-$ResolvedZipPath = Join-Path $ProjectRoot $ZipPath
+
+function Resolve-ProjectPath {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $ProjectRoot
+    }
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+
+    return Join-Path $ProjectRoot $Path
+}
+
+$ResolvedBundleDirectory = Resolve-ProjectPath -Path $BundleDirectory
+$ResolvedZipPath = Resolve-ProjectPath -Path $ZipPath
 $ManifestPath = Join-Path $ResolvedBundleDirectory "support-manifest.json"
 
 $requiredPaths = @(

@@ -8,8 +8,25 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ResolvedBundleDirectory = Join-Path $ProjectRoot $BundleDirectory
-$ResolvedZipPath = Join-Path $ProjectRoot $ZipPath
+
+function Resolve-ProjectPath {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $ProjectRoot
+    }
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+
+    return Join-Path $ProjectRoot $Path
+}
+
+$ResolvedBundleDirectory = Resolve-ProjectPath -Path $BundleDirectory
+$ResolvedZipPath = Resolve-ProjectPath -Path $ZipPath
 $ManifestPath = Join-Path $ResolvedBundleDirectory "bundle-manifest.json"
 
 $requiredPaths = @(
@@ -26,6 +43,17 @@ $requiredPaths = @(
     "restart_control_room.cmd",
     "tail_control_room_logs.cmd",
     "build_control_room_bundle.cmd",
+    "verify_control_room_bundle.cmd",
+    "clean_control_room_bundle.cmd",
+    "build_control_room_support_bundle.cmd",
+    "verify_control_room_support_bundle.cmd",
+    "clean_control_room_support_bundle.cmd",
+    "build_control_room_release_pack.cmd",
+    "verify_control_room_release_pack.cmd",
+    "clean_control_room_release_pack.cmd",
+    "export_control_room_release_metadata.cmd",
+    "export_control_room_release_notes.cmd",
+    "snapshot_control_room_environment.cmd",
     "src/upbit_auto_trader/main.py",
     "src/upbit_auto_trader/ui.py",
     "src/upbit_auto_trader/webui/index.html",

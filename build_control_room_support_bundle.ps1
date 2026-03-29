@@ -13,19 +13,37 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ResolvedOutputDirectory = Join-Path $ProjectRoot $OutputDirectory
-$ResolvedZipPath = Join-Path $ProjectRoot $ZipPath
-$ResolvedConfigPath = Join-Path $ProjectRoot $ConfigPath
-$ResolvedStatePath = Join-Path $ProjectRoot $StatePath
-$ResolvedSelectorStatePath = Join-Path $ProjectRoot $SelectorStatePath
 $EnvPath = Join-Path $ProjectRoot ".env"
 $StatusScript = Join-Path $ProjectRoot "status_control_room.ps1"
 $SnapshotScript = Join-Path $ProjectRoot "snapshot_control_room_environment.ps1"
 $PythonExe = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
+$PowerShellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $JobHistoryPath = Join-Path $ProjectRoot "data\webui-job-history.jsonl"
 $SessionReportsDir = Join-Path $ProjectRoot "data\session-reports"
 $WebuiJobsDir = Join-Path $ProjectRoot "data\webui-jobs"
 $SensitiveNamePattern = "(?i)(secret|access[_-]?key|api[_-]?key|token|webhook|password)"
+
+function Resolve-ProjectPath {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $ProjectRoot
+    }
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+
+    return Join-Path $ProjectRoot $Path
+}
+
+$ResolvedOutputDirectory = Resolve-ProjectPath -Path $OutputDirectory
+$ResolvedZipPath = Resolve-ProjectPath -Path $ZipPath
+$ResolvedConfigPath = Resolve-ProjectPath -Path $ConfigPath
+$ResolvedStatePath = Resolve-ProjectPath -Path $StatePath
+$ResolvedSelectorStatePath = Resolve-ProjectPath -Path $SelectorStatePath
 
 function Ensure-Directory {
     param(
@@ -259,7 +277,7 @@ Copy-LatestFilesFromDirectory -SourceDirectory $WebuiJobsDir -RelativeDirectory 
 
 if (Test-Path $StatusScript) {
     try {
-        $statusJson = & $env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File $StatusScript -AsJson
+        $statusJson = & $PowerShellExe -ExecutionPolicy Bypass -File $StatusScript -AsJson
         Write-TextIntoSupportBundle -Content $statusJson -RelativePath "diagnostics\control-room-status.json" -ManifestEntries $manifestEntries
     }
     catch {
@@ -269,7 +287,7 @@ if (Test-Path $StatusScript) {
 
 if (Test-Path $SnapshotScript) {
     try {
-        $snapshotOutput = & $env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File $SnapshotScript -ConfigPath $ConfigPath -StatePath $StatePath -SelectorStatePath $SelectorStatePath -AsJson
+        $snapshotOutput = & $PowerShellExe -ExecutionPolicy Bypass -File $SnapshotScript -ConfigPath $ConfigPath -StatePath $StatePath -SelectorStatePath $SelectorStatePath -AsJson
         Write-TextIntoSupportBundle -Content ($snapshotOutput -join [Environment]::NewLine) -RelativePath "diagnostics\environment-snapshot.json" -ManifestEntries $manifestEntries
     }
     catch {

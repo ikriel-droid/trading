@@ -318,6 +318,18 @@ Build a top-level release pack that includes release metadata, release notes, a 
 .\build_control_room_release_pack.cmd -IncludeSupportBundle -CreateZip
 ```
 
+Verify that the release pack manifest, SHA256 checksums, and included artifacts are present:
+
+```powershell
+.\verify_control_room_release_pack.cmd -RequireZip -RequireSupportBundle
+```
+
+Clean the generated release pack directory and zip when you are done:
+
+```powershell
+.\clean_control_room_release_pack.cmd
+```
+
 Build a redacted support bundle with logs, state snapshots, control-room status, doctor output, and recent reports:
 
 ```powershell
