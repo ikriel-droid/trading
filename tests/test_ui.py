@@ -2,6 +2,7 @@ import shutil
 import pathlib
 import sys
 import json
+import hashlib
 import unittest
 from unittest import mock
 
@@ -184,6 +185,8 @@ class UiTests(unittest.TestCase):
         self.reports_dir = PROJECT_ROOT / "data" / "session-reports"
         self.temp_reports_dir = PROJECT_ROOT / "data" / "test-ui-session-reports"
         self.job_heartbeat_path = PROJECT_ROOT / "data" / "webui-jobs" / "test-ui-heartbeat.heartbeat.json"
+        self.release_pack_dir = PROJECT_ROOT / "data" / "test-ui-release-pack"
+        self.release_pack_zip_path = PROJECT_ROOT / "data" / "test-ui-release-pack.zip"
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
@@ -200,6 +203,7 @@ class UiTests(unittest.TestCase):
             self.alert_journal_path.unlink()
         if self.job_heartbeat_path.exists():
             self.job_heartbeat_path.unlink()
+        self._cleanup_release_pack_artifacts()
         if self.temp_reports_dir.exists():
             for report_path in self.temp_reports_dir.glob("*"):
                 report_path.unlink()
@@ -315,6 +319,7 @@ class UiTests(unittest.TestCase):
             self.alert_journal_path.unlink()
         if self.job_heartbeat_path.exists():
             self.job_heartbeat_path.unlink()
+        self._cleanup_release_pack_artifacts()
         if self.temp_reports_dir.exists():
             for report_path in self.temp_reports_dir.glob("*"):
                 report_path.unlink()
@@ -328,6 +333,57 @@ class UiTests(unittest.TestCase):
         if self.reports_dir.exists():
             for report_path in self.reports_dir.glob("session-report-*-test-ui-report*"):
                 report_path.unlink()
+
+    def _cleanup_release_pack_artifacts(self):
+        if self.release_pack_dir.exists():
+            shutil.rmtree(self.release_pack_dir)
+        if self.release_pack_zip_path.exists():
+            self.release_pack_zip_path.unlink()
+
+    def _write_release_pack_artifacts(self, corrupt_entry: str = ""):
+        self.release_pack_dir.mkdir(parents=True, exist_ok=True)
+        release_files = {
+            "release-metadata.json": json.dumps({"version": "test-ui"}, indent=2),
+            "release-notes.md": "# Test UI release\n",
+            "release-bundle.zip": "bundle-bytes\n",
+            "support-bundle.zip": "support-bytes\n",
+        }
+        for relative_path, contents in release_files.items():
+            target_path = self.release_pack_dir / relative_path
+            target_path.write_text(contents, encoding="utf-8")
+
+        self.release_pack_zip_path.write_text("pack-zip\n", encoding="utf-8")
+
+        manifest_entries = []
+        for relative_path in ("release-metadata.json", "release-notes.md", "release-bundle.zip", "support-bundle.zip"):
+            digest = hashlib.sha256((self.release_pack_dir / relative_path).read_bytes()).hexdigest().upper()
+            manifest_entries.append({"path": relative_path, "sha256": digest})
+
+        manifest = {
+            "generated_at": "2026-03-29T00:00:00+09:00",
+            "output_directory": str(self.release_pack_dir),
+            "includes_support_bundle": True,
+            "files": manifest_entries,
+        }
+        (self.release_pack_dir / "release-pack-manifest.json").write_text(
+            json.dumps(manifest, indent=2),
+            encoding="utf-8",
+        )
+
+        if corrupt_entry:
+            (self.release_pack_dir / corrupt_entry).write_text("corrupted\n", encoding="utf-8")
+
+    def _release_pack_path_patches(self):
+        return (
+            mock.patch(
+                "upbit_auto_trader.ui._default_release_pack_directory",
+                return_value=str(self.release_pack_dir),
+            ),
+            mock.patch(
+                "upbit_auto_trader.ui._default_release_pack_zip_path",
+                return_value=str(self.release_pack_zip_path),
+            ),
+        )
 
     def test_build_dashboard_payload_contains_summary_and_signal(self):
         payload = build_dashboard_payload(
@@ -383,6 +439,45 @@ class UiTests(unittest.TestCase):
         self.assertTrue(any(item["key"] == "release_artifacts" and item["status"] == "warning" for item in checklist["items"]))
         self.assertTrue(any(item["key"] == "live_api" and item["status"] == "error" for item in checklist["items"]))
         self.assertTrue(any("Upbit access/secret key" in item for item in checklist["next_steps"]))
+
+    def test_build_dashboard_payload_marks_ready_release_artifacts(self):
+        self._write_release_pack_artifacts()
+        patch_directory, patch_zip = self._release_pack_path_patches()
+        with patch_directory, patch_zip:
+            payload = build_dashboard_payload(
+                config_path=str(self.temp_config_path),
+                state_path=str(self.state_path),
+                selector_state_path=str(self.selector_state_path),
+                csv_path=self.csv_path,
+                mode="paper",
+                job_manager=BackgroundJobManager(),
+            )
+
+        self.assertEqual(payload["release_artifacts"]["status"], "ready")
+        self.assertTrue(payload["release_artifacts"]["checksum_ok"])
+        release_item = next(item for item in payload["operator_checklist"]["items"] if item["key"] == "release_artifacts")
+        self.assertEqual(release_item["status"], "success")
+        self.assertIn("SHA256 verified", release_item["detail"])
+
+    def test_build_dashboard_payload_marks_invalid_release_artifacts(self):
+        self._write_release_pack_artifacts(corrupt_entry="release-bundle.zip")
+        patch_directory, patch_zip = self._release_pack_path_patches()
+        with patch_directory, patch_zip:
+            payload = build_dashboard_payload(
+                config_path=str(self.temp_config_path),
+                state_path=str(self.state_path),
+                selector_state_path=str(self.selector_state_path),
+                csv_path=self.csv_path,
+                mode="paper",
+                job_manager=BackgroundJobManager(),
+            )
+
+        self.assertEqual(payload["release_artifacts"]["status"], "invalid")
+        self.assertIn("checksum:release-bundle.zip", payload["release_artifacts"]["issues"])
+        release_item = next(item for item in payload["operator_checklist"]["items"] if item["key"] == "release_artifacts")
+        self.assertEqual(release_item["status"], "error")
+        self.assertIn("invalid", release_item["detail"])
+        self.assertTrue(any("release-pack" in item for item in payload["operator_checklist"]["next_steps"]))
 
     def test_build_dashboard_payload_supports_focus_market(self):
         payload = build_dashboard_payload(

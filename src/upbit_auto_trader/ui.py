@@ -1,4 +1,5 @@
 import json
+import hashlib
 from collections import deque
 from datetime import datetime, timezone
 from http import HTTPStatus
@@ -161,23 +162,78 @@ def _default_release_pack_zip_path(config_path: str) -> str:
     return str(_project_root(config_path) / "dist" / "upbit-control-room-release-pack.zip")
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().upper()
+
+
 def _build_release_pack_status(config_path: str) -> Dict[str, Any]:
     pack_directory = Path(_default_release_pack_directory(config_path))
     zip_path = Path(_default_release_pack_zip_path(config_path))
     manifest_path = pack_directory / "release-pack-manifest.json"
     support_zip_path = pack_directory / "support-bundle.zip"
+    required_paths = [
+        "release-metadata.json",
+        "release-notes.md",
+        "release-bundle.zip",
+        "release-pack-manifest.json",
+    ]
 
     pack_exists = pack_directory.exists()
     zip_exists = zip_path.exists()
     manifest_exists = manifest_path.exists()
     support_zip_exists = support_zip_path.exists()
+    issues: list[str] = []
+    manifest_load_ok = False
+    checksum_ok = False
+    manifest_file_count = 0
+    includes_support_bundle = False
 
-    if pack_exists and zip_exists and manifest_exists and support_zip_exists:
-        status = "ready"
-    elif pack_exists or zip_exists:
-        status = "partial"
-    else:
+    if manifest_exists:
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+            manifest_load_ok = True
+            includes_support_bundle = bool(manifest.get("includes_support_bundle"))
+            file_entries = manifest.get("files") or []
+            manifest_file_count = len(file_entries)
+            if manifest_file_count < 1:
+                issues.append("manifest:no-files")
+            for relative_path in required_paths:
+                if not (pack_directory / relative_path).exists():
+                    issues.append("missing:{0}".format(relative_path))
+
+            if includes_support_bundle and not support_zip_exists:
+                issues.append("missing:support-bundle.zip")
+
+            for entry in file_entries:
+                relative_path = str(entry.get("path", ""))
+                expected_hash = str(entry.get("sha256", "")).upper()
+                if not relative_path:
+                    issues.append("manifest:missing-path")
+                    continue
+                target_path = pack_directory / relative_path
+                if not target_path.exists():
+                    issues.append("missing:{0}".format(relative_path))
+                    continue
+                if expected_hash:
+                    actual_hash = _sha256_file(target_path)
+                    if actual_hash != expected_hash:
+                        issues.append("checksum:{0}".format(relative_path))
+            checksum_ok = manifest_file_count > 0 and len(issues) == 0
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            issues.append("manifest:unreadable")
+
+    if not (pack_exists or zip_exists or manifest_exists):
         status = "missing"
+    elif manifest_exists and (not manifest_load_ok or issues):
+        status = "invalid"
+    elif pack_exists and zip_exists and manifest_exists and checksum_ok and (not includes_support_bundle or support_zip_exists):
+        status = "ready"
+    else:
+        status = "partial"
 
     return {
         "status": status,
@@ -189,6 +245,90 @@ def _build_release_pack_status(config_path: str) -> Dict[str, Any]:
         "zip_exists": zip_exists,
         "manifest_exists": manifest_exists,
         "support_zip_exists": support_zip_exists,
+        "manifest_load_ok": manifest_load_ok,
+        "manifest_file_count": manifest_file_count,
+        "includes_support_bundle": includes_support_bundle,
+        "checksum_ok": checksum_ok,
+        "issues": issues[:20],
+    }
+
+
+def _format_release_pack_issue(issue: str) -> str:
+    normalized = str(issue or "").strip()
+    if normalized == "manifest:unreadable":
+        return "manifest unreadable"
+    if normalized == "manifest:no-files":
+        return "manifest has no file entries"
+    if normalized == "manifest:missing-path":
+        return "manifest contains an entry without a path"
+    if normalized.startswith("missing:"):
+        return "{0} missing".format(normalized.split(":", 1)[1])
+    if normalized.startswith("checksum:"):
+        return "{0} checksum mismatch".format(normalized.split(":", 1)[1])
+    return normalized.replace(":", " ")
+
+
+def _release_pack_checklist_details(release_pack_status: Dict[str, Any]) -> Dict[str, str]:
+    status = str(release_pack_status.get("status", "missing"))
+    formatted_issues = [
+        _format_release_pack_issue(item)
+        for item in release_pack_status.get("issues", [])
+    ]
+    issue_summary = ", ".join(formatted_issues[:3])
+    if len(formatted_issues) > 3:
+        issue_summary = "{0}, +{1} more".format(issue_summary, len(formatted_issues) - 3)
+
+    manifest_file_count = int(release_pack_status.get("manifest_file_count", 0) or 0)
+    includes_support_bundle = bool(release_pack_status.get("includes_support_bundle"))
+    has_support_bundle = not includes_support_bundle or bool(release_pack_status.get("support_zip_exists"))
+
+    if status == "ready":
+        detail = "manifest + SHA256 verified for {0} file entries".format(manifest_file_count)
+        if includes_support_bundle and has_support_bundle:
+            detail += " with support bundle included"
+        return {
+            "status": "success",
+            "detail": detail,
+            "action": "Run .\\complete_remaining.cmd release-verify before sharing, or release-clean when done",
+            "next_step": "",
+        }
+
+    if status == "invalid":
+        detail = "release pack is invalid"
+        if issue_summary:
+            detail = "{0}: {1}".format(detail, issue_summary)
+        return {
+            "status": "error",
+            "detail": detail,
+            "action": "Run .\\complete_remaining.cmd release-pack to rebuild the pack, then run release-verify",
+            "next_step": "Release pack validation failed. Rebuild it with release-pack, then confirm with release-verify.",
+        }
+
+    if status == "partial":
+        missing_parts = []
+        if not release_pack_status.get("manifest_exists"):
+            missing_parts.append("manifest")
+        if not release_pack_status.get("zip_exists"):
+            missing_parts.append("zip")
+        if includes_support_bundle and not release_pack_status.get("support_zip_exists"):
+            missing_parts.append("support bundle")
+        detail = "release pack is incomplete"
+        if missing_parts:
+            detail = "{0}: missing {1}".format(detail, ", ".join(missing_parts))
+        if issue_summary:
+            detail = "{0}; {1}".format(detail, issue_summary)
+        return {
+            "status": "warning",
+            "detail": detail,
+            "action": "Run .\\complete_remaining.cmd release-pack to complete the pack, then run release-verify",
+            "next_step": "Finish the release pack before distribution. Run release-pack, then confirm with release-verify.",
+        }
+
+    return {
+        "status": "warning",
+        "detail": "release pack missing",
+        "action": "Run .\\complete_remaining.cmd release-pack",
+        "next_step": "Build a fresh release pack before distribution.",
     }
 
 
@@ -838,17 +978,10 @@ def _build_operator_checklist(
     if not workflow_ok:
         next_steps.append("complete_remaining.cmd 를 복구한 뒤 all-safe workflow를 다시 실행하세요.")
 
-    release_detail = "release pack missing"
-    release_action = "Run .\\complete_remaining.cmd release-pack"
-    release_status = "warning"
-    if release_pack_status["status"] == "ready":
-        release_detail = "zip, manifest, and support bundle are ready"
-        release_action = "Run .\\complete_remaining.cmd release-verify"
-        release_status = "success"
-    elif release_pack_status["status"] == "partial":
-        release_detail = "release pack artifacts are present but incomplete"
-        release_action = "Run .\\complete_remaining.cmd release-verify or rebuild the pack"
-        release_status = "warning"
+    release_details = _release_pack_checklist_details(release_pack_status)
+    release_detail = release_details["detail"]
+    release_action = release_details["action"]
+    release_status = release_details["status"]
     items.append(
         _checklist_item(
             key="release_artifacts",
@@ -860,6 +993,11 @@ def _build_operator_checklist(
     )
     if release_status != "success":
         next_steps.append("배포용 산출물을 맞추려면 release-pack 후 release-verify를 실행하세요.")
+
+    if not workflow_ok:
+        next_steps.append("Restore complete_remaining.cmd, then rerun the all-safe workflow.")
+    if release_details["next_step"]:
+        next_steps.append(release_details["next_step"])
 
     current_state_exists = bool(resolved_state_path and Path(resolved_state_path).exists())
     current_state_ready = current_state_exists
@@ -874,6 +1012,10 @@ def _build_operator_checklist(
     )
     if not current_state_ready:
         next_steps.append("paper 상태 파일을 준비하려면 paper-preflight 또는 paper-loop 를 먼저 실행하세요.")
+
+    if not current_state_ready:
+        items[-1]["action"] = "Run paper-preflight or paper-loop to create the paper state file."
+        next_steps.append("Create the paper state file with paper-preflight or paper-loop.")
 
     job_health_summary = job_health.get("summary", {}) if isinstance(job_health, dict) else {}
     attention_count = int(job_health_summary.get("requires_attention", 0) or 0)
@@ -892,6 +1034,10 @@ def _build_operator_checklist(
     if attention_count:
         next_steps.append("Job Health 경고가 있으면 Emergency Stop All 또는 Clean Stopped Jobs 로 먼저 정리하세요.")
 
+    if attention_count:
+        items[-1]["action"] = "Review Job Health and clean stale or failed jobs."
+        next_steps.append("Resolve stale or failed managed jobs with Job Health, Emergency Stop All, or Clean Stopped Jobs.")
+
     private_ready = bool(broker_readiness.get("private_ready", False))
     private_issues = [str(item) for item in broker_readiness.get("private_issues", [])]
     items.append(
@@ -906,6 +1052,10 @@ def _build_operator_checklist(
     if not private_ready:
         next_steps.append("Upbit access/secret key 를 .env 또는 config 에 넣고 doctor 를 다시 실행하세요.")
 
+    if not private_ready:
+        items[-1]["action"] = "Check the Upbit access/secret key and live settings."
+        next_steps.append("Set the Upbit access/secret key in .env or config, then rerun doctor.")
+
     live_enabled = bool(getattr(config.upbit, "live_enabled", False))
     items.append(
         _checklist_item(
@@ -916,6 +1066,9 @@ def _build_operator_checklist(
             action="실거래 직전까지는 false 로 두고, 준비가 끝나면 true 로 바꾸세요." if not live_enabled else "live switch enabled",
         )
     )
+
+    if not live_enabled:
+        items[-1]["action"] = "Keep this false until paper checks and live preflight are complete."
 
     live_state_report = live_report.get("state", {}) if isinstance(live_report, dict) else {}
     live_state_ok = bool(live_state_report.get("load_ok"))
@@ -937,6 +1090,10 @@ def _build_operator_checklist(
     if not live_state_ok:
         next_steps.append("실거래 전에 data/live-state.json 을 준비하고 live-preflight 결과를 확인하세요.")
 
+    if not live_state_ok:
+        items[-1]["action"] = "Prepare live-state.json or run live-preflight to rebuild it."
+        next_steps.append("Prepare data/live-state.json and check the live-preflight result before enabling live mode.")
+
     notifications = live_report.get("notifications", {}) if isinstance(live_report, dict) else {}
     discord_configured = bool(notifications.get("discord_webhook_configured"))
     items.append(
@@ -950,6 +1107,12 @@ def _build_operator_checklist(
     )
     if not discord_configured:
         next_steps.append("선택 사항이지만 Discord webhook 을 넣어두면 체결과 에러를 바로 받을 수 있습니다.")
+
+    if not discord_configured:
+        items[-1]["action"] = "Optional, but configure the webhook if you want fill/error alerts."
+        next_steps.append("Discord notifications are optional, but they help you catch fills and errors quickly.")
+
+    next_steps = [step for step in next_steps if step.isascii()]
 
     summary = {
         "success": sum(1 for item in items if item["status"] == "success"),

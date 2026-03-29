@@ -526,34 +526,48 @@ function renderCompletionWorkflow(workflowPayload) {
 function renderReleaseArtifacts(releasePayload) {
   const payload = releasePayload || {};
   const status = String(payload.status || "missing");
+  const issues = Array.isArray(payload.issues) ? payload.issues : [];
+  const formattedIssues = issues.slice(0, 3).map((item) => String(item).replaceAll(":", " "));
   const statusClass = status === "ready" ? "success" : status === "partial" ? "warn" : "error";
-  const manifestState = payload.manifest_exists ? "manifest ok" : "manifest missing";
+  const manifestState = payload.manifest_exists
+    ? (payload.manifest_load_ok ? "manifest parsed" : "manifest unreadable")
+    : "manifest missing";
   const zipState = payload.zip_exists ? "zip ok" : "zip missing";
-  const supportState = payload.support_zip_exists ? "support ok" : "support missing";
+  const checksumState = payload.checksum_ok ? "checksums ok" : "checksums pending";
+  const supportState = payload.includes_support_bundle
+    ? (payload.support_zip_exists ? "support ok" : "support missing")
+    : "support optional";
   let recommendedStage = "release-pack";
   let recommendation = "Build a fresh release pack before distribution.";
 
   if (status === "ready") {
     recommendedStage = "release-verify";
-    recommendation = "Verify the pack checksums before sharing it, or clean it if you are done.";
+    recommendation = "Manifest and recorded SHA256 hashes line up. Run release-verify before sharing it, or clean it when you are done.";
+  } else if (status === "invalid") {
+    recommendedStage = "release-pack";
+    recommendation = formattedIssues.length
+      ? `Manifest or checksum validation failed: ${formattedIssues.join(", ")}. Rebuild the release pack.`
+      : "Manifest or checksum validation failed. Rebuild the release pack.";
   } else if (status === "partial") {
-    const canVerify = Boolean(payload.manifest_exists || payload.zip_exists || payload.pack_exists);
-    recommendedStage = canVerify ? "release-verify" : "release-pack";
-    recommendation = canVerify
-      ? "Artifacts are partial. Verify first; if it fails, rebuild the release pack."
-      : "Artifacts are incomplete. Rebuild the release pack.";
+    recommendedStage = "release-pack";
+    recommendation = formattedIssues.length
+      ? `Artifacts are incomplete: ${formattedIssues.join(", ")}. Build the pack again, then verify it.`
+      : "Artifacts are incomplete. Build the pack again, then verify it.";
   }
 
   ids.releaseArtifactsSummary.innerHTML = `
     <span class="alert-pill ${statusClass}">status ${escapeXml(status)}</span>
     <span class="alert-pill info">${escapeXml(manifestState)}</span>
     <span class="alert-pill info">${escapeXml(zipState)}</span>
+    <span class="alert-pill info">${escapeXml(checksumState)}</span>
     <span class="alert-pill info">${escapeXml(supportState)}</span>
+    <span class="alert-pill info">files ${Number(payload.manifest_file_count || 0)}</span>
   `;
   ids.releaseNextStep.innerHTML = `
     <strong>Recommended Next Action</strong>
     <p>${escapeXml(recommendation)}</p>
     <div class="release-next-step-meta">Suggested stage: ${escapeXml(recommendedStage)}</div>
+    ${formattedIssues.length ? `<div class="release-next-step-meta">Issues: ${escapeXml(formattedIssues.join(" | "))}</div>` : ""}
   `;
   dashboardState.releaseRecommendedStage = recommendedStage;
   ids.runReleaseRecommended.textContent = `Run ${recommendedStage}`;
