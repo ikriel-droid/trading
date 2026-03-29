@@ -384,9 +384,9 @@ Or call the PowerShell script with execution-policy bypass:
 powershell -ExecutionPolicy Bypass -File .\complete_remaining.ps1 all-safe
 ```
 
-The script also supports smaller stages such as `roadmap`, `verify`, `paper-preflight`, `paper-start`, `paper-report`, `live-preflight`, `live-start`, `release-pack`, `release-clean`, `status`, and `all`. `all-safe` only runs non-live stages and now also builds a fresh release pack. `live-start` is blocked unless `UPBIT_AUTO_TRADER_ALLOW_LIVE=1` is set on purpose.
+The script also supports smaller stages such as `roadmap`, `verify`, `paper-preflight`, `paper-start`, `paper-report`, `live-preflight`, `live-start`, `release-pack`, `release-verify`, `release-clean`, `status`, and `all`. `all-safe` only runs non-live stages and now also builds and verifies a fresh release pack. `live-start` is blocked unless `UPBIT_AUTO_TRADER_ALLOW_LIVE=1` is set on purpose.
 
-The browser control room now also exposes a `Completion Workflow` panel so you can preview or run finish stages such as `verify`, `paper-preflight`, `live-preflight`, `release-pack`, `release-clean`, `status`, and `all-safe` without leaving the UI.
+The browser control room now also exposes a `Completion Workflow` panel so you can preview or run finish stages such as `verify`, `paper-preflight`, `live-preflight`, `release-pack`, `release-verify`, `release-clean`, `status`, and `all-safe` without leaving the UI.
 
 The control room also includes an `Operator Checklist` panel that turns current state, live readiness, workflow availability, job health, and notification setup into a small next-step list so you can see what is blocking paper or live operation at a glance.
 

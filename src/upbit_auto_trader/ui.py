@@ -116,6 +116,12 @@ COMPLETION_WORKFLOW_STAGES = [
         "starts_jobs": False,
     },
     {
+        "stage": "release-verify",
+        "label": "Release Verify",
+        "description": "verify the release pack manifest, zip, and support bundle checksums",
+        "starts_jobs": False,
+    },
+    {
         "stage": "release-clean",
         "label": "Release Clean",
         "description": "remove generated release pack artifacts",
@@ -130,7 +136,7 @@ COMPLETION_WORKFLOW_STAGES = [
     {
         "stage": "all-safe",
         "label": "All Safe",
-        "description": "run verify, paper preflight, paper start, report, status, and release pack",
+        "description": "run verify, paper preflight, paper start, report, status, release pack, and release verify",
         "starts_jobs": True,
     },
     {

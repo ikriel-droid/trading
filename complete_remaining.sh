@@ -125,14 +125,17 @@ stage_roadmap() {
 7. release-pack
    - build a distributable release pack zip with support bundle included
    - command: ./complete_remaining.sh release-pack
-8. release-clean
+8. release-verify
+   - verify the generated release pack manifest, zip, and support bundle checksums
+   - command: ./complete_remaining.sh release-verify
+9. release-clean
    - remove generated release pack artifacts
    - command: ./complete_remaining.sh release-clean
 
 Notes
 - stages 1, 2, 4, 5 are fully automatable now
 - stages 3 and 6 start long-running workers, but real market time still has to pass
-- stage 7 creates Windows release artifacts under dist/
+- stages 7 and 8 close the release artifact flow under dist/
 - live trading still requires valid Upbit keys, readable live state, and upbit.live_enabled=true
 EOF
 }
@@ -206,6 +209,15 @@ stage_release_pack() {
     -CreateZip
 }
 
+stage_release_verify() {
+  log "verify release pack"
+  cmd.exe /c verify_control_room_release_pack.cmd \
+    -PackDirectory "$RELEASE_PACK_DIRECTORY" \
+    -ZipPath "$RELEASE_PACK_ZIP_PATH" \
+    -RequireZip \
+    -RequireSupportBundle
+}
+
 stage_release_clean() {
   log "clean release pack"
   cmd.exe /c clean_control_room_release_pack.cmd \
@@ -232,6 +244,7 @@ stage_all_safe() {
   stage_paper_report
   stage_status
   stage_release_pack
+  stage_release_verify
 }
 
 stage_all() {
@@ -257,6 +270,7 @@ Stages
   live-preflight
   live-start
   release-pack
+  release-verify
   release-clean
   status
   all-safe
@@ -279,6 +293,7 @@ main() {
     live-preflight) stage_live_preflight ;;
     live-start) stage_live_start ;;
     release-pack) stage_release_pack ;;
+    release-verify) stage_release_verify ;;
     release-clean) stage_release_clean ;;
     status) stage_status ;;
     all-safe) stage_all_safe ;;

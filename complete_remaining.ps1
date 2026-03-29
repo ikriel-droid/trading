@@ -151,14 +151,17 @@ function Invoke-StageRoadmap {
 7. release-pack
    - build a distributable release pack zip with support bundle included
    - command: .\complete_remaining.cmd release-pack
-8. release-clean
+8. release-verify
+   - verify the generated release pack manifest, zip, and support bundle checksums
+   - command: .\complete_remaining.cmd release-verify
+9. release-clean
    - remove generated release pack artifacts
    - command: .\complete_remaining.cmd release-clean
 
 Notes
 - stages 1, 2, 4, 5 are fully automatable now
 - stages 3 and 6 start long-running workers, but real market time still has to pass
-- stage 7 creates Windows release artifacts under dist/
+- stages 7 and 8 close the release artifact flow under dist/
 - live trading still requires valid Upbit keys, readable live state, and upbit.live_enabled=true
 "@
 }
@@ -243,6 +246,22 @@ function Invoke-StageReleasePack {
     }
 }
 
+function Invoke-StageReleaseVerify {
+    $verifyScript = Join-Path $RootDir "verify_control_room_release_pack.cmd"
+    if (-not (Test-Path $verifyScript)) {
+        Fail-Step "release pack verify wrapper not found: $verifyScript"
+    }
+    Write-FinishLog "verify release pack"
+    & $verifyScript `
+        -PackDirectory $ReleasePackDirectory `
+        -ZipPath $ReleasePackZipPath `
+        -RequireZip `
+        -RequireSupportBundle
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
+
 function Invoke-StageReleaseClean {
     $cleanScript = Join-Path $RootDir "clean_control_room_release_pack.cmd"
     if (-not (Test-Path $cleanScript)) {
@@ -274,6 +293,7 @@ function Invoke-StageAllSafe {
     Invoke-StagePaperReport
     Invoke-StageStatus
     Invoke-StageReleasePack
+    Invoke-StageReleaseVerify
 }
 
 function Invoke-StageAll {
@@ -299,6 +319,7 @@ Stages
   live-preflight
   live-start
   release-pack
+  release-verify
   release-clean
   status
   all-safe
@@ -320,6 +341,7 @@ switch ($Stage) {
     "live-preflight" { Invoke-StageLivePreflight }
     "live-start" { Invoke-StageLiveStart }
     "release-pack" { Invoke-StageReleasePack }
+    "release-verify" { Invoke-StageReleaseVerify }
     "release-clean" { Invoke-StageReleaseClean }
     "status" { Invoke-StageStatus }
     "all-safe" { Invoke-StageAllSafe }
