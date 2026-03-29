@@ -534,6 +534,11 @@ function renderReleaseArtifacts(releasePayload) {
     : "manifest missing";
   const zipState = payload.zip_exists ? "zip ok" : "zip missing";
   const checksumState = payload.checksum_ok ? "checksums ok" : "checksums pending";
+  const verificationState = payload.verification_current
+    ? "verification ok"
+    : payload.verification_exists
+      ? (payload.verification_load_ok ? "verification stale" : "verification unreadable")
+      : "verification pending";
   const supportState = payload.includes_support_bundle
     ? (payload.support_zip_exists ? "support ok" : "support missing")
     : "support optional";
@@ -541,8 +546,15 @@ function renderReleaseArtifacts(releasePayload) {
   let recommendation = "Build a fresh release pack before distribution.";
 
   if (status === "ready") {
-    recommendedStage = "release-verify";
-    recommendation = "Manifest and recorded SHA256 hashes line up. Run release-verify before sharing it, or clean it when you are done.";
+    if (payload.verification_current) {
+      recommendedStage = "release-clean";
+      recommendation = payload.verified_at
+        ? `Release pack verification completed at ${payload.verified_at}. Clean it when distribution is finished.`
+        : "Release pack verification already completed. Clean it when distribution is finished.";
+    } else {
+      recommendedStage = "release-verify";
+      recommendation = "Manifest and recorded SHA256 hashes line up. Run release-verify for this exact pack before sharing it.";
+    }
   } else if (status === "invalid") {
     recommendedStage = "release-pack";
     recommendation = formattedIssues.length
@@ -560,6 +572,7 @@ function renderReleaseArtifacts(releasePayload) {
     <span class="alert-pill info">${escapeXml(manifestState)}</span>
     <span class="alert-pill info">${escapeXml(zipState)}</span>
     <span class="alert-pill info">${escapeXml(checksumState)}</span>
+    <span class="alert-pill info">${escapeXml(verificationState)}</span>
     <span class="alert-pill info">${escapeXml(supportState)}</span>
     <span class="alert-pill info">files ${Number(payload.manifest_file_count || 0)}</span>
   `;
@@ -567,6 +580,7 @@ function renderReleaseArtifacts(releasePayload) {
     <strong>Recommended Next Action</strong>
     <p>${escapeXml(recommendation)}</p>
     <div class="release-next-step-meta">Suggested stage: ${escapeXml(recommendedStage)}</div>
+    ${payload.verified_at ? `<div class="release-next-step-meta">Verified at: ${escapeXml(payload.verified_at)}</div>` : ""}
     ${formattedIssues.length ? `<div class="release-next-step-meta">Issues: ${escapeXml(formattedIssues.join(" | "))}</div>` : ""}
   `;
   dashboardState.releaseRecommendedStage = recommendedStage;

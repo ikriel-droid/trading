@@ -175,6 +175,7 @@ def _build_release_pack_status(config_path: str) -> Dict[str, Any]:
     zip_path = Path(_default_release_pack_zip_path(config_path))
     manifest_path = pack_directory / "release-pack-manifest.json"
     support_zip_path = pack_directory / "support-bundle.zip"
+    verification_path = pack_directory / "release-pack-verification.json"
     required_paths = [
         "release-metadata.json",
         "release-notes.md",
@@ -191,11 +192,19 @@ def _build_release_pack_status(config_path: str) -> Dict[str, Any]:
     checksum_ok = False
     manifest_file_count = 0
     includes_support_bundle = False
+    current_manifest_sha256 = ""
+    verification_exists = verification_path.exists()
+    verification_load_ok = False
+    verification_current = False
+    verification_status = "missing"
+    verified_at = ""
+    verification_issues: list[str] = []
 
     if manifest_exists:
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
             manifest_load_ok = True
+            current_manifest_sha256 = _sha256_file(manifest_path)
             includes_support_bundle = bool(manifest.get("includes_support_bundle"))
             file_entries = manifest.get("files") or []
             manifest_file_count = len(file_entries)
@@ -226,6 +235,33 @@ def _build_release_pack_status(config_path: str) -> Dict[str, Any]:
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             issues.append("manifest:unreadable")
 
+    if verification_exists:
+        try:
+            verification = json.loads(verification_path.read_text(encoding="utf-8-sig"))
+            verification_load_ok = True
+            verified_at = str(verification.get("verified_at", ""))
+            recorded_manifest_sha256 = str(verification.get("manifest_sha256", "")).upper()
+            if str(verification.get("status", "")) != "verified":
+                verification_issues.append("verification:status")
+            if not recorded_manifest_sha256:
+                verification_issues.append("verification:missing-manifest-sha256")
+            elif current_manifest_sha256 and recorded_manifest_sha256 != current_manifest_sha256:
+                verification_issues.append("verification:stale-manifest")
+            verification_current = (
+                manifest_exists
+                and checksum_ok
+                and str(verification.get("status", "")) == "verified"
+                and bool(recorded_manifest_sha256)
+                and recorded_manifest_sha256 == current_manifest_sha256
+            )
+            if verification_current:
+                verification_status = "verified"
+            else:
+                verification_status = "stale"
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            verification_issues.append("verification:unreadable")
+            verification_status = "invalid"
+
     if not (pack_exists or zip_exists or manifest_exists):
         status = "missing"
     elif manifest_exists and (not manifest_load_ok or issues):
@@ -241,6 +277,7 @@ def _build_release_pack_status(config_path: str) -> Dict[str, Any]:
         "zip_path": str(zip_path),
         "manifest_path": str(manifest_path),
         "support_zip_path": str(support_zip_path),
+        "verification_path": str(verification_path),
         "pack_exists": pack_exists,
         "zip_exists": zip_exists,
         "manifest_exists": manifest_exists,
@@ -249,6 +286,13 @@ def _build_release_pack_status(config_path: str) -> Dict[str, Any]:
         "manifest_file_count": manifest_file_count,
         "includes_support_bundle": includes_support_bundle,
         "checksum_ok": checksum_ok,
+        "current_manifest_sha256": current_manifest_sha256,
+        "verification_exists": verification_exists,
+        "verification_load_ok": verification_load_ok,
+        "verification_current": verification_current,
+        "verification_status": verification_status,
+        "verified_at": verified_at,
+        "verification_issues": verification_issues[:10],
         "issues": issues[:20],
     }
 
@@ -261,6 +305,14 @@ def _format_release_pack_issue(issue: str) -> str:
         return "manifest has no file entries"
     if normalized == "manifest:missing-path":
         return "manifest contains an entry without a path"
+    if normalized == "verification:status":
+        return "verification report is not marked verified"
+    if normalized == "verification:missing-manifest-sha256":
+        return "verification report is missing manifest checksum"
+    if normalized == "verification:stale-manifest":
+        return "verification report is stale for the current manifest"
+    if normalized == "verification:unreadable":
+        return "verification report unreadable"
     if normalized.startswith("missing:"):
         return "{0} missing".format(normalized.split(":", 1)[1])
     if normalized.startswith("checksum:"):
@@ -281,16 +333,40 @@ def _release_pack_checklist_details(release_pack_status: Dict[str, Any]) -> Dict
     manifest_file_count = int(release_pack_status.get("manifest_file_count", 0) or 0)
     includes_support_bundle = bool(release_pack_status.get("includes_support_bundle"))
     has_support_bundle = not includes_support_bundle or bool(release_pack_status.get("support_zip_exists"))
+    verification_current = bool(release_pack_status.get("verification_current"))
+    verification_exists = bool(release_pack_status.get("verification_exists"))
+    verification_status = str(release_pack_status.get("verification_status", "missing"))
+    verification_issue_summary = ", ".join(
+        _format_release_pack_issue(item)
+        for item in release_pack_status.get("verification_issues", [])[:3]
+    )
+    verified_at = str(release_pack_status.get("verified_at", "")).strip()
 
     if status == "ready":
         detail = "manifest + SHA256 verified for {0} file entries".format(manifest_file_count)
         if includes_support_bundle and has_support_bundle:
             detail += " with support bundle included"
+        if verification_current:
+            if verified_at:
+                detail += " | release-verify completed at {0}".format(verified_at)
+            return {
+                "status": "success",
+                "detail": detail,
+                "action": "Run .\\complete_remaining.cmd release-clean when distribution is finished",
+                "next_step": "",
+            }
+        if verification_exists:
+            if verification_issue_summary:
+                detail += " | verification report needs refresh: {0}".format(verification_issue_summary)
+            elif verification_status == "stale":
+                detail += " | verification report is stale for the current pack"
+        else:
+            detail += " | release-verify has not been run for this pack yet"
         return {
-            "status": "success",
+            "status": "warning",
             "detail": detail,
-            "action": "Run .\\complete_remaining.cmd release-verify before sharing, or release-clean when done",
-            "next_step": "",
+            "action": "Run .\\complete_remaining.cmd release-verify before sharing this pack",
+            "next_step": "Run release-verify for the current release pack before distribution.",
         }
 
     if status == "invalid":

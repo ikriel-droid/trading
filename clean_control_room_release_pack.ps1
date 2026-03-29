@@ -26,6 +26,7 @@ function Resolve-ProjectPath {
 
 $ResolvedPackDirectory = Resolve-ProjectPath -Path $PackDirectory
 $ResolvedZipPath = Resolve-ProjectPath -Path $ZipPath
+$ResolvedVerificationPath = Join-Path $ResolvedPackDirectory "release-pack-verification.json"
 
 $removed = @()
 
@@ -37,6 +38,11 @@ if (Test-Path $ResolvedPackDirectory) {
 if (Test-Path $ResolvedZipPath) {
     Remove-Item -Force $ResolvedZipPath
     $removed += $ResolvedZipPath
+}
+
+if (Test-Path $ResolvedVerificationPath) {
+    Remove-Item -Force $ResolvedVerificationPath
+    $removed += $ResolvedVerificationPath
 }
 
 if ($removed.Count -eq 0) {

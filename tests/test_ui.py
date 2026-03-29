@@ -340,7 +340,7 @@ class UiTests(unittest.TestCase):
         if self.release_pack_zip_path.exists():
             self.release_pack_zip_path.unlink()
 
-    def _write_release_pack_artifacts(self, corrupt_entry: str = ""):
+    def _write_release_pack_artifacts(self, corrupt_entry: str = "", verified: bool = False):
         self.release_pack_dir.mkdir(parents=True, exist_ok=True)
         release_files = {
             "release-metadata.json": json.dumps({"version": "test-ui"}, indent=2),
@@ -369,6 +369,21 @@ class UiTests(unittest.TestCase):
             json.dumps(manifest, indent=2),
             encoding="utf-8",
         )
+
+        if verified:
+            manifest_sha256 = hashlib.sha256((self.release_pack_dir / "release-pack-manifest.json").read_bytes()).hexdigest().upper()
+            (self.release_pack_dir / "release-pack-verification.json").write_text(
+                json.dumps(
+                    {
+                        "status": "verified",
+                        "verified_at": "2026-03-29T01:23:45+09:00",
+                        "manifest_sha256": manifest_sha256,
+                        "manifest_file_count": len(manifest_entries),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
 
         if corrupt_entry:
             (self.release_pack_dir / corrupt_entry).write_text("corrupted\n", encoding="utf-8")
@@ -440,7 +455,7 @@ class UiTests(unittest.TestCase):
         self.assertTrue(any(item["key"] == "live_api" and item["status"] == "error" for item in checklist["items"]))
         self.assertTrue(any("Upbit access/secret key" in item for item in checklist["next_steps"]))
 
-    def test_build_dashboard_payload_marks_ready_release_artifacts(self):
+    def test_build_dashboard_payload_marks_unverified_release_artifacts_as_warning(self):
         self._write_release_pack_artifacts()
         patch_directory, patch_zip = self._release_pack_path_patches()
         with patch_directory, patch_zip:
@@ -455,9 +470,30 @@ class UiTests(unittest.TestCase):
 
         self.assertEqual(payload["release_artifacts"]["status"], "ready")
         self.assertTrue(payload["release_artifacts"]["checksum_ok"])
+        self.assertFalse(payload["release_artifacts"]["verification_current"])
+        release_item = next(item for item in payload["operator_checklist"]["items"] if item["key"] == "release_artifacts")
+        self.assertEqual(release_item["status"], "warning")
+        self.assertIn("release-verify", release_item["detail"])
+
+    def test_build_dashboard_payload_marks_verified_release_artifacts_as_success(self):
+        self._write_release_pack_artifacts(verified=True)
+        patch_directory, patch_zip = self._release_pack_path_patches()
+        with patch_directory, patch_zip:
+            payload = build_dashboard_payload(
+                config_path=str(self.temp_config_path),
+                state_path=str(self.state_path),
+                selector_state_path=str(self.selector_state_path),
+                csv_path=self.csv_path,
+                mode="paper",
+                job_manager=BackgroundJobManager(),
+            )
+
+        self.assertEqual(payload["release_artifacts"]["status"], "ready")
+        self.assertTrue(payload["release_artifacts"]["verification_current"])
+        self.assertEqual(payload["release_artifacts"]["verification_status"], "verified")
         release_item = next(item for item in payload["operator_checklist"]["items"] if item["key"] == "release_artifacts")
         self.assertEqual(release_item["status"], "success")
-        self.assertIn("SHA256 verified", release_item["detail"])
+        self.assertIn("release-verify completed", release_item["detail"])
 
     def test_build_dashboard_payload_marks_invalid_release_artifacts(self):
         self._write_release_pack_artifacts(corrupt_entry="release-bundle.zip")

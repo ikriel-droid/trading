@@ -1,6 +1,7 @@
 param(
     [string]$PackDirectory = "dist/upbit-control-room-release-pack",
     [string]$ZipPath = "dist/upbit-control-room-release-pack.zip",
+    [string]$VerificationPath = "",
     [switch]$RequireZip,
     [switch]$RequireSupportBundle
 )
@@ -29,6 +30,12 @@ function Resolve-ProjectPath {
 $ResolvedPackDirectory = Resolve-ProjectPath -Path $PackDirectory
 $ResolvedZipPath = Resolve-ProjectPath -Path $ZipPath
 $ManifestPath = Join-Path $ResolvedPackDirectory "release-pack-manifest.json"
+$ResolvedVerificationPath = if ([string]::IsNullOrWhiteSpace($VerificationPath)) {
+    Join-Path $ResolvedPackDirectory "release-pack-verification.json"
+}
+else {
+    Resolve-ProjectPath -Path $VerificationPath
+}
 
 $requiredPaths = @(
     "release-metadata.json",
@@ -83,8 +90,27 @@ if ($RequireZip -and -not (Test-Path $ResolvedZipPath)) {
     throw "Release pack zip does not exist: $ResolvedZipPath"
 }
 
+$verificationDirectory = Split-Path -Parent $ResolvedVerificationPath
+if (-not [string]::IsNullOrWhiteSpace($verificationDirectory) -and -not (Test-Path $verificationDirectory)) {
+    New-Item -ItemType Directory -Path $verificationDirectory -Force | Out-Null
+}
+
+$verification = [pscustomobject]@{
+    status = "verified"
+    verified_at = (Get-Date).ToString("o")
+    pack_directory = $ResolvedPackDirectory
+    zip_path = $ResolvedZipPath
+    manifest_path = $ManifestPath
+    manifest_sha256 = (Get-FileHash -Algorithm SHA256 -Path $ManifestPath).Hash
+    manifest_file_count = @($manifest.files).Count
+    require_zip = [bool]$RequireZip
+    require_support_bundle = [bool]$RequireSupportBundle
+}
+$verification | ConvertTo-Json -Depth 5 | Set-Content -Path $ResolvedVerificationPath -Encoding utf8
+
 Write-Host ("Release pack verified: {0}" -f $ResolvedPackDirectory)
 Write-Host ("Manifest files: {0}" -f @($manifest.files).Count)
+Write-Host ("Verification report: {0}" -f $ResolvedVerificationPath)
 if ($RequireZip) {
     Write-Host ("Release pack zip: {0}" -f $ResolvedZipPath)
 }

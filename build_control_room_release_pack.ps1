@@ -89,6 +89,7 @@ else {
 $metadataPath = Join-Path $ResolvedOutputDirectory "release-metadata.json"
 $notesPath = Join-Path $ResolvedOutputDirectory "release-notes.md"
 $manifestPath = Join-Path $ResolvedOutputDirectory "release-pack-manifest.json"
+$verificationPath = Join-Path $ResolvedOutputDirectory "release-pack-verification.json"
 
 & $PowerShellExe -ExecutionPolicy Bypass -File $ReleaseMetadataScript -OutputPath $metadataPath | Out-Null
 & $PowerShellExe -ExecutionPolicy Bypass -File $ReleaseNotesScript -OutputPath $notesPath | Out-Null
@@ -125,6 +126,7 @@ $manifest = [pscustomobject]@{
 }
 
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -Path $manifestPath -Encoding utf8
+Remove-Item -Force $verificationPath -ErrorAction SilentlyContinue
 
 if ($CreateZip) {
     $zipDirectory = Split-Path -Parent $ResolvedZipPath
