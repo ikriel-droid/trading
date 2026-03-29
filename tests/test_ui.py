@@ -357,6 +357,7 @@ class UiTests(unittest.TestCase):
         self.assertGreaterEqual(len(payload["selector_summary"]["last_scan_results"]), 2)
         self.assertEqual(payload["completion_workflow"]["default_stage"], "verify")
         self.assertTrue(any(item["stage"] == "all-safe" for item in payload["completion_workflow"]["items"]))
+        self.assertTrue(any(item["stage"] == "release-pack" for item in payload["completion_workflow"]["items"]))
         self.assertIn("operator_checklist", payload)
         self.assertIn(payload["operator_checklist"]["summary"]["overall_status"], {"ready", "paper_ready", "needs_setup"})
         self.assertEqual(payload["jobs"], [])
@@ -1097,6 +1098,16 @@ class UiTests(unittest.TestCase):
         )
 
         self.assertIn("starts_managed_jobs", preview["warnings"])
+
+    def test_preview_completion_workflow_supports_release_pack(self):
+        preview = preview_completion_workflow_action(
+            config_path=self.config_path,
+            stage="release-pack",
+        )
+
+        self.assertEqual(preview["stage"], "release-pack")
+        self.assertEqual(preview["command"][-1], "release-pack")
+        self.assertEqual(preview["warnings"], [])
 
     def test_start_completion_workflow_uses_job_manager(self):
         manager = RecordingJobManager()

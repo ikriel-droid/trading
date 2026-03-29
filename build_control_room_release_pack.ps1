@@ -2,7 +2,12 @@ param(
     [string]$OutputDirectory = "dist/upbit-control-room-release-pack",
     [switch]$IncludeSupportBundle,
     [switch]$CreateZip,
-    [string]$ZipPath = "dist/upbit-control-room-release-pack.zip"
+    [string]$ZipPath = "dist/upbit-control-room-release-pack.zip",
+    [string]$ConfigPath = "config.example.json",
+    [string]$StatePath = "data/paper-state.json",
+    [string]$SelectorStatePath = "data/selector-state.json",
+    [string]$SupportBundleDirectory = "",
+    [string]$SupportBundleZipPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -69,8 +74,18 @@ Ensure-Directory -Path $ResolvedOutputDirectory
 
 $releaseBundleDir = Join-Path $ResolvedOutputDirectory "release-bundle"
 $releaseBundleZip = Join-Path $ResolvedOutputDirectory "release-bundle.zip"
-$supportBundleDir = Join-Path $ResolvedOutputDirectory "support-bundle"
-$supportBundleZip = Join-Path $ResolvedOutputDirectory "support-bundle.zip"
+$supportBundleDir = if ($SupportBundleDirectory) {
+    Resolve-ProjectPath -Path $SupportBundleDirectory
+}
+else {
+    Join-Path $ResolvedOutputDirectory "support-bundle"
+}
+$supportBundleZip = if ($SupportBundleZipPath) {
+    Resolve-ProjectPath -Path $SupportBundleZipPath
+}
+else {
+    Join-Path $ResolvedOutputDirectory "support-bundle.zip"
+}
 $metadataPath = Join-Path $ResolvedOutputDirectory "release-metadata.json"
 $notesPath = Join-Path $ResolvedOutputDirectory "release-notes.md"
 $manifestPath = Join-Path $ResolvedOutputDirectory "release-pack-manifest.json"
@@ -90,7 +105,13 @@ $releaseBundleEntry = Get-EntryHash -Path $releaseBundleZip -RelativePath "relea
 if ($releaseBundleEntry) { $manifestEntries += $releaseBundleEntry }
 
 if ($IncludeSupportBundle) {
-    & $PowerShellExe -ExecutionPolicy Bypass -File $BuildSupportBundleScript -OutputDirectory $supportBundleDir -CreateZip -ZipPath $supportBundleZip | Out-Null
+    & $PowerShellExe -ExecutionPolicy Bypass -File $BuildSupportBundleScript `
+        -ConfigPath $ConfigPath `
+        -StatePath $StatePath `
+        -SelectorStatePath $SelectorStatePath `
+        -OutputDirectory $supportBundleDir `
+        -CreateZip `
+        -ZipPath $supportBundleZip | Out-Null
     & $PowerShellExe -ExecutionPolicy Bypass -File $VerifySupportBundleScript -BundleDirectory $supportBundleDir -ZipPath $supportBundleZip -RequireZip | Out-Null
     $supportBundleEntry = Get-EntryHash -Path $supportBundleZip -RelativePath "support-bundle.zip"
     if ($supportBundleEntry) { $manifestEntries += $supportBundleEntry }

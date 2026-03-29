@@ -12,6 +12,8 @@ CSV_PATH="${CSV_PATH:-data/demo_krw_btc_15m.csv}"
 PAPER_STATE_PATH="${PAPER_STATE_PATH:-data/paper-state.json}"
 SELECTOR_STATE_PATH="${SELECTOR_STATE_PATH:-data/selector-state.json}"
 LIVE_STATE_PATH="${LIVE_STATE_PATH:-data/live-state.json}"
+RELEASE_PACK_DIRECTORY="${RELEASE_PACK_DIRECTORY:-dist/upbit-control-room-release-pack}"
+RELEASE_PACK_ZIP_PATH="${RELEASE_PACK_ZIP_PATH:-dist/upbit-control-room-release-pack.zip}"
 
 PAPER_PROFILE_NAME="${PAPER_PROFILE_NAME:-autofinish-paper-main}"
 LIVE_PROFILE_NAME="${LIVE_PROFILE_NAME:-autofinish-live-main}"
@@ -120,10 +122,17 @@ stage_roadmap() {
 6. live-start
    - starts live daemon only when UPBIT_AUTO_TRADER_ALLOW_LIVE=1
    - command: UPBIT_AUTO_TRADER_ALLOW_LIVE=1 ./complete_remaining.sh live-start
+7. release-pack
+   - build a distributable release pack zip with support bundle included
+   - command: ./complete_remaining.sh release-pack
+8. release-clean
+   - remove generated release pack artifacts
+   - command: ./complete_remaining.sh release-clean
 
 Notes
 - stages 1, 2, 4, 5 are fully automatable now
 - stages 3 and 6 start long-running workers, but real market time still has to pass
+- stage 7 creates Windows release artifacts under dist/
 - live trading still requires valid Upbit keys, readable live state, and upbit.live_enabled=true
 EOF
 }
@@ -184,6 +193,26 @@ stage_live_start() {
   run_py profile-start --config "$CONFIG_PATH" --profile "$LIVE_PROFILE_NAME"
 }
 
+stage_release_pack() {
+  require_config
+  log "build release pack"
+  cmd.exe /c build_control_room_release_pack.cmd \
+    -OutputDirectory "$RELEASE_PACK_DIRECTORY" \
+    -ZipPath "$RELEASE_PACK_ZIP_PATH" \
+    -ConfigPath "$CONFIG_PATH" \
+    -StatePath "$PAPER_STATE_PATH" \
+    -SelectorStatePath "$SELECTOR_STATE_PATH" \
+    -IncludeSupportBundle \
+    -CreateZip
+}
+
+stage_release_clean() {
+  log "clean release pack"
+  cmd.exe /c clean_control_room_release_pack.cmd \
+    -PackDirectory "$RELEASE_PACK_DIRECTORY" \
+    -ZipPath "$RELEASE_PACK_ZIP_PATH"
+}
+
 stage_status() {
   require_python
   require_config
@@ -202,6 +231,7 @@ stage_all_safe() {
   stage_paper_start
   stage_paper_report
   stage_status
+  stage_release_pack
 }
 
 stage_all() {
@@ -226,6 +256,8 @@ Stages
   paper-report
   live-preflight
   live-start
+  release-pack
+  release-clean
   status
   all-safe
   all
@@ -246,6 +278,8 @@ main() {
     paper-report) stage_paper_report ;;
     live-preflight) stage_live_preflight ;;
     live-start) stage_live_start ;;
+    release-pack) stage_release_pack ;;
+    release-clean) stage_release_clean ;;
     status) stage_status ;;
     all-safe) stage_all_safe ;;
     all) stage_all ;;

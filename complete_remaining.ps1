@@ -17,6 +17,8 @@ $CsvPath = if ($env:CSV_PATH) { $env:CSV_PATH } else { "data/demo_krw_btc_15m.cs
 $PaperStatePath = if ($env:PAPER_STATE_PATH) { $env:PAPER_STATE_PATH } else { "data/paper-state.json" }
 $SelectorStatePath = if ($env:SELECTOR_STATE_PATH) { $env:SELECTOR_STATE_PATH } else { "data/selector-state.json" }
 $LiveStatePath = if ($env:LIVE_STATE_PATH) { $env:LIVE_STATE_PATH } else { "data/live-state.json" }
+$ReleasePackDirectory = if ($env:RELEASE_PACK_DIRECTORY) { $env:RELEASE_PACK_DIRECTORY } else { "dist/upbit-control-room-release-pack" }
+$ReleasePackZipPath = if ($env:RELEASE_PACK_ZIP_PATH) { $env:RELEASE_PACK_ZIP_PATH } else { "dist/upbit-control-room-release-pack.zip" }
 
 $PaperProfileName = if ($env:PAPER_PROFILE_NAME) { $env:PAPER_PROFILE_NAME } else { "autofinish-paper-main" }
 $LiveProfileName = if ($env:LIVE_PROFILE_NAME) { $env:LIVE_PROFILE_NAME } else { "autofinish-live-main" }
@@ -146,10 +148,17 @@ function Invoke-StageRoadmap {
 6. live-start
    - starts live daemon only when UPBIT_AUTO_TRADER_ALLOW_LIVE=1
    - command: set UPBIT_AUTO_TRADER_ALLOW_LIVE=1 && .\complete_remaining.cmd live-start
+7. release-pack
+   - build a distributable release pack zip with support bundle included
+   - command: .\complete_remaining.cmd release-pack
+8. release-clean
+   - remove generated release pack artifacts
+   - command: .\complete_remaining.cmd release-clean
 
 Notes
 - stages 1, 2, 4, 5 are fully automatable now
 - stages 3 and 6 start long-running workers, but real market time still has to pass
+- stage 7 creates Windows release artifacts under dist/
 - live trading still requires valid Upbit keys, readable live state, and upbit.live_enabled=true
 "@
 }
@@ -214,6 +223,38 @@ function Invoke-StageLiveStart {
     Invoke-PythonMain @("profile-start", "--config", $ConfigPath, "--profile", $LiveProfileName)
 }
 
+function Invoke-StageReleasePack {
+    Require-Config
+    $releasePackScript = Join-Path $RootDir "build_control_room_release_pack.cmd"
+    if (-not (Test-Path $releasePackScript)) {
+        Fail-Step "release pack wrapper not found: $releasePackScript"
+    }
+    Write-FinishLog "build release pack"
+    & $releasePackScript `
+        -OutputDirectory $ReleasePackDirectory `
+        -ZipPath $ReleasePackZipPath `
+        -ConfigPath $ConfigPath `
+        -StatePath $PaperStatePath `
+        -SelectorStatePath $SelectorStatePath `
+        -IncludeSupportBundle `
+        -CreateZip
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
+
+function Invoke-StageReleaseClean {
+    $cleanScript = Join-Path $RootDir "clean_control_room_release_pack.cmd"
+    if (-not (Test-Path $cleanScript)) {
+        Fail-Step "release pack cleanup wrapper not found: $cleanScript"
+    }
+    Write-FinishLog "clean release pack"
+    & $cleanScript -PackDirectory $ReleasePackDirectory -ZipPath $ReleasePackZipPath
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
+
 function Invoke-StageStatus {
     Require-Python
     Require-Config
@@ -232,6 +273,7 @@ function Invoke-StageAllSafe {
     Invoke-StagePaperStart
     Invoke-StagePaperReport
     Invoke-StageStatus
+    Invoke-StageReleasePack
 }
 
 function Invoke-StageAll {
@@ -256,6 +298,8 @@ Stages
   paper-report
   live-preflight
   live-start
+  release-pack
+  release-clean
   status
   all-safe
   all
@@ -275,6 +319,8 @@ switch ($Stage) {
     "paper-report" { Invoke-StagePaperReport }
     "live-preflight" { Invoke-StageLivePreflight }
     "live-start" { Invoke-StageLiveStart }
+    "release-pack" { Invoke-StageReleasePack }
+    "release-clean" { Invoke-StageReleaseClean }
     "status" { Invoke-StageStatus }
     "all-safe" { Invoke-StageAllSafe }
     "all" { Invoke-StageAll }
