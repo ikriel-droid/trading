@@ -102,6 +102,12 @@ body {
   transform: translateY(-1px);
 }
 
+.ghost-button.recommended {
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: white;
+  box-shadow: 0 10px 22px rgba(141, 47, 27, 0.22);
+}
+
 .status-grid,
 .toolbar,
 .panel-grid {
@@ -230,6 +236,33 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-top: 18px;
+}
+
+.release-next-step {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 250, 244, 0.98), rgba(249, 242, 233, 0.92));
+}
+
+.release-next-step strong,
+.release-next-step p {
+  margin: 0;
+}
+
+.release-next-step p {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.release-next-step-meta {
+  margin-top: 10px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-deep);
 }
 
 .alert-pill {

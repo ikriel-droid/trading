@@ -18,6 +18,7 @@ const ids = {
   profiles: document.getElementById("profiles-json"),
   workflow: document.getElementById("workflow-json"),
   releaseArtifactsSummary: document.getElementById("release-artifacts-summary"),
+  releaseNextStep: document.getElementById("release-next-step"),
   releaseArtifacts: document.getElementById("release-artifacts-json"),
   jobs: document.getElementById("jobs-json"),
   jobHealth: document.getElementById("job-health-json"),
@@ -72,6 +73,9 @@ const ids = {
   jobMaxRestarts: document.getElementById("job-max-restarts-input"),
   jobRestartBackoff: document.getElementById("job-restart-backoff-input"),
   jobReportKeep: document.getElementById("job-report-keep-input"),
+  runReleasePack: document.getElementById("run-release-pack"),
+  runReleaseVerify: document.getElementById("run-release-verify"),
+  runReleaseClean: document.getElementById("run-release-clean"),
 };
 
 let dashboardState = {
@@ -524,6 +528,19 @@ function renderReleaseArtifacts(releasePayload) {
   const manifestState = payload.manifest_exists ? "manifest ok" : "manifest missing";
   const zipState = payload.zip_exists ? "zip ok" : "zip missing";
   const supportState = payload.support_zip_exists ? "support ok" : "support missing";
+  let recommendedStage = "release-pack";
+  let recommendation = "Build a fresh release pack before distribution.";
+
+  if (status === "ready") {
+    recommendedStage = "release-verify";
+    recommendation = "Verify the pack checksums before sharing it, or clean it if you are done.";
+  } else if (status === "partial") {
+    const canVerify = Boolean(payload.manifest_exists || payload.zip_exists || payload.pack_exists);
+    recommendedStage = canVerify ? "release-verify" : "release-pack";
+    recommendation = canVerify
+      ? "Artifacts are partial. Verify first; if it fails, rebuild the release pack."
+      : "Artifacts are incomplete. Rebuild the release pack.";
+  }
 
   ids.releaseArtifactsSummary.innerHTML = `
     <span class="alert-pill ${statusClass}">status ${escapeXml(status)}</span>
@@ -531,6 +548,14 @@ function renderReleaseArtifacts(releasePayload) {
     <span class="alert-pill info">${escapeXml(zipState)}</span>
     <span class="alert-pill info">${escapeXml(supportState)}</span>
   `;
+  ids.releaseNextStep.innerHTML = `
+    <strong>Recommended Next Action</strong>
+    <p>${escapeXml(recommendation)}</p>
+    <div class="release-next-step-meta">Suggested stage: ${escapeXml(recommendedStage)}</div>
+  `;
+  ids.runReleasePack.classList.toggle("recommended", recommendedStage === "release-pack");
+  ids.runReleaseVerify.classList.toggle("recommended", recommendedStage === "release-verify");
+  ids.runReleaseClean.classList.toggle("recommended", recommendedStage === "release-clean");
   ids.releaseArtifacts.textContent = pretty(payload);
 }
 
