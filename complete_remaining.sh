@@ -228,6 +228,8 @@ stage_release_clean() {
 stage_status() {
   require_python
   require_config
+  log "release status"
+  run_py release-status --config "$CONFIG_PATH"
   log "profiles"
   run_py profile-list --config "$CONFIG_PATH"
   log "reports"

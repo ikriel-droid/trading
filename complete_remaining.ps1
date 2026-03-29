@@ -277,6 +277,8 @@ function Invoke-StageReleaseClean {
 function Invoke-StageStatus {
     Require-Python
     Require-Config
+    Write-FinishLog "release status"
+    Invoke-PythonMain @("release-status", "--config", $ConfigPath)
     Write-FinishLog "profiles"
     Invoke-PythonMain @("profile-list", "--config", $ConfigPath)
     Write-FinishLog "reports"

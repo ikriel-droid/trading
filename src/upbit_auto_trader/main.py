@@ -46,6 +46,7 @@ from .ui import (
     preview_managed_job,
     run_load_profile_action,
     run_preview_profile_action,
+    run_release_status_action,
     run_save_profile_action,
     run_start_profile_action,
     run_web_ui_server,
@@ -202,6 +203,9 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--config", required=True)
     doctor_parser.add_argument("--state")
     doctor_parser.add_argument("--selector-state")
+
+    release_status_parser = subparsers.add_parser("release-status")
+    release_status_parser.add_argument("--config", required=True)
 
     markets_parser = subparsers.add_parser("markets")
     markets_parser.add_argument("--config", required=True)
@@ -1259,6 +1263,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     selector_state_path=args.selector_state,
                 )
             )
+            return 0
+
+        if args.command == "release-status":
+            _print_json(run_release_status_action(args.config))
             return 0
 
         broker = _build_broker(config)

@@ -1696,6 +1696,23 @@ def run_doctor_action(
     )
 
 
+def run_release_status_action(config_path: str) -> Dict[str, Any]:
+    release_artifacts = _build_release_pack_status(config_path)
+    checklist = _release_pack_checklist_details(release_artifacts)
+    recommended_stage = "release-pack"
+    if release_artifacts["status"] == "ready":
+        recommended_stage = "release-clean" if release_artifacts.get("verification_current") else "release-verify"
+    return {
+        "config_path": str(Path(config_path).resolve()),
+        "release_artifacts": release_artifacts,
+        "checklist": checklist,
+        "ready_for_distribution": bool(
+            release_artifacts.get("status") == "ready" and release_artifacts.get("verification_current")
+        ),
+        "recommended_stage": recommended_stage,
+    }
+
+
 def preview_completion_workflow_action(config_path: str, stage: str) -> Dict[str, Any]:
     stage_meta = _validate_completion_workflow_stage(stage)
     if not stage_meta:

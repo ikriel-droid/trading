@@ -773,6 +773,33 @@ class MainTests(unittest.TestCase):
             if config_path.exists():
                 config_path.unlink()
 
+    def test_cli_release_status_prints_release_payload(self):
+        stdout = io.StringIO()
+        with mock.patch(
+            "upbit_auto_trader.main.run_release_status_action",
+            return_value={
+                "config_path": str(PROJECT_ROOT / "config.example.json"),
+                "release_artifacts": {"status": "ready", "verification_current": True},
+                "checklist": {"status": "success"},
+                "ready_for_distribution": True,
+                "recommended_stage": "release-clean",
+            },
+        ) as patched:
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        "release-status",
+                        "--config",
+                        str(PROJECT_ROOT / "config.example.json"),
+                    ]
+                )
+
+        self.assertEqual(result, 0)
+        patched.assert_called_once_with(str(PROJECT_ROOT / "config.example.json"))
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["ready_for_distribution"])
+        self.assertEqual(payload["recommended_stage"], "release-clean")
+
     def test_cli_job_stop_all_prints_heartbeat_stop_summary(self):
         stdout = io.StringIO()
         with mock.patch(
