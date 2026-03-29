@@ -359,8 +359,10 @@ class UiTests(unittest.TestCase):
         self.assertTrue(any(item["stage"] == "all-safe" for item in payload["completion_workflow"]["items"]))
         self.assertTrue(any(item["stage"] == "release-pack" for item in payload["completion_workflow"]["items"]))
         self.assertTrue(any(item["stage"] == "release-verify" for item in payload["completion_workflow"]["items"]))
+        self.assertEqual(payload["release_artifacts"]["status"], "missing")
         self.assertIn("operator_checklist", payload)
         self.assertIn(payload["operator_checklist"]["summary"]["overall_status"], {"ready", "paper_ready", "needs_setup"})
+        self.assertTrue(any(item["key"] == "release_artifacts" for item in payload["operator_checklist"]["items"]))
         self.assertEqual(payload["jobs"], [])
         self.assertEqual(payload["job_health"]["summary"]["total"], 0)
         self.assertEqual(payload["job_health"]["summary"]["requires_attention"], 0)
@@ -378,6 +380,7 @@ class UiTests(unittest.TestCase):
 
         checklist = payload["operator_checklist"]
         self.assertTrue(any(item["key"] == "workflow_script" and item["status"] == "success" for item in checklist["items"]))
+        self.assertTrue(any(item["key"] == "release_artifacts" and item["status"] == "warning" for item in checklist["items"]))
         self.assertTrue(any(item["key"] == "live_api" and item["status"] == "error" for item in checklist["items"]))
         self.assertTrue(any("Upbit access/secret key" in item for item in checklist["next_steps"]))
 

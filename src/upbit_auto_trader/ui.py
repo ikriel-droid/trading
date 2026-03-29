@@ -153,6 +153,45 @@ def _default_selector_state_path(config_path: str) -> str:
     return str(Path(config_path).resolve().parent / "data" / "selector-state-ui.json")
 
 
+def _default_release_pack_directory(config_path: str) -> str:
+    return str(_project_root(config_path) / "dist" / "upbit-control-room-release-pack")
+
+
+def _default_release_pack_zip_path(config_path: str) -> str:
+    return str(_project_root(config_path) / "dist" / "upbit-control-room-release-pack.zip")
+
+
+def _build_release_pack_status(config_path: str) -> Dict[str, Any]:
+    pack_directory = Path(_default_release_pack_directory(config_path))
+    zip_path = Path(_default_release_pack_zip_path(config_path))
+    manifest_path = pack_directory / "release-pack-manifest.json"
+    support_zip_path = pack_directory / "support-bundle.zip"
+
+    pack_exists = pack_directory.exists()
+    zip_exists = zip_path.exists()
+    manifest_exists = manifest_path.exists()
+    support_zip_exists = support_zip_path.exists()
+
+    if pack_exists and zip_exists and manifest_exists and support_zip_exists:
+        status = "ready"
+    elif pack_exists or zip_exists:
+        status = "partial"
+    else:
+        status = "missing"
+
+    return {
+        "status": status,
+        "pack_directory": str(pack_directory),
+        "zip_path": str(zip_path),
+        "manifest_path": str(manifest_path),
+        "support_zip_path": str(support_zip_path),
+        "pack_exists": pack_exists,
+        "zip_exists": zip_exists,
+        "manifest_exists": manifest_exists,
+        "support_zip_exists": support_zip_exists,
+    }
+
+
 def _preflight_blocking_issues(report: Dict[str, Any]) -> list[str]:
     issues = []
     upbit = report.get("upbit", {})
@@ -775,6 +814,7 @@ def _build_operator_checklist(
     resolved_state_path = _resolve_project_path(config_path, state_path) if state_path else None
     resolved_live_state_path = _resolve_project_path(config_path, "data/live-state.json")
     workflow_script_path = _completion_workflow_script_path(config_path)
+    release_pack_status = _build_release_pack_status(config_path)
     live_report = build_doctor_report(
         config_path=config_path,
         config=config,
@@ -797,6 +837,29 @@ def _build_operator_checklist(
     )
     if not workflow_ok:
         next_steps.append("complete_remaining.cmd 를 복구한 뒤 all-safe workflow를 다시 실행하세요.")
+
+    release_detail = "release pack missing"
+    release_action = "Run .\\complete_remaining.cmd release-pack"
+    release_status = "warning"
+    if release_pack_status["status"] == "ready":
+        release_detail = "zip, manifest, and support bundle are ready"
+        release_action = "Run .\\complete_remaining.cmd release-verify"
+        release_status = "success"
+    elif release_pack_status["status"] == "partial":
+        release_detail = "release pack artifacts are present but incomplete"
+        release_action = "Run .\\complete_remaining.cmd release-verify or rebuild the pack"
+        release_status = "warning"
+    items.append(
+        _checklist_item(
+            key="release_artifacts",
+            status=release_status,
+            title="Release artifacts",
+            detail=release_detail,
+            action=release_action,
+        )
+    )
+    if release_status != "success":
+        next_steps.append("배포용 산출물을 맞추려면 release-pack 후 release-verify를 실행하세요.")
 
     current_state_exists = bool(resolved_state_path and Path(resolved_state_path).exists())
     current_state_ready = current_state_exists
@@ -1524,6 +1587,7 @@ def build_dashboard_payload(
             "default_stage": COMPLETION_WORKFLOW_STAGES[0]["stage"],
             "items": COMPLETION_WORKFLOW_STAGES,
         },
+        "release_artifacts": _build_release_pack_status(config_path),
         "session_reports": {
             "dir": default_reports_dir(config_path),
             "items": list_session_reports(config_path),
