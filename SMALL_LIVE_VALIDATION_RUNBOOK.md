@@ -19,6 +19,14 @@ Run the readiness capture first:
 .\prepare_small_live_validation.cmd
 ```
 
+If you already created a live config and only want the simplest prep path, run this instead:
+
+```powershell
+.\bootstrap_small_live_validation.cmd -ConfigPath config.live.micro.json -Market KRW-BTC
+```
+
+That single command refreshes candles, creates or syncs `data/live-state.json`, and rebuilds the readiness snapshot.
+
 Read the generated evidence snapshot here:
 
 `dist/live-validation/small-live-validation-readiness.json`

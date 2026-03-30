@@ -413,6 +413,25 @@ Prepare the small live validation evidence pack without placing a real order lik
 ```
 
 That writes a readiness snapshot to `dist/live-validation/small-live-validation-readiness.json`, builds and verifies a live-preflight support bundle, and points to `SMALL_LIVE_VALIDATION_RUNBOOK.md` for the manual micro-order validation path. The checklist item stays open until a human operator completes the real-money validation and records the final evidence.
+
+If you want the simplest setup path first, use this one-command bootstrap:
+
+```powershell
+.\bootstrap_small_live_validation.cmd -ConfigPath config.live.micro.json -Market KRW-BTC
+```
+
+That command fetches fresh candles, bootstraps `data/live-state.json`, and regenerates the live-readiness evidence in one pass.
+
+If you want the same flow explained as a slide deck with screenshot-style images, generate the PPT like this:
+
+```powershell
+.\generate_small_live_validation_ppt.cmd
+```
+
+The generated deck is saved to:
+
+`dist/small-live-validation-guide/Upbit-Small-Live-Validation-Guide.pptx`
+
 The operator checklist now also shows whether the latest release pack artifacts are missing, partial, invalid, or ready, and whether the current pack has already passed `release-verify`.
 The same UI now includes a `Release Center` card with direct `Build Pack`, `Verify Pack`, and `Clean Pack` buttons plus the current release artifact paths and readiness state.
 `Release Center` also exposes a `Run Recommended` button that follows the current artifact state, checksum issues, manifest validity, and verification report, then triggers the suggested release workflow stage directly.
