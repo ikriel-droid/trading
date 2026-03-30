@@ -128,6 +128,52 @@ function currentJobSettings() {
   };
 }
 
+function isLiveJobType(jobType) {
+  return jobType === "live-daemon" || jobType === "live-supervisor";
+}
+
+function formatBlockingIssues(items) {
+  return (items || []).map((item) => `- ${item}`).join("\n");
+}
+
+function buildLiveStartPrompt(preview) {
+  const command = Array.isArray(preview?.command) ? preview.command.join(" ") : "";
+  const lines = [
+    "LIVE START CONFIRMATION",
+    "",
+    "This action can place real Upbit orders.",
+    `job: ${preview?.job_type || "live"}`,
+    `market: ${dashboardState.app.market || ids.marketFocus.value.trim() || "-"}`,
+    `state: ${preview?.report_state_path || ids.statePath.value.trim() || "-"}`,
+  ];
+  if (command) {
+    lines.push(`command: ${command}`);
+  }
+  lines.push("");
+  lines.push("Type LIVE to continue.");
+  return lines.join("\n");
+}
+
+async function confirmLiveStartFromPreview(preview) {
+  ids.jobPreview.textContent = pretty(preview);
+  if (!preview || preview.error) {
+    ids.jobs.textContent = pretty(preview || { error: "live preview unavailable" });
+    return false;
+  }
+  if (!preview.can_start) {
+    const issues = formatBlockingIssues(preview.blocking_issues || []);
+    ids.jobs.textContent = pretty(preview);
+    window.alert(`Live start blocked.\n\n${issues || "Unknown blocking issue."}`);
+    return false;
+  }
+  const answer = window.prompt(buildLiveStartPrompt(preview), "");
+  if (answer !== "LIVE") {
+    ids.jobs.textContent = "Live start cancelled. Type LIVE in the confirmation prompt when you really want to place real orders.";
+    return false;
+  }
+  return true;
+}
+
 function renderJobs(jobs) {
   ids.jobs.textContent = pretty(jobs || []);
   const tails = (jobs || [])
@@ -973,6 +1019,28 @@ async function startJob(jobType) {
     ids.jobs.textContent = `Starting ${jobType}...`;
     const inputs = currentInputs();
     const jobSettings = currentJobSettings();
+    if (isLiveJobType(jobType)) {
+      const preview = await postJson("/api/jobs-preview", {
+        job_type: jobType,
+        state_path: inputs.state_path,
+        selector_state_path: inputs.selector_state_path,
+        csv_path: inputs.csv_path,
+        market: inputs.market || dashboardState.app.market || undefined,
+        max_markets: inputs.max_markets,
+        quote_currency: inputs.quote_currency,
+        poll_seconds: Number(ids.cfgPollSeconds.value || dashboardState.app.poll_seconds || "10"),
+        reconcile_every: inputs.reconcile_every,
+        reconcile_every_loops: 3,
+        auto_restart: jobSettings.auto_restart,
+        max_restarts: jobSettings.max_restarts,
+        restart_backoff_seconds: jobSettings.restart_backoff_seconds,
+        report_keep_latest: jobSettings.report_keep_latest,
+      });
+      const confirmed = await confirmLiveStartFromPreview(preview);
+      if (!confirmed) {
+        return;
+      }
+    }
     const payload = await postJson("/api/jobs-start", {
       job_type: jobType,
       state_path: inputs.state_path,
@@ -1207,6 +1275,14 @@ async function startProfile() {
       return;
     }
     ids.jobs.textContent = "Starting profile...";
+    const preview = await postJson("/api/profile-preview", { profile });
+    ids.jobPreview.textContent = pretty(preview);
+    if (preview?.job_preview && isLiveJobType(preview.job_preview.job_type || preview.profile?.profile?.job_type || "")) {
+      const confirmed = await confirmLiveStartFromPreview(preview.job_preview);
+      if (!confirmed) {
+        return;
+      }
+    }
     const payload = await postJson("/api/profile-start", { profile });
     ids.jobs.textContent = pretty(payload);
     if (payload.profile) {

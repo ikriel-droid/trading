@@ -472,6 +472,8 @@ Live background jobs are now preflight-gated. If `doctor` finds blocking issues 
 
 The control-room UI also includes a `Preview Launch` action so you can inspect the exact command, report paths, and any live preflight blockers before starting a background job.
 
+Any live start from the control room now requires a second confirmation step. After preview succeeds, the UI asks you to type `LIVE` before it will start `live-daemon`, `live-supervisor`, or a live launch profile because those actions can place real Upbit orders.
+
 You can preview an ad hoc managed job from PowerShell too:
 
 ```powershell
@@ -561,6 +563,8 @@ Run a single-process live daemon that polls minute candles, executes the live ru
 ```powershell
 .venv\Scripts\python.exe -m upbit_auto_trader.main run-live-daemon --config config.example.json --state data\live-state.json --max-loops 3 --reconcile-every-loops 1
 ```
+
+When you launch the same live jobs from the control-room UI instead of the CLI, the UI now always shows a preview first and then requires typing `LIVE` before the job can start.
 
 Download recent candle data from Upbit into a CSV:
 
