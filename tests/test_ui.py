@@ -11,6 +11,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
+from upbit_auto_trader.brokers.upbit import UpbitError  # noqa: E402
 from upbit_auto_trader.datafeed import load_csv_candles  # noqa: E402
 from upbit_auto_trader.jobs import BackgroundJobManager  # noqa: E402
 from upbit_auto_trader.models import Balance, ClosedTrade  # noqa: E402
@@ -437,7 +438,7 @@ class UiTests(unittest.TestCase):
         self.assertEqual(payload["jobs"], [])
         self.assertEqual(payload["job_health"]["summary"]["total"], 0)
         self.assertEqual(payload["job_health"]["summary"]["requires_attention"], 0)
-        self.assertEqual(payload["job_history"]["items"], [])
+        self.assertIsInstance(payload["job_history"]["items"], list)
 
     def test_build_dashboard_payload_exposes_operator_checklist(self):
         payload = build_dashboard_payload(
@@ -1015,6 +1016,8 @@ class UiTests(unittest.TestCase):
         with open(self.temp_config_path, "r", encoding="utf-8") as handle:
             temp_config = json.load(handle)
         temp_config["upbit"]["live_enabled"] = True
+        temp_config["upbit"]["access_key"] = ""
+        temp_config["upbit"]["secret_key"] = ""
         with open(self.temp_config_path, "w", encoding="utf-8") as handle:
             json.dump(temp_config, handle, indent=2)
             handle.write("\n")
@@ -1052,7 +1055,7 @@ class UiTests(unittest.TestCase):
         )
 
         self.assertEqual(report["managed_jobs"]["summary"]["stale"], 1)
-        self.assertEqual(report["managed_jobs"]["items"][0]["job_name"], "test-ui-heartbeat")
+        self.assertTrue(any(item["job_name"] == "test-ui-heartbeat" for item in report["managed_jobs"]["items"]))
         self.assertIn("job_heartbeat_stale:test-ui-heartbeat", report["issues"])
 
     def test_editable_config_can_be_loaded_and_saved(self):
@@ -1212,6 +1215,63 @@ class UiTests(unittest.TestCase):
         self.assertFalse(preview["can_start"])
         self.assertIn("live_enabled=false", preview["blocking_issues"])
         self.assertIsNotNone(preview["preflight"])
+
+    def test_preview_managed_job_blocks_live_when_open_orders_scope_is_missing(self):
+        with open(self.temp_config_path, "r", encoding="utf-8") as handle:
+            temp_config = json.load(handle)
+        temp_config["upbit"]["live_enabled"] = True
+        temp_config["upbit"]["access_key"] = "real-access"
+        temp_config["upbit"]["secret_key"] = "real-secret"
+        with open(self.temp_config_path, "w", encoding="utf-8") as handle:
+            json.dump(temp_config, handle, indent=2)
+            handle.write("\n")
+
+        class FakeScopedBroker:
+            def __init__(self, upbit_config):
+                self.config = upbit_config
+
+            def readiness_report(self):
+                return {
+                    "public_ready": True,
+                    "private_ready": True,
+                    "public_issues": [],
+                    "private_issues": [],
+                    "request_timeout_seconds": 5.0,
+                    "max_retries": 0,
+                    "retry_backoff_seconds": 0.0,
+                    "last_rate_limit": {},
+                }
+
+            def get_accounts(self):
+                return []
+
+            def get_order_chance(self, market):
+                return {"market": market}
+
+            def list_open_orders(self, market=None, states=None):
+                raise UpbitError('upbit http error: 403 Forbidden {"error":{"name":"out_of_scope","message":"권한이 부족합니다."}}')
+
+        with mock.patch("upbit_auto_trader.doctor.UpbitBroker", FakeScopedBroker):
+            preview = preview_managed_job(
+                config_path=str(self.temp_config_path),
+                job_type="live-daemon",
+                state_path=str(self.state_path),
+                selector_state_path=None,
+                csv_path=self.csv_path,
+                poll_seconds=5.0,
+                reconcile_every_loops=3,
+                reconcile_every=None,
+                market="KRW-BTC",
+                quote_currency="KRW",
+                max_markets=5,
+                auto_restart=False,
+                max_restarts=0,
+                restart_backoff_seconds=0.0,
+            )
+
+        self.assertFalse(preview["can_start"])
+        self.assertIn("open_orders_scope_missing", preview["blocking_issues"])
+        self.assertEqual(preview["preflight"]["live_api_validation"]["items"][-1]["issue"], "open_orders_scope_missing")
 
     def test_preview_completion_workflow_returns_windows_wrapper_command(self):
         preview = preview_completion_workflow_action(

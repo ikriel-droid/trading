@@ -15,6 +15,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from upbit_auto_trader.config import load_config  # noqa: E402
 from upbit_auto_trader.jobs import HEARTBEAT_ENV_VAR, JOB_HISTORY_PATH  # noqa: E402
 from upbit_auto_trader.main import _build_doctor_report, _run_live_daemon, _run_live_supervisor, main  # noqa: E402
+from upbit_auto_trader.brokers.upbit import UpbitError  # noqa: E402
 from upbit_auto_trader.models import Balance, Candle  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
 from upbit_auto_trader.websocket_client import UpbitWebSocketClient  # noqa: E402
@@ -235,6 +236,52 @@ class MainTests(unittest.TestCase):
                 state_path.unlink()
             if backup_path.exists():
                 backup_path.unlink()
+
+    def test_doctor_reports_missing_open_orders_scope_for_live(self):
+        config = load_config(str(PROJECT_ROOT / "config.example.json"))
+        config.runtime.journal_path = ""
+        config.upbit.live_enabled = True
+        config.upbit.access_key = "real-access"
+        config.upbit.secret_key = "real-secret"
+
+        class FakeScopedBroker:
+            def __init__(self, upbit_config):
+                self.config = upbit_config
+
+            def readiness_report(self):
+                return {
+                    "public_ready": True,
+                    "private_ready": True,
+                    "public_issues": [],
+                    "private_issues": [],
+                    "request_timeout_seconds": 5.0,
+                    "max_retries": 0,
+                    "retry_backoff_seconds": 0.0,
+                    "last_rate_limit": {},
+                }
+
+            def get_accounts(self):
+                return []
+
+            def get_order_chance(self, market):
+                return {"market": market}
+
+            def list_open_orders(self, market=None, states=None):
+                raise UpbitError('upbit http error: 403 Forbidden {"error":{"name":"out_of_scope","message":"권한이 부족합니다."}}')
+
+        with mock.patch("upbit_auto_trader.doctor.UpbitBroker", FakeScopedBroker):
+            report = _build_doctor_report(
+                config_path=str(PROJECT_ROOT / "config.example.json"),
+                config=config,
+                state_path=None,
+                selector_state_path=None,
+            )
+
+        self.assertFalse(report["upbit"]["private_ready"])
+        self.assertIn("open_orders_scope_missing", report["upbit"]["private_issues"])
+        self.assertTrue(report["live_api_validation"]["checked"])
+        self.assertEqual(report["live_api_validation"]["items"][-1]["name"], "open_orders")
+        self.assertEqual(report["live_api_validation"]["items"][-1]["issue"], "open_orders_scope_missing")
 
     def test_cli_optimize_can_save_and_apply_preset(self):
         config_path = PROJECT_ROOT / "test-main-config.json"

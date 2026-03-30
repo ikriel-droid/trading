@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 
-from .brokers.upbit import UpbitBroker
+from .brokers.upbit import UpbitBroker, UpbitError
 from .config import AppConfig
 from .jobs import JOB_LOG_DIR, list_job_heartbeats
 from .runtime import TradingRuntime
@@ -19,6 +19,57 @@ def has_real_webhook_url(config: AppConfig) -> bool:
     if not value:
         return False
     return not (value.startswith("${") and value.endswith("}"))
+
+
+def _is_out_of_scope_error(exc: Exception) -> bool:
+    message = str(exc or "").lower()
+    return "out_of_scope" in message or "403" in message
+
+
+def _validate_live_private_api_scope(config: AppConfig, broker: UpbitBroker) -> dict:
+    report = {
+        "checked": False,
+        "market": config.market,
+        "items": [],
+        "issues": [],
+    }
+    if not config.upbit.live_enabled:
+        return report
+    if not has_real_config_secret(config.upbit.access_key) or not has_real_config_secret(config.upbit.secret_key):
+        return report
+
+    report["checked"] = True
+    checks = [
+        ("accounts", lambda: broker.get_accounts(), "accounts_scope_missing"),
+        ("order_chance", lambda: broker.get_order_chance(config.market), "order_chance_scope_missing"),
+        ("open_orders", lambda: broker.list_open_orders(market=config.market, states=["wait", "watch"]), "open_orders_scope_missing"),
+    ]
+    issues = []
+    items = []
+
+    for name, callback, scope_issue in checks:
+        item = {
+            "name": name,
+            "ok": False,
+            "issue": "",
+            "detail": "",
+        }
+        try:
+            callback()
+            item["ok"] = True
+        except UpbitError as exc:
+            item["detail"] = str(exc)
+            if _is_out_of_scope_error(exc):
+                item["issue"] = scope_issue
+                issues.append(scope_issue)
+            else:
+                item["issue"] = "{0}_check_failed".format(name)
+                issues.append(item["issue"])
+        items.append(item)
+
+    report["items"] = items
+    report["issues"] = issues
+    return report
 
 
 def build_doctor_report(config_path: str, config: AppConfig, state_path: Optional[str], selector_state_path: Optional[str]) -> dict:
@@ -89,6 +140,14 @@ def build_doctor_report(config_path: str, config: AppConfig, state_path: Optiona
         "private_issues": private_issues,
         "private_ready": bool(readiness.get("public_ready", False)) and len(private_issues) == 0,
     }
+    live_api_validation = _validate_live_private_api_scope(config, broker)
+    if live_api_validation.get("issues"):
+        merged_private_issues = list(readiness["private_issues"])
+        for item in live_api_validation["issues"]:
+            if item not in merged_private_issues:
+                merged_private_issues.append(item)
+        readiness["private_issues"] = merged_private_issues
+        readiness["private_ready"] = bool(readiness.get("public_ready", False)) and len(merged_private_issues) == 0
 
     issues = []
     if not readiness["public_ready"]:
@@ -113,6 +172,7 @@ def build_doctor_report(config_path: str, config: AppConfig, state_path: Optiona
         "notifications": notification_report,
         "state": state_report,
         "selector_state": selector_report,
+        "live_api_validation": live_api_validation,
         "runtime": {
             "journal_path": config.runtime.journal_path,
             "poll_seconds": config.runtime.poll_seconds,
