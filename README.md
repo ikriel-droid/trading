@@ -397,6 +397,14 @@ You can also inspect the current release-pack readiness from the terminal with `
 The remaining product-finish work is tracked in `PRODUCT_COMPLETION_CHECKLIST.md`, and finish-task updates should check items off there.
 
 The browser control room now also exposes a `Completion Workflow` panel so you can preview or run finish stages such as `verify`, `paper-preflight`, `live-preflight`, `release-pack`, `release-verify`, `release-clean`, `status`, and `all-safe` without leaving the UI.
+
+Run the long paper soak test with automatic evidence capture like this:
+
+```powershell
+.\run_long_paper_soak_test.cmd
+```
+
+That flow starts a managed `paper-loop`, waits for healthy heartbeat updates, forces one restart, stops the job cleanly so a session report is written, then builds and verifies a dedicated support bundle. The latest evidence is saved to `dist/paper-soak/long-paper-soak-evidence.json`.
 The operator checklist now also shows whether the latest release pack artifacts are missing, partial, invalid, or ready, and whether the current pack has already passed `release-verify`.
 The same UI now includes a `Release Center` card with direct `Build Pack`, `Verify Pack`, and `Clean Pack` buttons plus the current release artifact paths and readiness state.
 `Release Center` also exposes a `Run Recommended` button that follows the current artifact state, checksum issues, manifest validity, and verification report, then triggers the suggested release workflow stage directly.

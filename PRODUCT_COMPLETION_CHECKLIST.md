@@ -22,9 +22,15 @@ From this point on, each completed finish task should update this file.
 - [x] Packaging and operational tooling implemented
   - Completion workflow, release pack, support bundle, release status, manual launch scripts
 
-- [ ] Long paper soak test completed
+- [x] Long paper soak test completed
   - Goal: run paper loop or selector long enough to confirm restart, heartbeat, report, and recovery behavior stay stable
   - Evidence to save: latest session report + support bundle after the run
+  - Completed: `2026-03-30`
+  - Evidence:
+    `dist/paper-soak/long-paper-soak-evidence.json`
+    `data/session-reports/session-report-20260330T1216323064170000-paper-soak-loop.json`
+    `dist/upbit-control-room-support-paper-soak.zip`
+  - Notes: `paper-soak-loop` auto-restarted after a forced process kill, heartbeat stayed healthy before and after restart, and `data/paper-state-soak.json.bak` was present for state recovery fallback
 
 - [ ] Small live validation completed
   - Goal: verify tiny-size live order submit, fill, cancel, reconcile, and state recovery with real Upbit keys
