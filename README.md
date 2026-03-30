@@ -236,6 +236,12 @@ Check whether the control room is reachable and whether the PID file still match
 .\status_control_room.cmd
 ```
 
+Check the current release-pack readiness and verification state without opening the UI:
+
+```powershell
+.\status_control_room_release_pack.cmd
+```
+
 Or use the hidden-window launcher:
 
 ```powershell
@@ -276,7 +282,7 @@ Follow the error log live:
 .\tail_control_room_logs.cmd -Stream stderr -Follow
 ```
 
-Install desktop shortcuts for launch, status, restart, stop, and log tail:
+Install desktop shortcuts for launch, status, release status, restart, stop, and log tail:
 
 ```powershell
 .\install_control_room_shortcuts.cmd

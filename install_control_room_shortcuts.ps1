@@ -33,6 +33,7 @@ $powershellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powe
 $wscriptExe = Join-Path $env:SystemRoot "System32\wscript.exe"
 $silentLauncher = Join-Path $ProjectRoot "launch_control_room_silent.vbs"
 $statusScript = Join-Path $ProjectRoot "status_control_room.ps1"
+$releaseStatusScript = Join-Path $ProjectRoot "status_control_room_release_pack.ps1"
 $restartScript = Join-Path $ProjectRoot "restart_control_room.ps1"
 $stopScript = Join-Path $ProjectRoot "stop_control_room.ps1"
 $tailScript = Join-Path $ProjectRoot "tail_control_room_logs.ps1"
@@ -51,6 +52,14 @@ $shortcutDefinitions = @(
         target = $powershellExe
         arguments = ('-ExecutionPolicy Bypass -NoExit -File "{0}"' -f $statusScript)
         description = "Show whether the control room is reachable and managed."
+        icon = ('{0},0' -f $powershellExe)
+        working_directory = $ProjectRoot
+    }
+    @{
+        name = ('{0} Release Status' -f $NamePrefix)
+        target = $powershellExe
+        arguments = ('-ExecutionPolicy Bypass -NoExit -File "{0}"' -f $releaseStatusScript)
+        description = "Show the current release-pack readiness and verification state."
         icon = ('{0},0' -f $powershellExe)
         working_directory = $ProjectRoot
     }

@@ -45,6 +45,7 @@ if (-not $removedPaths -and $ResolvedShortcutDirectory) {
     $fallbackNames = @(
         $NamePrefix,
         ('{0} Status' -f $NamePrefix),
+        ('{0} Release Status' -f $NamePrefix),
         ('{0} Restart' -f $NamePrefix),
         ('{0} Stop' -f $NamePrefix),
         ('{0} Logs' -f $NamePrefix)

@@ -44,6 +44,8 @@ $filesToCopy = @(
     "launch_control_room_silent.vbs",
     "status_control_room.ps1",
     "status_control_room.cmd",
+    "status_control_room_release_pack.ps1",
+    "status_control_room_release_pack.cmd",
     "stop_control_room.ps1",
     "stop_control_room.cmd",
     "restart_control_room.ps1",
