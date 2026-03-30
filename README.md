@@ -330,6 +330,8 @@ Verify that the release pack manifest, SHA256 checksums, and included artifacts 
 .\verify_control_room_release_pack.cmd -RequireZip -RequireSupportBundle
 ```
 
+`release-verify` also writes `release-pack-verification.json` into the pack directory and refreshes the release-pack zip so the verification report is included in the distributable artifact.
+
 Clean the generated release pack directory and zip when you are done:
 
 ```powershell

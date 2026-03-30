@@ -108,9 +108,15 @@ $verification = [pscustomobject]@{
 }
 $verification | ConvertTo-Json -Depth 5 | Set-Content -Path $ResolvedVerificationPath -Encoding utf8
 
+if (Test-Path $ResolvedZipPath) {
+    Remove-Item -Force $ResolvedZipPath
+    Compress-Archive -Path (Join-Path $ResolvedPackDirectory "*") -DestinationPath $ResolvedZipPath
+}
+
 Write-Host ("Release pack verified: {0}" -f $ResolvedPackDirectory)
 Write-Host ("Manifest files: {0}" -f @($manifest.files).Count)
 Write-Host ("Verification report: {0}" -f $ResolvedVerificationPath)
 if ($RequireZip) {
     Write-Host ("Release pack zip: {0}" -f $ResolvedZipPath)
+    Write-Host "Release pack zip refreshed with verification report."
 }
