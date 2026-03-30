@@ -35,6 +35,12 @@ From this point on, each completed finish task should update this file.
 - [ ] Small live validation completed
   - Goal: verify tiny-size live order submit, fill, cancel, reconcile, and state recovery with real Upbit keys
   - Evidence to save: live report + support bundle + release pack status after the run
+  - Current prep status: `2026-03-30` readiness captured, but live run is still blocked until real Upbit keys and a real operator-run micro-order are available
+  - Current blockers: `live_enabled=false`, `access_key_missing`, `secret_key_missing`, `live_state_missing`
+  - Prep evidence:
+    `dist/live-validation/small-live-validation-readiness.json`
+    `dist/upbit-control-room-support-live-preflight.zip`
+    `SMALL_LIVE_VALIDATION_RUNBOOK.md`
 
 - [ ] Fresh environment deployment validated
   - Goal: prove setup, launch, status, release-status, release-pack, and support-bundle work on a clean machine or clean workspace

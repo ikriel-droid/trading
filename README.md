@@ -405,6 +405,14 @@ Run the long paper soak test with automatic evidence capture like this:
 ```
 
 That flow starts a managed `paper-loop`, waits for healthy heartbeat updates, forces one restart, stops the job cleanly so a session report is written, then builds and verifies a dedicated support bundle. The latest evidence is saved to `dist/paper-soak/long-paper-soak-evidence.json`.
+
+Prepare the small live validation evidence pack without placing a real order like this:
+
+```powershell
+.\prepare_small_live_validation.cmd
+```
+
+That writes a readiness snapshot to `dist/live-validation/small-live-validation-readiness.json`, builds and verifies a live-preflight support bundle, and points to `SMALL_LIVE_VALIDATION_RUNBOOK.md` for the manual micro-order validation path. The checklist item stays open until a human operator completes the real-money validation and records the final evidence.
 The operator checklist now also shows whether the latest release pack artifacts are missing, partial, invalid, or ready, and whether the current pack has already passed `release-verify`.
 The same UI now includes a `Release Center` card with direct `Build Pack`, `Verify Pack`, and `Clean Pack` buttons plus the current release artifact paths and readiness state.
 `Release Center` also exposes a `Run Recommended` button that follows the current artifact state, checksum issues, manifest validity, and verification report, then triggers the suggested release workflow stage directly.
