@@ -67,9 +67,15 @@ function Get-BootstrapPython {
 if (-not (Test-Path $VenvPython)) {
     $bootstrapPython = Get-BootstrapPython
     Write-Host ("Creating virtual environment with: {0}" -f $bootstrapPython.label)
-    & $bootstrapPython.command @($bootstrapPython.prefix_args + @("-m", "venv", ".venv"))
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $VenvPython)) {
-        throw "Failed to create virtual environment."
+    Push-Location $ProjectRoot
+    try {
+        & $bootstrapPython.command @($bootstrapPython.prefix_args + @("-m", "venv", ".venv"))
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $VenvPython)) {
+            throw "Failed to create virtual environment."
+        }
+    }
+    finally {
+        Pop-Location
     }
 }
 else {

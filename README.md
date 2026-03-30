@@ -88,6 +88,12 @@ If you also want desktop shortcuts during setup:
 .\setup_control_room.cmd -InstallShortcuts
 ```
 
+Validate the clean-workspace deployment path end-to-end by generating a fresh bundle, extracting it into an isolated workspace, running setup, launching the hidden control room, and building clean-run support and release artifacts:
+
+```powershell
+.\validate_fresh_environment_deployment.cmd
+```
+
 Optional: create `.env` from the example file so API keys and webhook settings load automatically from the project root:
 
 ```powershell
@@ -229,6 +235,8 @@ Or use the browser-opening launcher:
 ```powershell
 .\launch_control_room.cmd
 ```
+
+The clean-workspace deployment validator uses the same launch and status scripts against an extracted bundle workspace on a separate port so you can prove the packaged operator path still works outside the main repo checkout.
 
 Check whether the control room is reachable and whether the PID file still matches the managed launcher process:
 

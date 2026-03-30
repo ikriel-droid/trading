@@ -80,6 +80,8 @@ $filesToCopy = @(
     "verify_control_room_release_pack.cmd",
     "clean_control_room_release_pack.ps1",
     "clean_control_room_release_pack.cmd",
+    "validate_fresh_environment_deployment.ps1",
+    "validate_fresh_environment_deployment.cmd",
     "export_control_room_release_metadata.ps1",
     "export_control_room_release_metadata.cmd",
     "export_control_room_release_notes.ps1",

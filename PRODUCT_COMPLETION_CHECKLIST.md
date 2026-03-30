@@ -42,9 +42,17 @@ From this point on, each completed finish task should update this file.
     `dist/upbit-control-room-support-live-preflight.zip`
     `SMALL_LIVE_VALIDATION_RUNBOOK.md`
 
-- [ ] Fresh environment deployment validated
+- [x] Fresh environment deployment validated
   - Goal: prove setup, launch, status, release-status, release-pack, and support-bundle work on a clean machine or clean workspace
   - Evidence to save: release pack + support bundle from the clean run
+  - Completed: `2026-03-31`
+  - Evidence:
+    `dist/fresh-environment-validation/fresh-environment-validation-summary.json`
+    `dist/fresh-environment-validation/evidence/fresh-control-room-status.json`
+    `dist/fresh-environment-validation/evidence/fresh-release-status.json`
+    `dist/fresh-environment-validation/workspace/dist/clean-run-support.zip`
+    `dist/fresh-environment-validation/workspace/dist/clean-run-release-pack.zip`
+  - Notes: `validate_fresh_environment_deployment.cmd` extracted the generated bundle into a clean workspace, ran `setup_control_room`, created a paper state, launched the hidden control room on port `8876`, captured status, then built and verified both the clean-run support bundle and release pack
 
 - [ ] Default operating profile and preset frozen
   - Goal: choose the one paper profile and one strategy preset that become the default operational path
