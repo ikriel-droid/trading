@@ -5,6 +5,7 @@ import json
 import textwrap
 from pathlib import Path
 from typing import Iterable
+from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
 from pptx import Presentation
@@ -446,10 +447,20 @@ def build_presentation(output_path: Path, readiness_path: Path) -> dict[str, str
         4.6,
     )
 
-    prs.save(output_path)
+    final_output_path = output_path
+    try:
+        prs.save(final_output_path)
+    except PermissionError:
+        fallback_name = "{0}-{1}{2}".format(
+            output_path.stem,
+            datetime.now().strftime("%Y%m%d-%H%M%S"),
+            output_path.suffix,
+        )
+        final_output_path = output_path.with_name(fallback_name)
+        prs.save(final_output_path)
 
     manifest = {
-        "pptx_path": str(output_path),
+        "pptx_path": str(final_output_path),
         "asset_dir": str(ASSET_ROOT),
         "readiness_path": str(readiness_path),
     }

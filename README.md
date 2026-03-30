@@ -432,6 +432,20 @@ The generated deck is saved to:
 
 `dist/small-live-validation-guide/Upbit-Small-Live-Validation-Guide.pptx`
 
+If you want to avoid the terminal as much as possible, open the helper window like this:
+
+```powershell
+.\small_live_validation_helper.cmd
+```
+
+That opens a simple Windows helper with buttons for:
+
+- opening `.env`
+- creating or editing `config.live.micro.json`
+- toggling `live_enabled`
+- running the one-command bootstrap prep
+- opening the PPT, readiness file, runbook, and checklist
+
 The operator checklist now also shows whether the latest release pack artifacts are missing, partial, invalid, or ready, and whether the current pack has already passed `release-verify`.
 The same UI now includes a `Release Center` card with direct `Build Pack`, `Verify Pack`, and `Clean Pack` buttons plus the current release artifact paths and readiness state.
 `Release Center` also exposes a `Run Recommended` button that follows the current artifact state, checksum issues, manifest validity, and verification report, then triggers the suggested release workflow stage directly.
