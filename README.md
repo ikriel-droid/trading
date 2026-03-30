@@ -336,7 +336,7 @@ Clean the generated release pack directory and zip when you are done:
 .\clean_control_room_release_pack.cmd
 ```
 
-Build a redacted support bundle with logs, state snapshots, control-room status, doctor output, and recent reports:
+Build a redacted support bundle with logs, state snapshots, control-room status, doctor output, release status, and recent reports:
 
 ```powershell
 .\build_control_room_support_bundle.cmd -CreateZip

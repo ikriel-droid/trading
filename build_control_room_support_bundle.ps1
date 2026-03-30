@@ -310,9 +310,19 @@ if (Test-Path $PythonExe) {
     catch {
         Write-TextIntoSupportBundle -Content $_.Exception.Message -RelativePath "diagnostics\doctor.error.txt" -ManifestEntries $manifestEntries
     }
+
+    try {
+        $releaseStatusArgs = @("-m", "upbit_auto_trader.main", "release-status", "--config", $ConfigPath)
+        $releaseStatusOutput = & $PythonExe @releaseStatusArgs
+        Write-TextIntoSupportBundle -Content ($releaseStatusOutput -join [Environment]::NewLine) -RelativePath "diagnostics\release-status.json" -ManifestEntries $manifestEntries
+    }
+    catch {
+        Write-TextIntoSupportBundle -Content $_.Exception.Message -RelativePath "diagnostics\release-status.error.txt" -ManifestEntries $manifestEntries
+    }
 }
 else {
     Write-TextIntoSupportBundle -Content ".venv\\Scripts\\python.exe is not available." -RelativePath "diagnostics\doctor.error.txt" -ManifestEntries $manifestEntries
+    Write-TextIntoSupportBundle -Content ".venv\\Scripts\\python.exe is not available." -RelativePath "diagnostics\release-status.error.txt" -ManifestEntries $manifestEntries
 }
 
 $manifest = [pscustomobject]@{
