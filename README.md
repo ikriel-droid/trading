@@ -394,6 +394,7 @@ powershell -ExecutionPolicy Bypass -File .\complete_remaining.ps1 all-safe
 
 The script also supports smaller stages such as `roadmap`, `verify`, `paper-preflight`, `paper-start`, `paper-report`, `live-preflight`, `live-start`, `release-pack`, `release-verify`, `release-clean`, `status`, and `all`. `all-safe` only runs non-live stages and now also builds and verifies a fresh release pack. `live-start` is blocked unless `UPBIT_AUTO_TRADER_ALLOW_LIVE=1` is set on purpose.
 You can also inspect the current release-pack readiness from the terminal with `python -m upbit_auto_trader.main release-status --config config.example.json`.
+The remaining product-finish work is tracked in `PRODUCT_COMPLETION_CHECKLIST.md`, and finish-task updates should check items off there.
 
 The browser control room now also exposes a `Completion Workflow` panel so you can preview or run finish stages such as `verify`, `paper-preflight`, `live-preflight`, `release-pack`, `release-verify`, `release-clean`, `status`, and `all-safe` without leaving the UI.
 The operator checklist now also shows whether the latest release pack artifacts are missing, partial, invalid, or ready, and whether the current pack has already passed `release-verify`.
