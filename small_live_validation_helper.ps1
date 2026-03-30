@@ -338,9 +338,76 @@ $statusBox.ScrollBars = "Vertical"
 $statusBox.Font = New-Object System.Drawing.Font('Consolas', 10)
 $form.Controls.Add($statusBox)
 
+$script:LastActionSummary = ""
+$script:LastActionDetail = ""
+
+function Set-ActionFeedback {
+    param(
+        [string]$RequestedAction,
+        [string]$RawResult
+    )
+
+    $summary = "Done."
+    $detailLines = @()
+
+    switch ($RequestedAction) {
+        "bootstrap" {
+            $readiness = Read-Readiness
+            $summary = "Easy Prep finished."
+            $detailLines += "Action: Run Easy Prep"
+            $detailLines += "Readiness file: $ReadinessPath"
+            if ($readiness -and $readiness.blockers -and @($readiness.blockers).Count -gt 0) {
+                $summary = "Easy Prep finished. There are still blockers."
+                $detailLines += ""
+                $detailLines += "Remaining blockers:"
+                foreach ($item in @($readiness.blockers)) {
+                    $detailLines += " - $item"
+                }
+            }
+            else {
+                $summary = "Easy Prep finished. No blockers found."
+                $detailLines += ""
+                $detailLines += "Remaining blockers: none"
+            }
+        }
+        "generate-guide" {
+            $summary = "Guide PPT generated."
+            $detailLines += "Action: Build PPT"
+            $detailLines += "Latest PPT: $(Get-LatestGuidePath)"
+        }
+        default {
+            $summary = (($RawResult -split "(`r`n|`n)")[0]).Trim()
+            if (-not $summary) {
+                $summary = "Done."
+            }
+            $detailLines += "Action: $RequestedAction"
+            $detailLines += $summary
+        }
+    }
+
+    if ($RawResult -and $RequestedAction -notin @("bootstrap", "generate-guide")) {
+        $detailLines += ""
+        $detailLines += "Raw output:"
+        $detailLines += $RawResult.Trim()
+    }
+
+    $script:LastActionSummary = $summary
+    $script:LastActionDetail = ($detailLines -join [Environment]::NewLine).Trim()
+}
+
 function Refresh-StatusBox {
     $resolvedConfig = Resolve-ProjectPath $configBox.Text
-    $statusBox.Text = Get-StatusText -ResolvedConfigPath $resolvedConfig -ResolvedMarket $marketBox.Text
+    $status = Get-StatusText -ResolvedConfigPath $resolvedConfig -ResolvedMarket $marketBox.Text
+    if ($script:LastActionDetail) {
+        $status += [Environment]::NewLine
+        $status += [Environment]::NewLine
+        $status += "Last action"
+        $status += [Environment]::NewLine
+        $status += "-----------"
+        $status += [Environment]::NewLine
+        $status += $script:LastActionDetail
+    }
+    $statusBox.Text = $status
 }
 
 function Invoke-UiAction {
@@ -348,10 +415,13 @@ function Invoke-UiAction {
     try {
         $resolvedConfig = Resolve-ProjectPath $configBox.Text
         $result = Invoke-HelperAction -RequestedAction $RequestedAction -ResolvedConfigPath $resolvedConfig -ResolvedMarket $marketBox.Text
+        Set-ActionFeedback -RequestedAction $RequestedAction -RawResult $result
         Refresh-StatusBox
-        [System.Windows.Forms.MessageBox]::Show($result, "Done", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
+        [System.Windows.Forms.MessageBox]::Show($script:LastActionSummary, "Done", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
     }
     catch {
+        $script:LastActionSummary = "Action failed."
+        $script:LastActionDetail = $_.Exception.Message
         Refresh-StatusBox
         [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
     }
