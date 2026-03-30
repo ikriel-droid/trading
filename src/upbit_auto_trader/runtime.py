@@ -61,6 +61,7 @@ class TradingRuntime:
         if existing is not None:
             self.state = existing
             if self.mode == "live":
+                self._prime_live_state_cursor(existing)
                 self._sync_live_state(existing, is_new_state=False)
                 self._save_state()
             return existing
@@ -81,10 +82,24 @@ class TradingRuntime:
             history=list(warmup_candles)[-self.config.runtime.max_history :],
         )
         if self.mode == "live":
+            self._prime_live_state_cursor(state)
             self._sync_live_state(state, is_new_state=True)
         self.state = state
         self._save_state()
         return state
+
+    def _prime_live_state_cursor(self, state: RuntimeState) -> None:
+        if self.mode != "live":
+            return
+        if state.last_processed_timestamp or not state.history:
+            return
+
+        state.last_processed_timestamp = state.history[-1].timestamp
+        state.processed_bars = max(int(state.processed_bars or 0), len(state.history))
+        state.events.append(
+            "LIVE CURSOR PRIMED last_processed_timestamp={0}".format(state.last_processed_timestamp)
+        )
+        state.events = state.events[-500:]
 
     def process_candle(self, candle: Candle) -> List[str]:
         if self.state is None:

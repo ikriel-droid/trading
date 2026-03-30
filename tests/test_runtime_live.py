@@ -1,3 +1,4 @@
+import json
 import pathlib
 import sys
 import unittest
@@ -162,6 +163,34 @@ class RuntimeLiveTests(unittest.TestCase):
             runtime.bootstrap([self.make_candle("2026-03-26T09:00:00", 100.0)])
             self.assertAlmostEqual(runtime.state.cash, 123456.78)
             self.assertAlmostEqual(runtime.state.peak_equity, 123456.78)
+            self.assertEqual(runtime.state.last_processed_timestamp, "2026-03-26T09:00:00")
+            self.assertGreaterEqual(runtime.state.processed_bars, 1)
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+
+    def test_live_bootstrap_primes_existing_state_cursor_when_blank(self):
+        broker = FakeLiveBroker(quote_balance=123456.78, base_balance=0.0)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-primed.json", broker)
+        try:
+            runtime.strategy = FakeStrategy({})
+            runtime.bootstrap([self.make_candle("2026-03-26T09:00:00", 100.0)])
+
+            with open(state_path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            payload["last_processed_timestamp"] = ""
+            payload["processed_bars"] = 0
+            with open(state_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
+
+            restored = TradingRuntime(config=runtime.config, mode="live", state_path=state_path, broker=broker)
+            restored.bootstrap([])
+
+            self.assertEqual(restored.state.last_processed_timestamp, "2026-03-26T09:00:00")
+            self.assertGreaterEqual(restored.state.processed_bars, 1)
+            self.assertTrue(any("LIVE CURSOR PRIMED" in item for item in restored.state.events))
         finally:
             if state_path.exists():
                 state_path.unlink()
