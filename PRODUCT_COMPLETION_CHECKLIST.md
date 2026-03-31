@@ -32,15 +32,16 @@ From this point on, each completed finish task should update this file.
     `dist/upbit-control-room-support-paper-soak.zip`
   - Notes: `paper-soak-loop` auto-restarted after a forced process kill, heartbeat stayed healthy before and after restart, and `data/paper-state-soak.json.bak` was present for state recovery fallback
 
-- [ ] Small live validation completed
+- [x] Small live validation completed
   - Goal: verify tiny-size live order submit, fill, cancel, reconcile, and state recovery with real Upbit keys
   - Evidence to save: live report + support bundle + release pack status after the run
-  - Current prep status: `2026-03-30` readiness captured, but live run is still blocked until real Upbit keys and a real operator-run micro-order are available
-  - Current blockers: `live_enabled=false`, `access_key_missing`, `secret_key_missing`, `live_state_missing`
-  - Prep evidence:
-    `dist/live-validation/small-live-validation-readiness.json`
-    `dist/upbit-control-room-support-live-preflight.zip`
-    `SMALL_LIVE_VALIDATION_RUNBOOK.md`
+  - Completed: `2026-03-31`
+  - Evidence:
+    `data/session-reports/session-report-20260331T1139511808490000-live-market-validation.json`
+    `dist/upbit-control-room-support-live-validation.zip`
+    `dist/live-validation/live-market-validation-release-status.json`
+    `dist/live-validation/live-market-validation-summary.json`
+  - Notes: one tiny `KRW-BTC` live market buy was submitted for `10,000 KRW`, partially-filled/canceled on the buy snapshot as expected by Upbit market-buy semantics, then immediately market-sold back out. Final reconcile confirmed `trade_count=1`, `position=null`, `pending_order=null`, `open-orders=[]`, and `release_artifacts.status=ready`.
 
 - [x] Fresh environment deployment validated
   - Goal: prove setup, launch, status, release-status, release-pack, and support-bundle work on a clean machine or clean workspace
