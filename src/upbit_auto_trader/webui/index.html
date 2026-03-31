@@ -172,6 +172,44 @@
         <article class="panel">
           <div class="panel-head">
             <div>
+              <p class="panel-eyebrow">실거래 준비</p>
+              <h2>실거래 켜기와 소액 검증</h2>
+            </div>
+          </div>
+          <p class="panel-copy">
+            헬퍼 창 없이 이 화면에서 바로 실거래를 켜고, 준비 상태를 다시 점검하고, 아주 작은 금액으로
+            실제 주문 검증까지 진행할 수 있습니다.
+          </p>
+          <div id="live-control-summary" class="summary-stack">
+            <div class="empty-state">실거래 준비 상태를 불러오는 중입니다.</div>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>시장가 검증 금액(원)</span>
+              <input id="live-test-krw-input" type="number" min="5000" step="1000" value="6000">
+            </label>
+            <label class="field field-span-2">
+              <span>실거래 준비 안내</span>
+              <div id="live-control-status" class="panel-copy">실거래 준비 상태를 확인하고 있습니다.</div>
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="enable-live-mode" class="ghost-button">실거래 켜기</button>
+            <button id="disable-live-mode" class="ghost-button">실거래 끄기</button>
+            <button id="run-live-easy-prep" class="ghost-button">실거래 준비 다시 확인</button>
+            <button id="run-live-market-test" class="ghost-button">시장가 소액 검증</button>
+          </div>
+          <details class="inline-advanced">
+            <summary>실거래 준비 상세 보기</summary>
+            <pre id="live-control-json" class="code-block">불러오는 중입니다.</pre>
+          </details>
+        </article>
+      </section>
+
+      <section class="panel-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
               <p class="panel-eyebrow">자동 선택</p>
               <h2>자동 종목 선택 현황</h2>
             </div>

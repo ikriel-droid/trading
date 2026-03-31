@@ -35,6 +35,9 @@ from upbit_auto_trader.ui import (  # noqa: E402
     run_save_current_preset_action,
     run_prune_reports_action,
     run_session_report_action,
+    run_live_toggle_action,
+    run_live_easy_prep_action,
+    run_live_market_validation_action,
     start_completion_workflow_action,
     run_start_profile_action,
     run_sync_candles_action,
@@ -188,6 +191,8 @@ class UiTests(unittest.TestCase):
         self.job_heartbeat_path = PROJECT_ROOT / "data" / "webui-jobs" / "test-ui-heartbeat.heartbeat.json"
         self.release_pack_dir = PROJECT_ROOT / "data" / "test-ui-release-pack"
         self.release_pack_zip_path = PROJECT_ROOT / "data" / "test-ui-release-pack.zip"
+        self.live_readiness_path = PROJECT_ROOT / "data" / "test-ui-live-readiness.json"
+        self.live_validation_summary_path = PROJECT_ROOT / "data" / "test-ui-live-validation-summary.json"
         self.release_pack_dir_patcher = mock.patch(
             "upbit_auto_trader.ui._default_release_pack_directory",
             return_value=str(self.release_pack_dir),
@@ -196,8 +201,18 @@ class UiTests(unittest.TestCase):
             "upbit_auto_trader.ui._default_release_pack_zip_path",
             return_value=str(self.release_pack_zip_path),
         )
+        self.live_readiness_patcher = mock.patch(
+            "upbit_auto_trader.ui._resolve_live_readiness_path",
+            return_value=str(self.live_readiness_path),
+        )
+        self.live_validation_summary_patcher = mock.patch(
+            "upbit_auto_trader.ui._resolve_live_market_validation_summary_path",
+            return_value=str(self.live_validation_summary_path),
+        )
         self.release_pack_dir_patcher.start()
         self.release_pack_zip_patcher.start()
+        self.live_readiness_patcher.start()
+        self.live_validation_summary_patcher.start()
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
@@ -214,6 +229,10 @@ class UiTests(unittest.TestCase):
             self.alert_journal_path.unlink()
         if self.job_heartbeat_path.exists():
             self.job_heartbeat_path.unlink()
+        if self.live_readiness_path.exists():
+            self.live_readiness_path.unlink()
+        if self.live_validation_summary_path.exists():
+            self.live_validation_summary_path.unlink()
         self._cleanup_release_pack_artifacts()
         if self.temp_reports_dir.exists():
             for report_path in self.temp_reports_dir.glob("*"):
@@ -316,6 +335,8 @@ class UiTests(unittest.TestCase):
     def tearDown(self):
         self.release_pack_dir_patcher.stop()
         self.release_pack_zip_patcher.stop()
+        self.live_readiness_patcher.stop()
+        self.live_validation_summary_patcher.stop()
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
@@ -332,6 +353,10 @@ class UiTests(unittest.TestCase):
             self.alert_journal_path.unlink()
         if self.job_heartbeat_path.exists():
             self.job_heartbeat_path.unlink()
+        if self.live_readiness_path.exists():
+            self.live_readiness_path.unlink()
+        if self.live_validation_summary_path.exists():
+            self.live_validation_summary_path.unlink()
         self._cleanup_release_pack_artifacts()
         if self.temp_reports_dir.exists():
             for report_path in self.temp_reports_dir.glob("*"):
@@ -451,6 +476,104 @@ class UiTests(unittest.TestCase):
         self.assertEqual(payload["job_health"]["summary"]["total"], 0)
         self.assertEqual(payload["job_health"]["summary"]["requires_attention"], 0)
         self.assertIsInstance(payload["job_history"]["items"], list)
+
+    def test_build_dashboard_payload_includes_live_control(self):
+        self.live_readiness_path.write_text(
+            json.dumps({"blockers": ["access_key_missing"]}, indent=2),
+            encoding="utf-8",
+        )
+
+        payload = build_dashboard_payload(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="live",
+            job_manager=BackgroundJobManager(),
+        )
+
+        self.assertIn("live_control", payload)
+        self.assertEqual(payload["live_control"]["market"], "KRW-BTC")
+        self.assertIn("access_key_missing", payload["live_control"]["readiness_blockers"])
+        self.assertFalse(payload["live_control"]["live_enabled"])
+        self.assertEqual(payload["ui_defaults"]["live_validation_buy_krw"], 6000)
+
+    def test_run_live_toggle_action_updates_live_enabled_and_market(self):
+        result = run_live_toggle_action(
+            config_path=str(self.temp_config_path),
+            enabled=True,
+            market="KRW-ETH",
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["live_enabled"])
+
+        updated = load_config(str(self.temp_config_path))
+        self.assertTrue(updated.upbit.live_enabled)
+        self.assertEqual(updated.market, "KRW-ETH")
+        self.assertEqual(updated.upbit.market, "KRW-ETH")
+
+    @mock.patch("upbit_auto_trader.ui._run_powershell_script")
+    @mock.patch("upbit_auto_trader.ui.UpbitBroker")
+    def test_run_live_easy_prep_action_returns_readiness_and_live_control(self, broker_cls, run_script):
+        readiness = {
+            "blockers": [],
+            "release_status": {"release_artifacts": {"status": "ready"}},
+        }
+        self.live_readiness_path.write_text(json.dumps(readiness, indent=2), encoding="utf-8")
+        run_script.return_value = {
+            "stdout": "ok",
+            "stderr": "",
+            "returncode": 0,
+            "command": ["powershell.exe"],
+        }
+        broker = broker_cls.return_value
+        broker.readiness_report.return_value = {"private_ready": True, "private_issues": []}
+
+        result = run_live_easy_prep_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            market="KRW-BTC",
+            csv_path=self.csv_path,
+            count=120,
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["readiness"]["blockers"], [])
+        self.assertTrue(result["live_control"]["private_ready"])
+        run_script.assert_called_once()
+
+    @mock.patch("upbit_auto_trader.ui._run_powershell_script")
+    @mock.patch("upbit_auto_trader.ui.UpbitBroker")
+    def test_run_live_market_validation_action_returns_summary_and_live_control(self, broker_cls, run_script):
+        summary = {
+            "market": "KRW-BTC",
+            "buy_krw": 6000,
+            "status": "completed",
+        }
+        self.live_validation_summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        run_script.return_value = {
+            "stdout": "ok",
+            "stderr": "",
+            "returncode": 0,
+            "command": ["powershell.exe"],
+        }
+        broker = broker_cls.return_value
+        broker.readiness_report.return_value = {"private_ready": True, "private_issues": []}
+
+        result = run_live_market_validation_action(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            market="KRW-BTC",
+            buy_krw=6000,
+            confirm="LIVE",
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["summary"]["status"], "completed")
+        self.assertTrue(result["live_control"]["private_ready"])
+        run_script.assert_called_once()
 
     def test_build_dashboard_payload_exposes_operator_checklist(self):
         payload = build_dashboard_payload(

@@ -35,6 +35,10 @@ const ids = {
   checklistFeed: document.getElementById("checklist-feed"),
   alertsSummary: document.getElementById("alerts-summary"),
   alertsFeed: document.getElementById("alerts-feed"),
+  liveControlSummary: document.getElementById("live-control-summary"),
+  liveControlStatus: document.getElementById("live-control-status"),
+  liveControlJson: document.getElementById("live-control-json"),
+  liveTestKrw: document.getElementById("live-test-krw-input"),
   recentTrades: document.getElementById("recent-trades-json"),
   recentEvents: document.getElementById("recent-events-json"),
   selectorSummary: document.getElementById("selector-summary-json"),
@@ -80,6 +84,10 @@ const ids = {
   runReleasePack: document.getElementById("run-release-pack"),
   runReleaseVerify: document.getElementById("run-release-verify"),
   runReleaseClean: document.getElementById("run-release-clean"),
+  enableLiveMode: document.getElementById("enable-live-mode"),
+  disableLiveMode: document.getElementById("disable-live-mode"),
+  runLiveEasyPrep: document.getElementById("run-live-easy-prep"),
+  runLiveMarketTest: document.getElementById("run-live-market-test"),
 };
 
 let dashboardState = {
@@ -502,6 +510,9 @@ function syncInputsFromDashboard(payload) {
   if (!ids.jobReportKeep.value && payload.ui_defaults?.report_keep_latest !== undefined) {
     ids.jobReportKeep.value = payload.ui_defaults.report_keep_latest;
   }
+  if (!ids.liveTestKrw.value && payload.ui_defaults?.live_validation_buy_krw !== undefined) {
+    ids.liveTestKrw.value = payload.ui_defaults.live_validation_buy_krw;
+  }
 
   const editableConfig = payload.editable_config || {};
   ids.cfgBuyThreshold.value = editableConfig["strategy.buy_threshold"] ?? "";
@@ -698,6 +709,33 @@ function renderSelectorActiveSummary(summary) {
     factCard("거래 횟수", formatNumber(summary.trade_count || 0, 0)),
     factCard("마지막 신호", summary.last_signal?.action ? actionLabel(summary.last_signal.action) : "없음"),
   ]);
+}
+
+function renderLiveControl(liveControl) {
+  const payload = liveControl || {};
+  const blockers = Array.isArray(payload.readiness_blockers) ? payload.readiness_blockers : [];
+  const liveEnabled = Boolean(payload.live_enabled);
+  const privateReady = Boolean(payload.private_ready);
+  const stateReady = Boolean(payload.state_exists);
+  const lastValidation = payload.last_validation || {};
+  const lastValidationAt = lastValidation.generated_at || lastValidation.generatedAt || "";
+  const statusMessage = blockers.length
+    ? `아직 확인이 필요한 항목이 ${blockers.length}개 있습니다. 먼저 실거래 준비 다시 확인을 눌러 주세요.`
+    : liveEnabled
+      ? "실거래를 시작할 준비가 되어 있습니다. 실제 주문은 실거래 시작 버튼에서 한 번 더 LIVE 를 입력해야 합니다."
+      : "현재는 안전 모드입니다. 실제 주문을 하려면 먼저 실거래 켜기를 눌러 주세요.";
+
+  ids.liveControlSummary.innerHTML = buildFactGrid([
+    factCard("실거래 스위치", liveEnabled ? "켜짐" : "꺼짐", liveEnabled ? "success" : ""),
+    factCard("업비트 키 상태", privateReady ? "정상" : "확인 필요", privateReady ? "success" : "error"),
+    factCard("상태 파일", stateReady ? "준비됨" : "없음", stateReady ? "success" : "error"),
+    factCard("대상 종목", payload.market || dashboardState.app.market || "-"),
+    factCard("남은 차단 항목", formatNumber(blockers.length, 0)),
+    factCard("최근 검증", lastValidationAt ? compactTimestamp(lastValidationAt) : "없음"),
+  ]);
+
+  ids.liveControlStatus.textContent = statusMessage;
+  ids.liveControlJson.textContent = pretty(payload);
 }
 
 function renderMarketCards(target, results, emptyMessage, options = {}) {
@@ -1106,6 +1144,7 @@ async function refreshDashboard() {
     ids.signal.textContent = pretty(payload.latest_signal);
     ids.paths.textContent = pretty(payload.paths);
     ids.readiness.textContent = pretty(payload.broker_readiness);
+    renderLiveControl(payload.live_control || {});
     renderAlerts(payload.alerts || null);
     renderChecklist(payload.operator_checklist || null);
     renderJobHealth(payload.job_health || null);
@@ -1223,6 +1262,74 @@ async function runDoctor() {
     ids.doctor.textContent = pretty(payload);
   } catch (error) {
     ids.doctor.textContent = `점검 중 문제가 발생했습니다: ${error.message}`;
+  }
+}
+
+async function toggleLiveMode(enabled) {
+  try {
+    ids.liveControlStatus.textContent = enabled
+      ? "실거래 스위치를 켜는 중입니다..."
+      : "실거래 스위치를 끄는 중입니다...";
+    const inputs = currentInputs();
+    const payload = await postJson("/api/live-toggle", {
+      enabled,
+      market: inputs.market || dashboardState.app.market || undefined,
+    });
+    ids.liveControlJson.textContent = pretty(payload);
+    ids.liveControlStatus.textContent = payload.message || (enabled ? "실거래를 켰습니다." : "실거래를 껐습니다.");
+    await refreshDashboard();
+  } catch (error) {
+    ids.liveControlStatus.textContent = `실거래 스위치 변경 중 문제가 발생했습니다: ${error.message}`;
+  }
+}
+
+async function runLiveEasyPrep() {
+  try {
+    ids.liveControlStatus.textContent = "실거래 준비를 다시 확인하고 있습니다...";
+    const inputs = currentInputs();
+    const payload = await postJson("/api/live-easy-prep", {
+      state_path: inputs.state_path,
+      selector_state_path: inputs.selector_state_path,
+      csv_path: inputs.csv_path,
+      market: inputs.market || dashboardState.app.market || undefined,
+      count: inputs.sync_count,
+    });
+    ids.liveControlJson.textContent = pretty(payload);
+    ids.liveControlStatus.textContent = payload.message || "실거래 준비를 마쳤습니다.";
+    await refreshDashboard();
+  } catch (error) {
+    ids.liveControlStatus.textContent = `실거래 준비 중 문제가 발생했습니다: ${error.message}`;
+  }
+}
+
+async function runLiveMarketTest() {
+  try {
+    const buyKrw = Number(ids.liveTestKrw.value || "0");
+    if (!Number.isFinite(buyKrw) || buyKrw < 5000) {
+      ids.liveControlStatus.textContent = "시장가 검증 금액은 5000원 이상으로 입력해 주세요.";
+      return;
+    }
+    const answer = window.prompt(
+      `실제 주문 확인\n\n이 동작은 업비트에 시장가 매수 1회와 시장가 매도 1회를 보냅니다.\n검증 금액: ${formatCurrency(buyKrw, 0)}\n\n계속하려면 LIVE 를 입력하세요.`,
+      "",
+    );
+    if (answer !== "LIVE") {
+      ids.liveControlStatus.textContent = "시장가 소액 검증을 취소했습니다.";
+      return;
+    }
+    ids.liveControlStatus.textContent = "시장가 소액 검증을 진행하고 있습니다...";
+    const inputs = currentInputs();
+    const payload = await postJson("/api/live-market-test", {
+      state_path: inputs.state_path,
+      market: inputs.market || dashboardState.app.market || undefined,
+      buy_krw: buyKrw,
+      confirm: answer,
+    });
+    ids.liveControlJson.textContent = pretty(payload);
+    ids.liveControlStatus.textContent = payload.message || "시장가 소액 검증을 마쳤습니다.";
+    await refreshDashboard();
+  } catch (error) {
+    ids.liveControlStatus.textContent = `시장가 소액 검증 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1667,6 +1774,10 @@ document.getElementById("run-optimize").addEventListener("click", () => runOptim
 document.getElementById("run-scan").addEventListener("click", runScan);
 document.getElementById("run-reconcile").addEventListener("click", runReconcile);
 document.getElementById("run-doctor").addEventListener("click", runDoctor);
+document.getElementById("enable-live-mode").addEventListener("click", () => toggleLiveMode(true));
+document.getElementById("disable-live-mode").addEventListener("click", () => toggleLiveMode(false));
+document.getElementById("run-live-easy-prep").addEventListener("click", runLiveEasyPrep);
+document.getElementById("run-live-market-test").addEventListener("click", runLiveMarketTest);
 document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
 document.getElementById("run-session-report").addEventListener("click", runSessionReport);
 document.getElementById("load-session-report").addEventListener("click", loadSessionReport);

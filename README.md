@@ -484,7 +484,14 @@ The generated deck is saved to:
 
 `dist/small-live-validation-guide/Upbit-Small-Live-Validation-Guide.pptx`
 
-If you want to avoid the terminal as much as possible, open the helper window like this:
+The main web UI now includes a `실거래 켜기와 소액 검증` card, so you can do the normal live flow there without opening the helper:
+
+- turn live mode on or off
+- rerun the one-command live prep
+- run the one-shot market validation path
+- review current blockers and the latest validation result
+
+If you still want a tiny Windows-only helper window, open it like this:
 
 ```powershell
 .\small_live_validation_helper.cmd

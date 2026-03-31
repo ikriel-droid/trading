@@ -1,5 +1,7 @@
 import json
 import hashlib
+import os
+import subprocess
 from collections import deque
 from datetime import datetime, timezone
 from http import HTTPStatus
@@ -48,6 +50,10 @@ from .strategy import ProfessionalCryptoStrategy
 WEBUI_DIR = Path(__file__).with_name("webui")
 JOB_MANAGER = BackgroundJobManager()
 WORKFLOW_SCRIPT_CMD = "complete_remaining.cmd"
+LIVE_BOOTSTRAP_SCRIPT = "bootstrap_small_live_validation.ps1"
+LIVE_MARKET_VALIDATION_SCRIPT = "run_small_live_market_validation.ps1"
+LIVE_READINESS_PATH = "dist/live-validation/small-live-validation-readiness.json"
+LIVE_MARKET_VALIDATION_SUMMARY_PATH = "dist/live-validation/live-market-validation-summary.json"
 EDITABLE_CONFIG_FIELDS = {
     "strategy.buy_threshold": float,
     "strategy.sell_threshold": float,
@@ -527,6 +533,204 @@ def update_editable_config(config_path: str, values: Dict[str, Any]) -> Dict[str
         "config_path": config_path,
         "updated": updated,
         "current": load_editable_config(config_path),
+    }
+
+
+def _resolve_live_readiness_path(config_path: str) -> str:
+    return _resolve_project_path(config_path, LIVE_READINESS_PATH)
+
+
+def _resolve_live_market_validation_summary_path(config_path: str) -> str:
+    return _resolve_project_path(config_path, LIVE_MARKET_VALIDATION_SUMMARY_PATH)
+
+
+def _load_json_if_exists(path_value: str) -> Dict[str, Any]:
+    path = Path(path_value)
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+
+
+def _build_live_control_payload(
+    config_path: str,
+    config: Any,
+    state_path: Optional[str],
+    selector_state_path: Optional[str],
+    broker_readiness: Optional[Dict[str, Any]] = None,
+    runtime_summary: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    resolved_state_path = _resolve_project_path(config_path, state_path or "data/live-state.json")
+    resolved_selector_state_path = _resolve_project_path(
+        config_path,
+        selector_state_path or _default_selector_state_path(config_path),
+    )
+    readiness_path = _resolve_live_readiness_path(config_path)
+    validation_summary_path = _resolve_live_market_validation_summary_path(config_path)
+    readiness_payload = _load_json_if_exists(readiness_path)
+    validation_payload = _load_json_if_exists(validation_summary_path)
+    blockers = [str(item) for item in readiness_payload.get("blockers", [])]
+    private_issues = [str(item) for item in (broker_readiness or {}).get("private_issues", [])]
+    private_ready = bool((broker_readiness or {}).get("private_ready", False))
+    if not private_ready and private_issues:
+        blockers = list(dict.fromkeys([*blockers, *private_issues]))
+    if not Path(resolved_state_path).exists() and "live_state_missing" not in blockers:
+        blockers.append("live_state_missing")
+
+    return {
+        "config_path": config_path,
+        "market": config.market,
+        "upbit_market": getattr(config.upbit, "market", config.market),
+        "live_enabled": bool(getattr(config.upbit, "live_enabled", False)),
+        "state_path": resolved_state_path,
+        "selector_state_path": resolved_selector_state_path,
+        "readiness_path": readiness_path,
+        "readiness_exists": Path(readiness_path).exists(),
+        "readiness_blockers": blockers,
+        "private_ready": private_ready,
+        "private_issues": private_issues,
+        "state_exists": Path(resolved_state_path).exists(),
+        "runtime_ready": bool(runtime_summary),
+        "last_validation_summary_path": validation_summary_path,
+        "last_validation_exists": Path(validation_summary_path).exists(),
+        "last_validation": validation_payload,
+        "last_action_required": "easy_prep" if blockers else "live_start",
+    }
+
+
+def _run_powershell_script(config_path: str, script_name: str, arguments: list[str]) -> Dict[str, Any]:
+    script_path = _project_root(config_path) / script_name
+    if not script_path.exists():
+        raise ValueError("script not found: {0}".format(script_path))
+
+    powershell_path = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    command = [str(powershell_path), "-ExecutionPolicy", "Bypass", "-File", str(script_path), *arguments]
+    result = subprocess.run(  # noqa: S603
+        command,
+        cwd=_project_root(config_path),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        stdout = (result.stdout or "").strip()
+        detail = stderr or stdout or "unknown error"
+        raise ValueError(detail)
+    return {
+        "command": command,
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+        "returncode": result.returncode,
+    }
+
+
+def run_live_toggle_action(config_path: str, enabled: bool, market: Optional[str] = None) -> Dict[str, Any]:
+    payload = _load_raw_config(config_path)
+    resolved_market = str(market or payload.get("market") or _get_nested_value(payload, "upbit.market"))
+    payload["market"] = resolved_market
+    payload.setdefault("upbit", {})
+    payload["upbit"]["market"] = resolved_market
+    payload["upbit"]["live_enabled"] = bool(enabled)
+    _save_raw_config(config_path, payload)
+    config = load_config(config_path)
+    return {
+        "ok": True,
+        "config_path": config_path,
+        "market": config.market,
+        "live_enabled": bool(config.upbit.live_enabled),
+        "message": "실거래 스위치를 켰습니다." if enabled else "실거래 스위치를 껐습니다.",
+    }
+
+
+def run_live_easy_prep_action(
+    config_path: str,
+    state_path: Optional[str],
+    selector_state_path: Optional[str],
+    market: Optional[str],
+    csv_path: Optional[str],
+    count: int = 200,
+) -> Dict[str, Any]:
+    if market:
+        run_live_toggle_action(config_path, enabled=load_config(config_path).upbit.live_enabled, market=market)
+
+    resolved_state_path = state_path or "data/live-state.json"
+    resolved_selector_state_path = selector_state_path or _default_selector_state_path(config_path)
+    action = _run_powershell_script(
+        config_path,
+        LIVE_BOOTSTRAP_SCRIPT,
+        [
+            "-ConfigPath", config_path,
+            "-StatePath", resolved_state_path,
+            "-SelectorStatePath", resolved_selector_state_path,
+            "-Count", str(count),
+            *([] if not csv_path else ["-CsvPath", csv_path]),
+            *([] if not market else ["-Market", market]),
+        ],
+    )
+    config = _override_market(load_config(config_path), market)
+    broker = UpbitBroker(config.upbit)
+    live_control = _build_live_control_payload(
+        config_path=config_path,
+        config=config,
+        state_path=resolved_state_path,
+        selector_state_path=resolved_selector_state_path,
+        broker_readiness=broker.readiness_report(),
+        runtime_summary=load_runtime_summary(config_path, resolved_state_path, "live"),
+    )
+    return {
+        "ok": True,
+        "message": "실거래 준비를 마쳤습니다.",
+        "action": action,
+        "readiness": _load_json_if_exists(_resolve_live_readiness_path(config_path)),
+        "live_control": live_control,
+    }
+
+
+def run_live_market_validation_action(
+    config_path: str,
+    state_path: Optional[str],
+    market: Optional[str],
+    buy_krw: float,
+    confirm: str,
+) -> Dict[str, Any]:
+    if confirm != "LIVE":
+        raise ValueError("시장가 소액 검증은 LIVE 입력이 필요합니다.")
+    if market:
+        run_live_toggle_action(config_path, enabled=load_config(config_path).upbit.live_enabled, market=market)
+
+    resolved_state_path = state_path or "data/live-state.json"
+    action = _run_powershell_script(
+        config_path,
+        LIVE_MARKET_VALIDATION_SCRIPT,
+        [
+            "-ConfigPath", config_path,
+            "-StatePath", resolved_state_path,
+            "-BuyKrw", str(round(float(buy_krw), 2)),
+            "-Confirm", confirm,
+            *([] if not market else ["-Market", market]),
+        ],
+    )
+    summary = _load_json_if_exists(_resolve_live_market_validation_summary_path(config_path))
+    config = _override_market(load_config(config_path), market)
+    broker = UpbitBroker(config.upbit)
+    live_control = _build_live_control_payload(
+        config_path=config_path,
+        config=config,
+        state_path=resolved_state_path,
+        selector_state_path=None,
+        broker_readiness=broker.readiness_report(),
+        runtime_summary=load_runtime_summary(config_path, resolved_state_path, "live"),
+    )
+    return {
+        "ok": True,
+        "message": "시장가 소액 검증을 마쳤습니다.",
+        "action": action,
+        "summary": summary,
+        "live_control": live_control,
     }
 
 
@@ -1824,9 +2028,18 @@ def build_dashboard_payload(
             "poll_seconds": config.runtime.poll_seconds,
             "selector_max_markets": config.selector.max_markets,
             "candle_unit": config.upbit.candle_unit,
+            "live_enabled": bool(config.upbit.live_enabled),
         },
         "broker_readiness": broker_readiness,
         "state_summary": runtime.summary() if runtime is not None else None,
+        "live_control": _build_live_control_payload(
+            config_path=config_path,
+            config=config,
+            state_path=state_path,
+            selector_state_path=resolved_selector_state_path,
+            broker_readiness=broker_readiness,
+            runtime_summary=runtime.summary() if runtime is not None else None,
+        ),
         "selector_summary": selector_summary,
         "activity": _build_recent_activity(runtime),
         "editable_config": load_editable_config(config_path),
@@ -1881,6 +2094,7 @@ def build_dashboard_payload(
             "max_restarts": 2,
             "restart_backoff_seconds": 2.0,
             "report_keep_latest": DEFAULT_REPORT_KEEP_LATEST,
+            "live_validation_buy_krw": 6000,
         },
     }
 
@@ -2285,6 +2499,38 @@ def _build_handler(
                 return
             if self.path == "/api/config-save":
                 self._write_json(update_editable_config(config_path, body))
+                return
+            if self.path == "/api/live-toggle":
+                self._write_json(
+                    run_live_toggle_action(
+                        config_path=config_path,
+                        enabled=bool(body.get("enabled", False)),
+                        market=body.get("market"),
+                    )
+                )
+                return
+            if self.path == "/api/live-easy-prep":
+                self._write_json(
+                    run_live_easy_prep_action(
+                        config_path=config_path,
+                        state_path=body.get("state_path") or state_path,
+                        selector_state_path=body.get("selector_state_path") or selector_state_path,
+                        market=body.get("market"),
+                        csv_path=body.get("csv_path") or csv_path,
+                        count=int(body.get("count", 200) or 200),
+                    )
+                )
+                return
+            if self.path == "/api/live-market-test":
+                self._write_json(
+                    run_live_market_validation_action(
+                        config_path=config_path,
+                        state_path=body.get("state_path") or state_path,
+                        market=body.get("market"),
+                        buy_krw=float(body.get("buy_krw", 6000.0) or 6000.0),
+                        confirm=str(body.get("confirm", "")),
+                    )
+                )
                 return
             if self.path == "/api/profile-save":
                 self._write_json(
