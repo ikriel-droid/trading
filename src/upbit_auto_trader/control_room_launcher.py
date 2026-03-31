@@ -112,10 +112,10 @@ def perform_action(project_root: Path, action: str) -> Dict[str, Any]:
         return build_diagnostics(project_root)
     if action == "launch_hidden":
         run_script(project_root, SCRIPT_NAMES["launch_hidden"], wait=False)
-        return {"ok": True, "action": action, "message": "Started hidden control room launcher."}
+        return {"ok": True, "action": action, "message": "조용한 실행으로 컨트롤 룸을 시작했습니다."}
     if action == "launch_visible":
         run_script(project_root, SCRIPT_NAMES["launch_visible"], wait=False)
-        return {"ok": True, "action": action, "message": "Started visible control room launcher."}
+        return {"ok": True, "action": action, "message": "화면이 보이는 상태로 컨트롤 룸을 시작했습니다."}
     if action == "status":
         result = run_script(project_root, SCRIPT_NAMES["status"], wait=True)
         return {
@@ -136,19 +136,19 @@ def perform_action(project_root: Path, action: str) -> Dict[str, Any]:
         }
     if action == "helper":
         run_script(project_root, SCRIPT_NAMES["helper"], wait=False)
-        return {"ok": True, "action": action, "message": "Opened small live helper."}
+        return {"ok": True, "action": action, "message": "실거래 준비 도우미를 열었습니다."}
     if action == "checklist":
         _open_path(project_root / SCRIPT_NAMES["checklist"])
-        return {"ok": True, "action": action, "message": "Opened product completion checklist."}
+        return {"ok": True, "action": action, "message": "완료 체크리스트를 열었습니다."}
     if action == "readme":
         _open_path(project_root / SCRIPT_NAMES["readme"])
-        return {"ok": True, "action": action, "message": "Opened README."}
+        return {"ok": True, "action": action, "message": "사용 안내서를 열었습니다."}
     if action == "dist":
         _open_path(project_root / SCRIPT_NAMES["dist"])
-        return {"ok": True, "action": action, "message": "Opened dist folder."}
+        return {"ok": True, "action": action, "message": "배포 폴더를 열었습니다."}
     if action == "browser":
         webbrowser.open(DEFAULT_URL)
-        return {"ok": True, "action": action, "message": f"Opened {DEFAULT_URL}."}
+        return {"ok": True, "action": action, "message": f"브라우저에서 {DEFAULT_URL} 를 열었습니다."}
     raise ValueError(f"Unsupported action: {action}")
 
 
@@ -156,11 +156,11 @@ class LauncherApp:
     def __init__(self, project_root: Path | None) -> None:
         self.project_root = project_root
         self.root = Tk()
-        self.root.title("Upbit Control Room Launcher")
+        self.root.title("업비트 컨트롤 룸 시작 도우미")
         self.root.geometry("880x620")
         self.root.minsize(760, 520)
         self.status_var = StringVar()
-        self.status_var.set("Project root detected." if project_root else "Project root not found. Place this launcher inside the project or bundle.")
+        self.status_var.set("프로젝트 위치를 찾았습니다." if project_root else "프로젝트 위치를 찾지 못했습니다. 이 실행기를 프로젝트 폴더나 배포 번들 안에서 실행해 주세요.")
         self._build()
         self.write(build_diagnostics(project_root))
 
@@ -168,18 +168,18 @@ class LauncherApp:
         shell = Frame(self.root, padx=18, pady=18)
         shell.pack(fill=BOTH, expand=True)
 
-        title = Label(shell, text="Upbit Control Room Launcher", font=("Segoe UI", 20, "bold"))
+        title = Label(shell, text="업비트 컨트롤 룸 시작 도우미", font=("Segoe UI", 20, "bold"))
         title.pack(anchor="w")
 
         subtitle = Label(
             shell,
-            text="Start or stop the control room, open the helper, and keep the operator docs close by.",
+            text="컨트롤 룸을 시작하거나 멈추고, 준비 도우미와 안내 문서를 바로 열 수 있습니다.",
             font=("Segoe UI", 10),
         )
         subtitle.pack(anchor="w", pady=(4, 10))
 
-        root_text = str(self.project_root) if self.project_root else "project root not detected"
-        root_label = Label(shell, text=f"Project: {root_text}", font=("Consolas", 10))
+        root_text = str(self.project_root) if self.project_root else "프로젝트 위치를 찾지 못함"
+        root_label = Label(shell, text=f"프로젝트: {root_text}", font=("Consolas", 10))
         root_label.pack(anchor="w", pady=(0, 10))
 
         status_label = Label(shell, textvariable=self.status_var, font=("Segoe UI", 10, "bold"))
@@ -187,18 +187,18 @@ class LauncherApp:
 
         row_one = Frame(shell)
         row_one.pack(fill=X, pady=(0, 8))
-        self._make_button(row_one, "Start Hidden", "launch_hidden").pack(side=LEFT, padx=(0, 8))
-        self._make_button(row_one, "Start Visible", "launch_visible").pack(side=LEFT, padx=(0, 8))
-        self._make_button(row_one, "Open Browser", "browser").pack(side=LEFT, padx=(0, 8))
-        self._make_button(row_one, "Status", "status").pack(side=LEFT, padx=(0, 8))
-        self._make_button(row_one, "Stop", "stop").pack(side=LEFT)
+        self._make_button(row_one, "조용히 시작", "launch_hidden").pack(side=LEFT, padx=(0, 8))
+        self._make_button(row_one, "화면 보이게 시작", "launch_visible").pack(side=LEFT, padx=(0, 8))
+        self._make_button(row_one, "브라우저 열기", "browser").pack(side=LEFT, padx=(0, 8))
+        self._make_button(row_one, "현재 상태 보기", "status").pack(side=LEFT, padx=(0, 8))
+        self._make_button(row_one, "실행 중지", "stop").pack(side=LEFT)
 
         row_two = Frame(shell)
         row_two.pack(fill=X, pady=(0, 12))
-        self._make_button(row_two, "Open Live Helper", "helper").pack(side=LEFT, padx=(0, 8))
-        self._make_button(row_two, "Open Checklist", "checklist").pack(side=LEFT, padx=(0, 8))
-        self._make_button(row_two, "Open README", "readme").pack(side=LEFT, padx=(0, 8))
-        self._make_button(row_two, "Open Dist", "dist").pack(side=LEFT)
+        self._make_button(row_two, "실거래 준비 도우미", "helper").pack(side=LEFT, padx=(0, 8))
+        self._make_button(row_two, "체크리스트 열기", "checklist").pack(side=LEFT, padx=(0, 8))
+        self._make_button(row_two, "사용 안내 열기", "readme").pack(side=LEFT, padx=(0, 8))
+        self._make_button(row_two, "배포 폴더 열기", "dist").pack(side=LEFT)
 
         self.output = ScrolledText(shell, wrap="word", font=("Consolas", 10))
         self.output.pack(fill=BOTH, expand=True)
@@ -214,10 +214,10 @@ class LauncherApp:
 
     def handle(self, action: str) -> None:
         if not self.project_root:
-            self.status_var.set("Project root not found.")
+            self.status_var.set("프로젝트 위치를 찾지 못했습니다.")
             return
         result = perform_action(self.project_root, action)
-        self.status_var.set(result.get("message", f"Ran {action}."))
+        self.status_var.set(result.get("message", f"{action} 작업을 실행했습니다."))
         self.write(result)
 
     def run(self) -> int:
@@ -226,13 +226,13 @@ class LauncherApp:
 
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Desktop launcher for the Upbit control room")
-    parser.add_argument("--diagnose", action="store_true", help="Print project-root diagnostics as JSON and exit.")
-    parser.add_argument("--diagnose-write", help="Write project-root diagnostics to a JSON file and exit.")
+    parser = argparse.ArgumentParser(description="업비트 컨트롤 룸 데스크톱 시작 도구")
+    parser.add_argument("--diagnose", action="store_true", help="프로젝트 위치 점검 결과를 JSON으로 출력하고 종료합니다.")
+    parser.add_argument("--diagnose-write", help="프로젝트 위치 점검 결과를 JSON 파일로 저장하고 종료합니다.")
     parser.add_argument(
         "--action",
         choices=["launch_hidden", "launch_visible", "status", "stop", "helper", "checklist", "readme", "dist", "browser"],
-        help="Run one launcher action and exit.",
+        help="런처 동작 한 가지를 실행하고 종료합니다.",
     )
     return parser.parse_args(argv)
 

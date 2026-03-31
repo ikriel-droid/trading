@@ -90,6 +90,64 @@ let dashboardState = {
 };
 let refreshTimer = null;
 
+const MODE_LABELS = {
+  paper: "모의투자",
+  live: "실거래",
+};
+
+const RELEASE_LABELS = {
+  missing: "배포 준비 필요",
+  partial: "배포 검토 필요",
+  invalid: "배포 파일 오류",
+  ready: "배포 가능",
+};
+
+const STATUS_LABELS = {
+  success: "정상",
+  warning: "주의",
+  error: "문제",
+  info: "안내",
+  ready: "준비 완료",
+  paper_ready: "모의투자 준비",
+  missing: "누락",
+  stale: "지연",
+  failed: "실패",
+  invalid: "오류",
+  running: "실행 중",
+  stopped: "중지됨",
+  retrying: "재시도 중",
+  unknown: "확인 중",
+};
+
+const JOB_TYPE_LABELS = {
+  "paper-loop": "모의투자 단일 감시",
+  "paper-selector": "모의투자 자동 종목 선택",
+  "live-daemon": "실거래 단일 감시",
+  "live-supervisor": "실거래 상태 감시",
+};
+
+const ACTION_LABELS = {
+  BUY: "매수",
+  SELL: "매도",
+  HOLD: "대기",
+};
+
+const WORKFLOW_STAGE_LABELS = {
+  roadmap: "남은 작업 보기",
+  verify: "기본 점검 실행",
+  "paper-preflight": "모의투자 시작 전 점검",
+  "paper-start": "모의투자 시작",
+  "paper-report": "모의투자 리포트 저장",
+  "live-preflight": "실거래 시작 전 점검",
+  "live-start": "실거래 시작",
+  status: "현재 상태 확인",
+  "all-safe": "안전한 전체 점검",
+  all: "전체 실행",
+  "release-pack": "릴리스 팩 만들기",
+  "release-verify": "릴리스 팩 검증",
+  "release-clean": "릴리스 산출물 정리",
+};
+
 function pretty(value) {
   return JSON.stringify(value, null, 2);
 }
@@ -129,6 +187,92 @@ function currentInputs() {
   };
 }
 
+function statusLabel(value) {
+  const key = String(value || "").trim().toLowerCase();
+  return STATUS_LABELS[key] || value || "-";
+}
+
+function modeLabel(value) {
+  const key = String(value || "").trim().toLowerCase();
+  return MODE_LABELS[key] || value || "-";
+}
+
+function releaseLabel(value) {
+  const key = String(value || "").trim().toLowerCase();
+  return RELEASE_LABELS[key] || statusLabel(value);
+}
+
+function jobTypeLabel(value) {
+  const key = String(value || "").trim();
+  return JOB_TYPE_LABELS[key] || value || "-";
+}
+
+function actionLabel(value) {
+  const key = String(value || "").trim().toUpperCase();
+  return ACTION_LABELS[key] || value || "-";
+}
+
+function workflowStageLabel(value) {
+  const key = String(value || "").trim();
+  return WORKFLOW_STAGE_LABELS[key] || key || "-";
+}
+
+function badgeTone(value) {
+  const key = String(value || "").trim().toLowerCase();
+  if (["success", "ready"].includes(key)) {
+    return "success";
+  }
+  if (["warning", "stale", "missing", "partial"].includes(key)) {
+    return "warning";
+  }
+  if (["error", "failed", "invalid"].includes(key)) {
+    return "error";
+  }
+  return "info";
+}
+
+function formatCurrency(value, maximumFractionDigits = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "-";
+  }
+  return new Intl.NumberFormat("ko-KR", {
+    style: "currency",
+    currency: "KRW",
+    maximumFractionDigits,
+  }).format(numeric);
+}
+
+function formatNumber(value, maximumFractionDigits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "-";
+  }
+  return new Intl.NumberFormat("ko-KR", {
+    maximumFractionDigits,
+  }).format(numeric);
+}
+
+function compactTimestamp(value) {
+  if (!value) {
+    return "시간 정보 없음";
+  }
+  return String(value).replace("T", " ").replace("Z", "");
+}
+
+function factCard(label, value, tone = "") {
+  return `
+    <div class="fact-card">
+      <span class="fact-label">${escapeXml(label)}</span>
+      <strong class="fact-value${tone ? ` ${tone}` : ""}">${escapeXml(value)}</strong>
+    </div>
+  `;
+}
+
+function buildFactGrid(items) {
+  return `<div class="fact-grid">${items.join("")}</div>`;
+}
+
 function currentJobSettings() {
   return {
     job_type: ids.jobType.value,
@@ -150,36 +294,36 @@ function formatBlockingIssues(items) {
 function buildLiveStartPrompt(preview) {
   const command = Array.isArray(preview?.command) ? preview.command.join(" ") : "";
   const lines = [
-    "LIVE START CONFIRMATION",
+    "실거래 시작 확인",
     "",
-    "This action can place real Upbit orders.",
-    `job: ${preview?.job_type || "live"}`,
-    `market: ${dashboardState.app.market || ids.marketFocus.value.trim() || "-"}`,
-    `state: ${preview?.report_state_path || ids.statePath.value.trim() || "-"}`,
+    "이 동작은 실제 업비트 주문을 낼 수 있습니다.",
+    `실행 방식: ${jobTypeLabel(preview?.job_type || "live")}`,
+    `대상 종목: ${dashboardState.app.market || ids.marketFocus.value.trim() || "-"}`,
+    `상태 파일: ${preview?.report_state_path || ids.statePath.value.trim() || "-"}`,
   ];
   if (command) {
-    lines.push(`command: ${command}`);
+    lines.push(`실행 명령: ${command}`);
   }
   lines.push("");
-  lines.push("Type LIVE to continue.");
+  lines.push("계속하려면 LIVE 를 그대로 입력하세요.");
   return lines.join("\n");
 }
 
 async function confirmLiveStartFromPreview(preview) {
   ids.jobPreview.textContent = pretty(preview);
   if (!preview || preview.error) {
-    ids.jobs.textContent = pretty(preview || { error: "live preview unavailable" });
+    ids.jobs.textContent = pretty(preview || { error: "실거래 미리보기를 불러오지 못했습니다." });
     return false;
   }
   if (!preview.can_start) {
     const issues = formatBlockingIssues(preview.blocking_issues || []);
     ids.jobs.textContent = pretty(preview);
-    window.alert(`Live start blocked.\n\n${issues || "Unknown blocking issue."}`);
+    window.alert(`실거래 시작이 차단되었습니다.\n\n${issues || "알 수 없는 차단 사유가 있습니다."}`);
     return false;
   }
   const answer = window.prompt(buildLiveStartPrompt(preview), "");
   if (answer !== "LIVE") {
-    ids.jobs.textContent = "Live start cancelled. Type LIVE in the confirmation prompt when you really want to place real orders.";
+    ids.jobs.textContent = "실거래 시작을 취소했습니다. 실제 주문이 필요할 때만 LIVE 를 입력해 주세요.";
     return false;
   }
   return true;
@@ -191,19 +335,19 @@ function renderJobs(jobs) {
     .map((job) => {
       const heartbeat = job.heartbeat || null;
       const heartbeatLine = job.heartbeat_status
-        ? `heartbeat: ${job.heartbeat_status}${job.heartbeat_age_seconds !== null && job.heartbeat_age_seconds !== undefined ? ` age=${Number(job.heartbeat_age_seconds).toFixed(1)}s` : ""}${heartbeat?.phase ? ` phase=${heartbeat.phase}` : ""}`
+        ? `상태: ${statusLabel(job.heartbeat_status)}${job.heartbeat_age_seconds !== null && job.heartbeat_age_seconds !== undefined ? ` · ${Number(job.heartbeat_age_seconds).toFixed(1)}초 전` : ""}${heartbeat?.phase ? ` · 단계 ${heartbeat.phase}` : ""}`
         : "";
       const report = job.last_report || null;
       const reportLine = report?.json_path
-        ? `report: ${report.json_path}`
+        ? `리포트: ${report.json_path}`
         : report?.error
-          ? `report error: ${report.error}`
+          ? `리포트 저장 문제: ${report.error}`
           : "";
-      return [`# ${job.name}`, heartbeatLine, reportLine, job.log_tail || ""].filter(Boolean).join("\n").trim();
+      return [`# ${jobTypeLabel(job.kind || job.name || "")}`, heartbeatLine, reportLine, job.log_tail || ""].filter(Boolean).join("\n").trim();
     })
     .filter(Boolean)
     .join("\n\n");
-  ids.logs.textContent = tails || "No active job logs";
+  ids.logs.textContent = tails || "현재 실행 중인 작업 로그가 없습니다.";
 }
 
 function renderJobHistory(historyPayload) {
@@ -213,13 +357,13 @@ function renderJobHistory(historyPayload) {
 function renderJobHealth(jobHealthPayload) {
   const summary = jobHealthPayload?.summary || {};
   ids.jobHealthSummary.innerHTML = `
-    <span class="alert-pill success">healthy ${Number(summary.healthy || 0)}</span>
-    <span class="alert-pill warn">stale ${Number(summary.stale || 0)}</span>
-    <span class="alert-pill warn">missing ${Number(summary.missing || 0)}</span>
-    <span class="alert-pill error">failed ${Number(summary.failed || 0)}</span>
-    <span class="alert-pill info">running ${Number(summary.running || 0)}</span>
-    <span class="alert-pill info">auto restart ${Number(summary.auto_restart || 0)}</span>
-    <span class="alert-pill danger">attention ${Number(summary.requires_attention || 0)}</span>
+    <span class="alert-pill success">정상 ${Number(summary.healthy || 0)}</span>
+    <span class="alert-pill warn">지연 ${Number(summary.stale || 0)}</span>
+    <span class="alert-pill warn">누락 ${Number(summary.missing || 0)}</span>
+    <span class="alert-pill error">실패 ${Number(summary.failed || 0)}</span>
+    <span class="alert-pill info">실행 중 ${Number(summary.running || 0)}</span>
+    <span class="alert-pill info">자동 재시작 ${Number(summary.auto_restart || 0)}</span>
+    <span class="alert-pill danger">주의 필요 ${Number(summary.requires_attention || 0)}</span>
   `;
   ids.jobHealth.textContent = pretty(jobHealthPayload || { summary: {}, items: [] });
 }
@@ -232,8 +376,8 @@ function renderHeroContext(payload) {
   const releaseTone = releaseStatus === "ready" ? "success" : releaseStatus === "invalid" ? "error" : "warning";
 
   setRibbonBadge(ids.heroMarket, market);
-  setRibbonBadge(ids.heroMode, `${mode.toUpperCase()} MODE`, modeTone);
-  setRibbonBadge(ids.heroRelease, `RELEASE ${releaseStatus.toUpperCase()}`, releaseTone);
+  setRibbonBadge(ids.heroMode, modeLabel(mode), modeTone);
+  setRibbonBadge(ids.heroRelease, releaseLabel(releaseStatus), releaseTone);
   document.body.dataset.mode = mode;
 }
 
@@ -241,27 +385,27 @@ function renderAlerts(alertPayload) {
   const summary = alertPayload?.summary || {};
   const items = alertPayload?.items || [];
   ids.alertsSummary.innerHTML = `
-    <span class="alert-pill danger">attention ${Number(summary.requires_attention || 0)}</span>
-    <span class="alert-pill warn">warning ${Number(summary.warning || 0)}</span>
-    <span class="alert-pill error">error ${Number(summary.error || 0)}</span>
-    <span class="alert-pill success">success ${Number(summary.success || 0)}</span>
-    <span class="alert-pill info">info ${Number(summary.info || 0)}</span>
+    <span class="alert-pill danger">주의 필요 ${Number(summary.requires_attention || 0)}</span>
+    <span class="alert-pill warn">주의 ${Number(summary.warning || 0)}</span>
+    <span class="alert-pill error">문제 ${Number(summary.error || 0)}</span>
+    <span class="alert-pill success">정상 ${Number(summary.success || 0)}</span>
+    <span class="alert-pill info">안내 ${Number(summary.info || 0)}</span>
   `;
 
   if (!items.length) {
-    ids.alertsFeed.innerHTML = '<div class="empty-state">No recent alerts.</div>';
+    ids.alertsFeed.innerHTML = '<div class="empty-state">최근 알림이 없습니다.</div>';
     return;
   }
 
   ids.alertsFeed.innerHTML = items.map((item) => `
     <article class="alert-card ${escapeXml(item.level || "info")}">
       <div class="alert-card-head">
-        <span class="chip ${escapeXml(item.level || "info")}">${escapeXml(item.level || "info")}</span>
-        <span class="alert-source">${escapeXml(item.source || "runtime")}${item.market ? ` | ${escapeXml(item.market)}` : ""}</span>
+        <span class="chip ${escapeXml(item.level || "info")}">${escapeXml(statusLabel(item.level || "info"))}</span>
+        <span class="alert-source">${escapeXml(item.market ? `${item.market} · ${item.source || "runtime"}` : item.source || "runtime")}</span>
       </div>
-      <h3>${escapeXml(item.headline || "Alert")}</h3>
+      <h3>${escapeXml(item.headline || "알림")}</h3>
       <p>${escapeXml(item.message || "")}</p>
-      <div class="alert-meta">${escapeXml(item.timestamp || "timestamp unavailable")}</div>
+      <div class="alert-meta">${escapeXml(compactTimestamp(item.timestamp))}</div>
     </article>
   `).join("");
 }
@@ -272,24 +416,24 @@ function renderChecklist(checklistPayload) {
   const nextSteps = checklistPayload?.next_steps || [];
 
   ids.checklistSummary.innerHTML = `
-    <span class="alert-pill success">success ${Number(summary.success || 0)}</span>
-    <span class="alert-pill warn">warning ${Number(summary.warning || 0)}</span>
-    <span class="alert-pill error">error ${Number(summary.error || 0)}</span>
-    <span class="alert-pill info">status ${escapeXml(summary.overall_status || "unknown")}</span>
+    <span class="alert-pill success">정상 ${Number(summary.success || 0)}</span>
+    <span class="alert-pill warn">주의 ${Number(summary.warning || 0)}</span>
+    <span class="alert-pill error">문제 ${Number(summary.error || 0)}</span>
+    <span class="alert-pill info">상태 ${escapeXml(statusLabel(summary.overall_status || "unknown"))}</span>
   `;
 
   if (!items.length) {
-    ids.checklistFeed.innerHTML = '<div class="empty-state">No checklist items.</div>';
+    ids.checklistFeed.innerHTML = '<div class="empty-state">운영 체크 항목이 아직 없습니다.</div>';
     return;
   }
 
   const cards = items.map((item) => `
     <article class="alert-card ${escapeXml(item.status || "info")}">
       <div class="alert-card-head">
-        <span class="chip ${escapeXml(item.status || "info")}">${escapeXml(item.status || "info")}</span>
+        <span class="chip ${escapeXml(item.status || "info")}">${escapeXml(statusLabel(item.status || "info"))}</span>
         <span class="alert-source">${escapeXml(item.key || "item")}</span>
       </div>
-      <h3>${escapeXml(item.title || "Checklist item")}</h3>
+      <h3>${escapeXml(item.title || "점검 항목")}</h3>
       <p>${escapeXml(item.detail || "")}</p>
       <div class="alert-meta">${escapeXml(item.action || "")}</div>
     </article>
@@ -299,12 +443,12 @@ function renderChecklist(checklistPayload) {
     cards.push(`
       <article class="alert-card info">
         <div class="alert-card-head">
-          <span class="chip info">next</span>
-          <span class="alert-source">operator guide</span>
+          <span class="chip info">다음</span>
+          <span class="alert-source">운영 안내</span>
         </div>
-        <h3>Next Steps</h3>
+        <h3>지금 하면 좋은 일</h3>
         <p>${nextSteps.map((item, index) => `${index + 1}. ${escapeXml(item)}`).join("<br>")}</p>
-        <div class="alert-meta">Use Completion Workflow or Process Control to apply the next step.</div>
+        <div class="alert-meta">아래 실행 패널이나 완료 워크플로에서 바로 이어갈 수 있습니다.</div>
       </article>
     `);
   }
@@ -426,12 +570,134 @@ function formatCompactNumber(value) {
     return "-";
   }
   if (Math.abs(numeric) >= 1000) {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("ko-KR", {
       notation: "compact",
       maximumFractionDigits: 1,
     }).format(numeric);
   }
-  return numeric.toFixed(2);
+  return formatNumber(numeric, 2);
+}
+
+function eventHeadline(message) {
+  const normalized = String(message || "").toUpperCase();
+  if (normalized.includes("BUY")) {
+    return "매수 관련 알림";
+  }
+  if (normalized.includes("SELL")) {
+    return "매도 관련 알림";
+  }
+  if (normalized.includes("BLOCK")) {
+    return "보호 장치로 차단됨";
+  }
+  if (normalized.includes("ORDER")) {
+    return "주문 상태 변경";
+  }
+  if (normalized.includes("RECONCILE")) {
+    return "상태 점검";
+  }
+  return "자동매매 동작 기록";
+}
+
+function trimTimestampPrefix(message) {
+  const text = String(message || "");
+  const parts = text.split(" ");
+  if (parts.length > 1 && parts[0].includes("T")) {
+    return parts.slice(1).join(" ");
+  }
+  return text;
+}
+
+function renderActivityCards(target, items, emptyMessage) {
+  if (!items || !items.length) {
+    target.innerHTML = `<div class="empty-state">${escapeXml(emptyMessage)}</div>`;
+    return;
+  }
+  target.innerHTML = items.map((item) => {
+    if (typeof item === "string") {
+      const raw = String(item);
+      const firstToken = raw.split(" ", 1)[0];
+      const timestamp = firstToken.includes("T") ? compactTimestamp(firstToken) : "방금";
+      return `
+        <article class="activity-card">
+          <div class="alert-card-head">
+            <span class="chip info">기록</span>
+            <span class="alert-source">${escapeXml(timestamp)}</span>
+          </div>
+          <h3>${escapeXml(eventHeadline(raw))}</h3>
+          <p>${escapeXml(trimTimestampPrefix(raw))}</p>
+        </article>
+      `;
+    }
+    return `
+      <article class="activity-card">
+        <div class="alert-card-head">
+          <span class="chip info">${escapeXml(statusLabel(item.level || "info"))}</span>
+          <span class="alert-source">${escapeXml(compactTimestamp(item.timestamp || ""))}</span>
+        </div>
+        <h3>${escapeXml(item.title || item.headline || "최근 기록")}</h3>
+        <p>${escapeXml(item.detail || item.message || "")}</p>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderRecentTrades(trades) {
+  if (!trades || !trades.length) {
+    ids.recentTrades.innerHTML = '<div class="empty-state">아직 완료된 거래가 없습니다.</div>';
+    return;
+  }
+  ids.recentTrades.innerHTML = trades.map((trade) => {
+    const tone = Number(trade.net_pnl || 0) >= 0 ? "success" : "error";
+    const title = `${trade.market || dashboardState.app.market || "-"} · ${trade.side === "buy" ? "매수" : "매도"} 완료`;
+    return `
+      <article class="activity-card">
+        <div class="alert-card-head">
+          <span class="chip ${tone}">${escapeXml(Number(trade.net_pnl || 0) >= 0 ? "수익" : "손실")}</span>
+          <span class="alert-source">${escapeXml(compactTimestamp(trade.exit_timestamp || trade.entry_timestamp || ""))}</span>
+        </div>
+        <h3>${escapeXml(title)}</h3>
+        ${buildFactGrid([
+          factCard("진입가", formatNumber(trade.entry_price, 0)),
+          factCard("청산가", formatNumber(trade.exit_price, 0)),
+          factCard("순손익", formatCurrency(trade.net_pnl || 0), tone),
+          factCard("수익률", `${formatNumber((trade.return_pct || 0) * 100, 2)}%`, tone),
+        ])}
+      </article>
+    `;
+  }).join("");
+}
+
+function renderRecentEvents(events) {
+  renderActivityCards(ids.recentEvents, events || [], "최근 동작이 아직 없습니다.");
+}
+
+function renderSelectorSummary(selectorPayload) {
+  if (!selectorPayload || !Object.keys(selectorPayload).length) {
+    ids.selectorSummary.innerHTML = '<div class="empty-state">자동 종목 선택 결과를 아직 불러오지 못했습니다.</div>';
+    return;
+  }
+  const lastScan = selectorPayload.last_scan_results || [];
+  ids.selectorSummary.innerHTML = buildFactGrid([
+    factCard("현재 선택 종목", selectorPayload.active_market || "없음"),
+    factCard("후보 종목 수", formatNumber(lastScan.length, 0)),
+    factCard("최근 스캔 시각", compactTimestamp(selectorPayload.last_scan_timestamp || "")),
+    factCard("자동 선택 상태", selectorPayload.active_market ? "선택 중" : "대기 중"),
+  ]);
+}
+
+function renderSelectorActiveSummary(summary) {
+  if (!summary || !Object.keys(summary).length) {
+    ids.selectorActiveSummary.innerHTML = '<div class="empty-state">선택된 종목이 아직 없습니다.</div>';
+    return;
+  }
+  ids.selectorActiveSummary.innerHTML = buildFactGrid([
+    factCard("종목", summary.market || "-"),
+    factCard("모드", modeLabel(summary.mode || dashboardState.app.mode || "paper")),
+    factCard("평가 금액", formatCurrency(summary.equity || 0)),
+    factCard("보유 현금", formatCurrency(summary.cash || 0)),
+    factCard("거래 횟수", formatNumber(summary.trade_count || 0, 0)),
+    factCard("마지막 신호", summary.last_signal?.action ? actionLabel(summary.last_signal.action) : "없음"),
+  ]);
 }
 
 function renderMarketCards(target, results, emptyMessage, options = {}) {
@@ -441,49 +707,48 @@ function renderMarketCards(target, results, emptyMessage, options = {}) {
   }
 
   const activeMarket = options.activeMarket || "";
-  const buttonLabel = options.buttonLabel || "Use Market";
+  const buttonLabel = options.buttonLabel || "이 종목 보기";
 
   target.innerHTML = results.map((item, index) => {
     const action = String(item.action || "HOLD").toLowerCase();
-    const normalizedReasons = (item.reasons || []).slice(0, 4).map((value) => escapeXml(value)).join(" | ");
-    const reasons = (item.reasons || []).slice(0, 4).map((value) => escapeXml(value)).join(" · ");
+    const normalizedReasons = (item.reasons || []).slice(0, 4).map((value) => escapeXml(value)).join(" · ");
     const warningChip = item.market_warning && item.market_warning !== "NONE"
-      ? `<span class="chip warn">warning ${escapeXml(item.market_warning)}</span>`
-      : '<span class="chip good">warning clear</span>';
+      ? `<span class="chip warn">주의 ${escapeXml(item.market_warning)}</span>`
+      : '<span class="chip good">주의 없음</span>';
     const liquidityChip = item.liquidity_ok
-      ? '<span class="chip good">liquidity ok</span>'
-      : '<span class="chip warn">liquidity low</span>';
+      ? '<span class="chip good">거래대금 양호</span>'
+      : '<span class="chip warn">거래대금 낮음</span>';
     const activeChip = item.market === activeMarket
-      ? '<span class="chip active">active</span>'
+      ? '<span class="chip active">선택됨</span>'
       : "";
     return `
       <article class="scan-card">
         <div class="scan-card-head">
           <div>
-            <p class="scan-rank">Rank #${index + 1}</p>
+            <p class="scan-rank">후보 ${index + 1}</p>
             <h3>${escapeXml(item.market)}</h3>
           </div>
-          <span class="scan-badge ${action}">${escapeXml(item.action || "HOLD")}</span>
+          <span class="scan-badge ${action}">${escapeXml(actionLabel(item.action || "HOLD"))}</span>
         </div>
         <div class="scan-meta">
-          <span>${escapeXml(item.timestamp || "-")}</span>
-          <span>confidence ${Number(item.confidence || 0).toFixed(2)}</span>
+          <span>${escapeXml(compactTimestamp(item.timestamp || ""))}</span>
+          <span>신뢰도 ${formatNumber(item.confidence || 0, 2)}</span>
         </div>
         <div class="scan-metrics">
           <div class="scan-metric">
-            <span class="scan-metric-label">Score</span>
-            <strong class="scan-metric-value">${Number(item.score || 0).toFixed(1)}</strong>
+            <span class="scan-metric-label">점수</span>
+            <strong class="scan-metric-value">${formatNumber(item.score || 0, 1)}</strong>
           </div>
           <div class="scan-metric">
-            <span class="scan-metric-label">Close</span>
-            <strong class="scan-metric-value">${formatCompactNumber(item.close)}</strong>
+            <span class="scan-metric-label">현재가</span>
+            <strong class="scan-metric-value">${formatNumber(item.close, 0)}</strong>
           </div>
           <div class="scan-metric">
-            <span class="scan-metric-label">24H Liquidity</span>
+            <span class="scan-metric-label">24시간 거래대금</span>
             <strong class="scan-metric-value">${formatCompactNumber(item.liquidity_24h)}</strong>
           </div>
           <div class="scan-metric">
-            <span class="scan-metric-label">Signal Count</span>
+            <span class="scan-metric-label">판단 근거 수</span>
             <strong class="scan-metric-value">${(item.reasons || []).length}</strong>
           </div>
         </div>
@@ -492,7 +757,7 @@ function renderMarketCards(target, results, emptyMessage, options = {}) {
           ${warningChip}
           ${activeChip}
         </div>
-        <p class="scan-reasons">${normalizedReasons || "No reasons provided."}</p>
+        <p class="scan-reasons">${normalizedReasons || "아직 충분한 판단 근거가 모이지 않았습니다."}</p>
         <div class="scan-actions">
           <button class="ghost-button small scan-use-button" data-market="${escapeXml(item.market)}">${escapeXml(buttonLabel)}</button>
         </div>
@@ -505,7 +770,7 @@ function renderScanCards(scanPayload) {
   renderMarketCards(
     ids.scanCards,
     scanPayload?.scan_results || [],
-    "Run a scan to load ranked markets.",
+    "아직 스캔 결과가 없습니다. 아래에서 시장 스캔을 실행해 보세요.",
   );
 }
 
@@ -513,10 +778,10 @@ function renderSelectorCards(selectorPayload) {
   renderMarketCards(
     ids.selectorCards,
     selectorPayload?.last_scan_results || [],
-    "Selector state not loaded yet.",
+    "자동 종목 선택 결과를 아직 불러오지 못했습니다.",
     {
       activeMarket: selectorPayload?.active_market || "",
-      buttonLabel: "Focus Market",
+      buttonLabel: "이 종목 기준으로 보기",
     },
   );
 }
@@ -527,7 +792,7 @@ function renderPresets(presetPayload) {
 
   const currentValue = ids.presetSelect.value;
   if (!items.length) {
-    ids.presetSelect.innerHTML = '<option value="">No presets</option>';
+    ids.presetSelect.innerHTML = '<option value="">저장된 전략이 없습니다</option>';
     return;
   }
 
@@ -547,7 +812,7 @@ function renderProfiles(profilePayload) {
 
   const currentValue = ids.profileSelect.value;
   if (!items.length) {
-    ids.profileSelect.innerHTML = '<option value="">No profiles</option>';
+    ids.profileSelect.innerHTML = '<option value="">저장된 운영 프로필이 없습니다</option>';
     return;
   }
 
@@ -556,11 +821,11 @@ function renderProfiles(profilePayload) {
       const summary = item.summary || {};
       const runs = Number(item.start_count || 0);
       const label = [
-        item.name || "profile",
-        summary.job_type || "",
+        item.name || "프로필",
+        jobTypeLabel(summary.job_type || ""),
         summary.market || "",
-        summary.report_keep_latest ? `keep ${summary.report_keep_latest}` : "",
-        runs > 0 ? `runs ${runs}` : "",
+        summary.report_keep_latest ? `리포트 ${summary.report_keep_latest}개 유지` : "",
+        runs > 0 ? `실행 ${runs}회` : "",
       ].filter(Boolean).join(" | ");
       return `<option value="${escapeXml(item.path)}">${escapeXml(label)}</option>`;
     })
@@ -578,12 +843,12 @@ function renderCompletionWorkflow(workflowPayload) {
 
   const currentValue = ids.workflowStage.value;
   if (!items.length) {
-    ids.workflowStage.innerHTML = '<option value="">No stages</option>';
+    ids.workflowStage.innerHTML = '<option value="">실행 가능한 마감 단계가 없습니다</option>';
     return;
   }
 
   ids.workflowStage.innerHTML = items
-    .map((item) => `<option value="${escapeXml(item.stage)}">${escapeXml(item.label)} | ${escapeXml(item.description)}</option>`)
+    .map((item) => `<option value="${escapeXml(item.stage)}">${escapeXml(item.label || workflowStageLabel(item.stage))} | ${escapeXml(item.description)}</option>`)
     .join("");
 
   const fallbackValue = workflowPayload?.default_stage || items[0].stage;
@@ -598,63 +863,67 @@ function renderReleaseArtifacts(releasePayload) {
   const status = String(payload.status || "missing");
   const issues = Array.isArray(payload.issues) ? payload.issues : [];
   const formattedIssues = issues.slice(0, 3).map((item) => String(item).replaceAll(":", " "));
-  const statusClass = status === "ready" ? "success" : status === "partial" ? "warn" : "error";
+  const statusClass = status === "ready" ? "success" : status === "partial" ? "warn" : status === "missing" ? "warn" : "error";
   const manifestState = payload.manifest_exists
-    ? (payload.manifest_load_ok ? "manifest parsed" : "manifest unreadable")
-    : "manifest missing";
-  const zipState = payload.zip_exists ? "zip ok" : "zip missing";
-  const checksumState = payload.checksum_ok ? "checksums ok" : "checksums pending";
+    ? (payload.manifest_load_ok ? "설명서 읽기 완료" : "설명서 읽기 실패")
+    : "설명서 없음";
+  const zipState = payload.zip_exists ? "배포 파일 준비됨" : "배포 파일 없음";
+  const checksumState = payload.checksum_ok ? "무결성 확인 완료" : "무결성 확인 필요";
   const verificationState = payload.verification_current
-    ? "verification ok"
+    ? "검증 완료"
     : payload.verification_exists
-      ? (payload.verification_load_ok ? "verification stale" : "verification unreadable")
-      : "verification pending";
+      ? (payload.verification_load_ok ? "검증 다시 필요" : "검증 파일 읽기 실패")
+      : "검증 전";
   const supportState = payload.includes_support_bundle
-    ? (payload.support_zip_exists ? "support ok" : "support missing")
-    : "support optional";
+    ? (payload.support_zip_exists ? "지원 번들 포함" : "지원 번들 없음")
+    : "지원 번들 선택";
   let recommendedStage = "release-pack";
-  let recommendation = "Build a fresh release pack before distribution.";
+  let recommendation = "배포 전에 최신 릴리스 팩을 다시 만들어 주세요.";
 
   if (status === "ready") {
     if (payload.verification_current) {
       recommendedStage = "release-clean";
       recommendation = payload.verified_at
-        ? `Release pack verification completed at ${payload.verified_at}. Clean it when distribution is finished.`
-        : "Release pack verification already completed. Clean it when distribution is finished.";
+        ? `${compactTimestamp(payload.verified_at)} 기준으로 배포 검증이 끝났습니다. 전달이 끝나면 정리 버튼으로 마무리하세요.`
+        : "배포 검증이 끝났습니다. 전달이 끝나면 정리 버튼으로 마무리하세요.";
     } else {
       recommendedStage = "release-verify";
-      recommendation = "Manifest and recorded SHA256 hashes line up. Run release-verify for this exact pack before sharing it.";
+      recommendation = "배포 파일은 만들어졌습니다. 실제 전달 전에는 검증 버튼으로 마지막 확인을 해 주세요.";
     }
   } else if (status === "invalid") {
     recommendedStage = "release-pack";
     recommendation = formattedIssues.length
-      ? `Manifest or checksum validation failed: ${formattedIssues.join(", ")}. Rebuild the release pack.`
-      : "Manifest or checksum validation failed. Rebuild the release pack.";
+      ? `배포 파일에 문제가 있습니다: ${formattedIssues.join(", ")}. 다시 만들기부터 진행하세요.`
+      : "배포 파일에 문제가 있습니다. 다시 만들기부터 진행하세요.";
   } else if (status === "partial") {
     recommendedStage = "release-pack";
     recommendation = formattedIssues.length
-      ? `Artifacts are incomplete: ${formattedIssues.join(", ")}. Build the pack again, then verify it.`
-      : "Artifacts are incomplete. Build the pack again, then verify it.";
+      ? `배포 파일이 일부만 준비되었습니다: ${formattedIssues.join(", ")}. 다시 만들고 검증까지 진행하세요.`
+      : "배포 파일이 일부만 준비되었습니다. 다시 만들고 검증까지 진행하세요.";
   }
 
   ids.releaseArtifactsSummary.innerHTML = `
-    <span class="alert-pill ${statusClass}">status ${escapeXml(status)}</span>
+    <span class="alert-pill ${statusClass}">상태 ${escapeXml(releaseLabel(status))}</span>
     <span class="alert-pill info">${escapeXml(manifestState)}</span>
     <span class="alert-pill info">${escapeXml(zipState)}</span>
     <span class="alert-pill info">${escapeXml(checksumState)}</span>
     <span class="alert-pill info">${escapeXml(verificationState)}</span>
     <span class="alert-pill info">${escapeXml(supportState)}</span>
-    <span class="alert-pill info">files ${Number(payload.manifest_file_count || 0)}</span>
+    <span class="alert-pill info">파일 ${Number(payload.manifest_file_count || 0)}개</span>
   `;
   ids.releaseNextStep.innerHTML = `
-    <strong>Recommended Next Action</strong>
+    <strong>추천 작업</strong>
     <p>${escapeXml(recommendation)}</p>
-    <div class="release-next-step-meta">Suggested stage: ${escapeXml(recommendedStage)}</div>
-    ${payload.verified_at ? `<div class="release-next-step-meta">Verified at: ${escapeXml(payload.verified_at)}</div>` : ""}
-    ${formattedIssues.length ? `<div class="release-next-step-meta">Issues: ${escapeXml(formattedIssues.join(" | "))}</div>` : ""}
+    <div class="release-next-step-meta">추천 단계: ${escapeXml(recommendedStage)}</div>
+    ${payload.verified_at ? `<div class="release-next-step-meta">검증 시각: ${escapeXml(compactTimestamp(payload.verified_at))}</div>` : ""}
+    ${formattedIssues.length ? `<div class="release-next-step-meta">확인 필요: ${escapeXml(formattedIssues.join(" | "))}</div>` : ""}
   `;
   dashboardState.releaseRecommendedStage = recommendedStage;
-  ids.runReleaseRecommended.textContent = `Run ${recommendedStage}`;
+  ids.runReleaseRecommended.textContent = recommendedStage === "release-pack"
+    ? "추천 작업 실행: 릴리스 팩 만들기"
+    : recommendedStage === "release-verify"
+      ? "추천 작업 실행: 릴리스 팩 검증"
+      : "추천 작업 실행: 릴리스 산출물 정리";
   ids.runReleasePack.classList.toggle("recommended", recommendedStage === "release-pack");
   ids.runReleaseVerify.classList.toggle("recommended", recommendedStage === "release-verify");
   ids.runReleaseClean.classList.toggle("recommended", recommendedStage === "release-clean");
@@ -673,13 +942,13 @@ function renderReports(reportPayload) {
   const items = reportPayload?.items || [];
   const currentValue = ids.reportSelect.value;
   if (!items.length) {
-    ids.reportSelect.innerHTML = '<option value="">No reports</option>';
+    ids.reportSelect.innerHTML = '<option value="">저장된 리포트가 없습니다</option>';
     return;
   }
 
   ids.reportSelect.innerHTML = items
     .map((item) => {
-      const label = `${item.market || "market"} | ${item.mode || "paper"} | trades ${item.trade_count} | pnl ${Number(item.total_net_pnl || 0).toFixed(2)}`;
+      const label = `${item.market || "시장 미지정"} | ${modeLabel(item.mode || "paper")} | 거래 ${item.trade_count}회 | 손익 ${formatCurrency(item.total_net_pnl || 0, 0)}`;
       return `<option value="${escapeXml(item.json_path)}">${escapeXml(label)}</option>`;
     })
     .join("");
@@ -715,7 +984,7 @@ function applyProfileToForm(profilePayload) {
 function renderChart(chartElement, metaElement, chartPayload) {
   if (!chartPayload || !chartPayload.points || chartPayload.points.length === 0) {
     chartElement.innerHTML = "";
-    metaElement.textContent = "No chart data";
+    metaElement.textContent = "차트 데이터가 아직 없습니다.";
     return;
   }
 
@@ -789,7 +1058,7 @@ function renderChart(chartElement, metaElement, chartPayload) {
     ${markers}
     <circle cx="${latest.x}" cy="${latest.y}" r="6" fill="#0d3cae"></circle>
   `;
-  metaElement.textContent = `Last ${chartPayload.points.length} candles | markers ${(chartPayload.markers || []).length} | low ${min.toFixed(2)} | high ${max.toFixed(2)} | latest ${latest.close.toFixed(2)} @ ${latest.timestamp}`;
+  metaElement.textContent = `최근 ${chartPayload.points.length}개 캔들 · 표시 ${(chartPayload.markers || []).length}개 · 저가 ${formatNumber(min, 0)} · 고가 ${formatNumber(max, 0)} · 최신 ${formatNumber(latest.close, 0)} @ ${compactTimestamp(latest.timestamp)}`;
 }
 
 function renderPriceChart(chartPayload) {
@@ -828,23 +1097,27 @@ async function refreshDashboard() {
     renderHeroContext(payload);
     const summary = payload.state_summary || {};
     setMetric(ids.market, payload.app.market);
-    setMetric(ids.mode, payload.app.mode);
-    setMetric(ids.equity, summary.equity ?? "-");
-    setMetric(ids.cash, summary.cash ?? "-");
-    setMetric(ids.position, summary.position ? "OPEN" : "FLAT");
-    setMetric(ids.pending, summary.pending_order ? summary.pending_order.side : "NONE");
+    setMetric(ids.mode, modeLabel(payload.app.mode));
+    setMetric(ids.equity, formatCurrency(summary.equity ?? 0));
+    setMetric(ids.cash, formatCurrency(summary.cash ?? 0));
+    setMetric(ids.position, summary.position ? "보유 중" : "없음");
+    setMetric(ids.pending, summary.pending_order ? actionLabel(summary.pending_order.side || "hold") : "없음");
     ids.summary.textContent = pretty(summary);
     ids.signal.textContent = pretty(payload.latest_signal);
     ids.paths.textContent = pretty(payload.paths);
     ids.readiness.textContent = pretty(payload.broker_readiness);
-      renderAlerts(payload.alerts || null);
-      renderChecklist(payload.operator_checklist || null);
-      renderJobHealth(payload.job_health || null);
-      ids.recentTrades.textContent = pretty(payload.activity?.recent_trades || []);
-      ids.recentEvents.textContent = pretty(payload.activity?.recent_events || []);
-    ids.selectorSummary.textContent = pretty(payload.selector_summary || {});
-    ids.selectorActiveSummary.textContent = pretty(payload.selector_summary?.active_market_summary || {});
-    ids.selectorActiveEvents.textContent = pretty(payload.selector_summary?.active_market_activity?.recent_events || []);
+    renderAlerts(payload.alerts || null);
+    renderChecklist(payload.operator_checklist || null);
+    renderJobHealth(payload.job_health || null);
+    renderRecentTrades(payload.activity?.recent_trades || []);
+    renderRecentEvents(payload.activity?.recent_events || []);
+    renderSelectorSummary(payload.selector_summary || {});
+    renderSelectorActiveSummary(payload.selector_summary?.active_market_summary || {});
+    renderActivityCards(
+      ids.selectorActiveEvents,
+      payload.selector_summary?.active_market_activity?.recent_events || [],
+      "선택된 종목의 최근 기록이 아직 없습니다.",
+    );
     renderSelectorCards(payload.selector_summary || null);
     renderPresets(payload.strategy_presets || null);
     renderProfiles(payload.operator_profiles || null);
@@ -856,13 +1129,13 @@ async function refreshDashboard() {
     renderJobHistory(payload.job_history);
     renderPriceChart(payload.chart);
   } catch (error) {
-    ids.summary.textContent = `dashboard error: ${error.message}`;
+    ids.summary.textContent = `화면을 불러오는 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function runSignal() {
   try {
-    ids.signal.textContent = "Running signal...";
+    ids.signal.textContent = "최신 신호를 계산하고 있습니다...";
     const inputs = currentInputs();
     const payload = await postJson("/api/signal", {
       csv_path: inputs.csv_path,
@@ -870,13 +1143,13 @@ async function runSignal() {
     });
     ids.signal.textContent = pretty(payload);
   } catch (error) {
-    ids.signal.textContent = `signal error: ${error.message}`;
+    ids.signal.textContent = `신호 계산 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function runBacktest() {
   try {
-    ids.backtest.textContent = "Running backtest...";
+    ids.backtest.textContent = "백테스트를 실행하고 있습니다...";
     const inputs = currentInputs();
     const payload = await postJson("/api/backtest", {
       csv_path: inputs.csv_path,
@@ -884,13 +1157,13 @@ async function runBacktest() {
     });
     ids.backtest.textContent = pretty(payload);
   } catch (error) {
-    ids.backtest.textContent = `backtest error: ${error.message}`;
+    ids.backtest.textContent = `백테스트 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function runOptimize(saveBest = false) {
   try {
-    ids.optimize.textContent = saveBest ? "Running optimizer and saving preset..." : "Running optimizer...";
+    ids.optimize.textContent = saveBest ? "전략 조합을 찾고 가장 좋은 값을 저장하는 중입니다..." : "전략 조합을 찾고 있습니다...";
     const inputs = currentInputs();
     const payload = await postJson("/api/optimize", {
       csv_path: inputs.csv_path,
@@ -904,13 +1177,13 @@ async function runOptimize(saveBest = false) {
       await refreshDashboard();
     }
   } catch (error) {
-    ids.optimize.textContent = `optimize error: ${error.message}`;
+    ids.optimize.textContent = `전략 조정 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function runScan() {
   try {
-    ids.scan.textContent = "Running market scan...";
+    ids.scan.textContent = "시장 후보를 스캔하고 있습니다...";
     const inputs = currentInputs();
     const payload = await postJson("/api/scan", {
       max_markets: inputs.max_markets,
@@ -919,14 +1192,14 @@ async function runScan() {
     ids.scan.textContent = pretty(payload);
     renderScanCards(payload);
   } catch (error) {
-    ids.scan.textContent = `scan error: ${error.message}`;
+    ids.scan.textContent = `시장 스캔 중 문제가 발생했습니다: ${error.message}`;
     renderScanCards(null);
   }
 }
 
 async function runReconcile() {
   try {
-    ids.reconcile.textContent = "Running reconcile...";
+    ids.reconcile.textContent = "계좌와 상태를 다시 맞추고 있습니다...";
     const inputs = currentInputs();
     const payload = await postJson("/api/reconcile", {
       state_path: inputs.state_path,
@@ -935,13 +1208,13 @@ async function runReconcile() {
     });
     ids.reconcile.textContent = pretty(payload);
   } catch (error) {
-    ids.reconcile.textContent = `reconcile error: ${error.message}`;
+    ids.reconcile.textContent = `상태 점검 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function runDoctor() {
   try {
-    ids.doctor.textContent = "Running doctor...";
+    ids.doctor.textContent = "운영 상태를 점검하고 있습니다...";
     const inputs = currentInputs();
     const payload = await postJson("/api/doctor", {
       state_path: inputs.state_path,
@@ -949,13 +1222,13 @@ async function runDoctor() {
     });
     ids.doctor.textContent = pretty(payload);
   } catch (error) {
-    ids.doctor.textContent = `doctor error: ${error.message}`;
+    ids.doctor.textContent = `점검 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function runSyncCandles() {
   try {
-    ids.paths.textContent = "Syncing candles...";
+    ids.paths.textContent = "최신 캔들 데이터를 가져오고 있습니다...";
     const inputs = currentInputs();
     const payload = await postJson("/api/sync-candles", {
       csv_path: inputs.csv_path,
@@ -965,13 +1238,13 @@ async function runSyncCandles() {
     ids.paths.textContent = pretty(payload);
     await refreshDashboard();
   } catch (error) {
-    ids.paths.textContent = `sync error: ${error.message}`;
+    ids.paths.textContent = `캔들 동기화 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function runSessionReport() {
   try {
-    ids.report.textContent = "Exporting session report...";
+    ids.report.textContent = "세션 리포트를 저장하고 있습니다...";
     const inputs = currentInputs();
     const payload = await postJson("/api/session-report", {
       state_path: inputs.state_path,
@@ -981,7 +1254,7 @@ async function runSessionReport() {
     ids.report.textContent = pretty(payload);
     await refreshDashboard();
   } catch (error) {
-    ids.report.textContent = `report error: ${error.message}`;
+    ids.report.textContent = `리포트 저장 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -989,14 +1262,14 @@ async function loadSessionReport() {
   try {
     const report = ids.reportSelect.value;
     if (!report) {
-      ids.report.textContent = "report load error: select a report first";
+      ids.report.textContent = "먼저 불러올 리포트를 선택해 주세요.";
       return;
     }
-    ids.report.textContent = "Loading session report...";
+    ids.report.textContent = "리포트를 불러오고 있습니다...";
     const payload = await postJson("/api/report-show", { report });
     ids.report.textContent = pretty(payload);
   } catch (error) {
-    ids.report.textContent = `report load error: ${error.message}`;
+    ids.report.textContent = `리포트 불러오기 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1004,27 +1277,27 @@ async function deleteSessionReport() {
   try {
     const report = ids.reportSelect.value;
     if (!report) {
-      ids.report.textContent = "report delete error: select a report first";
+      ids.report.textContent = "먼저 삭제할 리포트를 선택해 주세요.";
       return;
     }
-    ids.report.textContent = "Deleting session report...";
+    ids.report.textContent = "리포트를 삭제하고 있습니다...";
     const payload = await postJson("/api/report-delete", { report });
     ids.report.textContent = pretty(payload);
     await refreshDashboard();
   } catch (error) {
-    ids.report.textContent = `report delete error: ${error.message}`;
+    ids.report.textContent = `리포트 삭제 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function pruneSessionReports() {
   try {
-    ids.report.textContent = "Pruning old session reports...";
+    ids.report.textContent = "오래된 리포트를 정리하고 있습니다...";
     const keep = Number(ids.reportKeep.value || "10");
     const payload = await postJson("/api/report-prune", { keep });
     ids.report.textContent = pretty(payload);
     await refreshDashboard();
   } catch (error) {
-    ids.report.textContent = `report prune error: ${error.message}`;
+    ids.report.textContent = `리포트 정리 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1035,13 +1308,13 @@ async function refreshJobs() {
     renderJobHealth(payload.job_health || null);
     renderJobHistory({ items: payload.history || [] });
   } catch (error) {
-    ids.jobs.textContent = `jobs error: ${error.message}`;
+    ids.jobs.textContent = `실행 중인 작업을 불러오는 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function startJob(jobType) {
   try {
-    ids.jobs.textContent = `Starting ${jobType}...`;
+    ids.jobs.textContent = `${jobTypeLabel(jobType)} 시작 준비 중입니다...`;
     const inputs = currentInputs();
     const jobSettings = currentJobSettings();
     if (isLiveJobType(jobType)) {
@@ -1088,13 +1361,13 @@ async function startJob(jobType) {
     }
     await refreshJobs();
   } catch (error) {
-    ids.jobs.textContent = `start job error: ${error.message}`;
+    ids.jobs.textContent = `작업 시작 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function previewJob(jobType = ids.jobType.value) {
   try {
-    ids.jobPreview.textContent = `Previewing ${jobType}...`;
+    ids.jobPreview.textContent = `${jobTypeLabel(jobType)} 미리보기를 준비하고 있습니다...`;
     const inputs = currentInputs();
     const jobSettings = currentJobSettings();
     const payload = await postJson("/api/jobs-preview", {
@@ -1115,46 +1388,46 @@ async function previewJob(jobType = ids.jobType.value) {
     });
     ids.jobPreview.textContent = pretty(payload);
   } catch (error) {
-    ids.jobPreview.textContent = `preview error: ${error.message}`;
+    ids.jobPreview.textContent = `미리보기 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function stopJob(jobName) {
   try {
-    ids.jobs.textContent = `Stopping ${jobName}...`;
+    ids.jobs.textContent = `${jobTypeLabel(jobName)} 중지 중입니다...`;
     const payload = await postJson("/api/jobs-stop", { job_name: jobName });
     ids.jobs.textContent = pretty(payload);
     await refreshJobs();
   } catch (error) {
-    ids.jobs.textContent = `stop job error: ${error.message}`;
+    ids.jobs.textContent = `작업 중지 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function stopAllJobs() {
   try {
-    ids.jobs.textContent = "Stopping all managed jobs...";
+    ids.jobs.textContent = "실행 중인 작업을 모두 중지하고 있습니다...";
     const payload = await postJson("/api/jobs-stop-all", {});
     ids.jobs.textContent = pretty(payload);
     await refreshJobs();
   } catch (error) {
-    ids.jobs.textContent = `stop all jobs error: ${error.message}`;
+    ids.jobs.textContent = `전체 중지 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function cleanupJobs() {
   try {
-    ids.jobs.textContent = "Cleaning stopped job artifacts...";
+    ids.jobs.textContent = "중지된 작업 흔적을 정리하고 있습니다...";
     const payload = await postJson("/api/jobs-cleanup", { remove_logs: false });
     ids.jobs.textContent = pretty(payload);
     await refreshJobs();
   } catch (error) {
-    ids.jobs.textContent = `cleanup jobs error: ${error.message}`;
+    ids.jobs.textContent = `작업 정리 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function saveConfig() {
   try {
-    ids.config.textContent = "Saving config...";
+    ids.config.textContent = "설정을 저장하고 있습니다...";
     const payload = await postJson("/api/config-save", {
       "strategy.buy_threshold": Number(ids.cfgBuyThreshold.value || "0"),
       "strategy.sell_threshold": Number(ids.cfgSellThreshold.value || "0"),
@@ -1167,13 +1440,13 @@ async function saveConfig() {
     ids.config.textContent = pretty(payload);
     await refreshDashboard();
   } catch (error) {
-    ids.config.textContent = `config error: ${error.message}`;
+    ids.config.textContent = `설정 저장 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function saveCurrentPreset() {
   try {
-    ids.presets.textContent = "Saving current preset...";
+    ids.presets.textContent = "현재 전략을 저장하고 있습니다...";
     const inputs = currentInputs();
     const payload = await postJson("/api/preset-save-current", {
       preset_name: resolvePresetName("current"),
@@ -1183,7 +1456,7 @@ async function saveCurrentPreset() {
     ids.presets.textContent = pretty(payload);
     await refreshDashboard();
   } catch (error) {
-    ids.presets.textContent = `preset save error: ${error.message}`;
+    ids.presets.textContent = `전략 저장 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1191,21 +1464,21 @@ async function applyPreset() {
   try {
     const preset = ids.presetSelect.value;
     if (!preset) {
-      ids.presets.textContent = "preset apply error: select a preset first";
+      ids.presets.textContent = "먼저 적용할 전략을 선택해 주세요.";
       return;
     }
-    ids.presets.textContent = "Applying preset...";
+    ids.presets.textContent = "전략을 적용하고 있습니다...";
     const payload = await postJson("/api/preset-apply", { preset });
     ids.presets.textContent = pretty(payload);
     await refreshDashboard();
   } catch (error) {
-    ids.presets.textContent = `preset apply error: ${error.message}`;
+    ids.presets.textContent = `전략 적용 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function saveProfile() {
   try {
-    ids.profiles.textContent = "Saving profile...";
+    ids.profiles.textContent = "운영 프로필을 저장하고 있습니다...";
     const inputs = currentInputs();
     const jobSettings = currentJobSettings();
     const payload = await postJson("/api/profile-save", {
@@ -1233,7 +1506,7 @@ async function saveProfile() {
     applyLoadedProfileMeta(payload);
     await refreshDashboard();
   } catch (error) {
-    ids.profiles.textContent = `profile save error: ${error.message}`;
+    ids.profiles.textContent = `운영 프로필 저장 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1241,17 +1514,17 @@ async function loadProfile() {
   try {
     const profile = ids.profileSelect.value;
     if (!profile) {
-      ids.profiles.textContent = "profile load error: select a profile first";
+      ids.profiles.textContent = "먼저 불러올 운영 프로필을 선택해 주세요.";
       return;
     }
-    ids.profiles.textContent = "Loading profile...";
+    ids.profiles.textContent = "운영 프로필을 불러오고 있습니다...";
     const payload = await postJson("/api/profile-load", { profile });
     ids.profiles.textContent = pretty(payload);
     applyLoadedProfileMeta(payload);
     applyProfileToForm(payload.profile);
     await refreshDashboard();
   } catch (error) {
-    ids.profiles.textContent = `profile load error: ${error.message}`;
+    ids.profiles.textContent = `운영 프로필 불러오기 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1259,15 +1532,15 @@ async function deleteProfile() {
   try {
     const profile = ids.profileSelect.value;
     if (!profile) {
-      ids.profiles.textContent = "profile delete error: select a profile first";
+      ids.profiles.textContent = "먼저 삭제할 운영 프로필을 선택해 주세요.";
       return;
     }
-    ids.profiles.textContent = "Deleting profile...";
+    ids.profiles.textContent = "운영 프로필을 삭제하고 있습니다...";
     const payload = await postJson("/api/profile-delete", { profile });
     ids.profiles.textContent = pretty(payload);
     await refreshDashboard();
   } catch (error) {
-    ids.profiles.textContent = `profile delete error: ${error.message}`;
+    ids.profiles.textContent = `운영 프로필 삭제 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1275,10 +1548,10 @@ async function previewProfile() {
   try {
     const profile = ids.profileSelect.value;
     if (!profile) {
-      ids.profiles.textContent = "profile preview error: select a profile first";
+      ids.profiles.textContent = "먼저 미리볼 운영 프로필을 선택해 주세요.";
       return;
     }
-    ids.jobPreview.textContent = "Previewing profile...";
+    ids.jobPreview.textContent = "운영 프로필 미리보기를 준비하고 있습니다...";
     const payload = await postJson("/api/profile-preview", { profile });
     ids.jobPreview.textContent = pretty(payload);
     if (payload.profile) {
@@ -1288,7 +1561,7 @@ async function previewProfile() {
       applyProfileToForm(payload.profile.profile);
     }
   } catch (error) {
-    ids.jobPreview.textContent = `profile preview error: ${error.message}`;
+    ids.jobPreview.textContent = `운영 프로필 미리보기 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1296,10 +1569,10 @@ async function startProfile() {
   try {
     const profile = ids.profileSelect.value;
     if (!profile) {
-      ids.profiles.textContent = "profile start error: select a profile first";
+      ids.profiles.textContent = "먼저 시작할 운영 프로필을 선택해 주세요.";
       return;
     }
-    ids.jobs.textContent = "Starting profile...";
+    ids.jobs.textContent = "운영 프로필을 시작하고 있습니다...";
     const preview = await postJson("/api/profile-preview", { profile });
     ids.jobPreview.textContent = pretty(preview);
     if (preview?.job_preview && isLiveJobType(preview.job_preview.job_type || preview.profile?.profile?.job_type || "")) {
@@ -1322,7 +1595,7 @@ async function startProfile() {
     await refreshJobs();
     await refreshDashboard();
   } catch (error) {
-    ids.jobs.textContent = `profile start error: ${error.message}`;
+    ids.jobs.textContent = `운영 프로필 시작 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1330,14 +1603,14 @@ async function previewWorkflow() {
   try {
     const stage = ids.workflowStage.value;
     if (!stage) {
-      ids.workflow.textContent = "workflow preview error: select a stage first";
+      ids.workflow.textContent = "먼저 미리볼 마감 단계를 선택해 주세요.";
       return;
     }
-    ids.workflow.textContent = `Previewing workflow stage ${stage}...`;
+    ids.workflow.textContent = `선택한 마감 단계(${stage})를 미리보고 있습니다...`;
     const payload = await postJson("/api/workflow-preview", { stage });
     ids.workflow.textContent = pretty(payload);
   } catch (error) {
-    ids.workflow.textContent = `workflow preview error: ${error.message}`;
+    ids.workflow.textContent = `마감 단계 미리보기 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1345,10 +1618,10 @@ async function startWorkflow() {
   try {
     const stage = ids.workflowStage.value;
     if (!stage) {
-      ids.workflow.textContent = "workflow start error: select a stage first";
+      ids.workflow.textContent = "먼저 실행할 마감 단계를 선택해 주세요.";
       return;
     }
-    ids.workflow.textContent = `Starting workflow stage ${stage}...`;
+    ids.workflow.textContent = `마감 단계(${stage})를 실행하고 있습니다...`;
     const payload = await postJson("/api/workflow-start", { stage });
     ids.workflow.textContent = pretty(payload);
     if (payload?.error) {
@@ -1357,13 +1630,13 @@ async function startWorkflow() {
     await refreshJobs();
     await refreshDashboard();
   } catch (error) {
-    ids.workflow.textContent = `workflow start error: ${error.message}`;
+    ids.workflow.textContent = `마감 단계 실행 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
 async function runReleaseWorkflow(stage) {
   try {
-    ids.releaseArtifacts.textContent = `Running ${stage}...`;
+    ids.releaseArtifacts.textContent = `${stage} 단계를 실행하고 있습니다...`;
     const payload = await postJson("/api/workflow-start", { stage });
     ids.releaseArtifacts.textContent = pretty(payload);
     if (payload?.error) {
@@ -1372,7 +1645,7 @@ async function runReleaseWorkflow(stage) {
     await refreshJobs();
     await refreshDashboard();
   } catch (error) {
-    ids.releaseArtifacts.textContent = `release workflow error: ${error.message}`;
+    ids.releaseArtifacts.textContent = `배포 단계 실행 중 문제가 발생했습니다: ${error.message}`;
   }
 }
 
@@ -1421,7 +1694,7 @@ ids.scanCards.addEventListener("click", (event) => {
   if (!button) {
     return;
   }
-  setFocusMarket(button.dataset.market || "", ids.scan, "focus market set to");
+  setFocusMarket(button.dataset.market || "", ids.scan, "기준 종목을 바꿨습니다:");
   refreshDashboard();
 });
 ids.selectorCards.addEventListener("click", (event) => {
@@ -1429,7 +1702,7 @@ ids.selectorCards.addEventListener("click", (event) => {
   if (!button) {
     return;
   }
-  setFocusMarket(button.dataset.market || "", ids.selectorSummary, "focus market set to");
+  setFocusMarket(button.dataset.market || "", ids.selectorSummary, "기준 종목을 바꿨습니다:");
   refreshDashboard();
 });
 document.getElementById("start-paper-loop").addEventListener("click", () => startJob("paper-loop"));

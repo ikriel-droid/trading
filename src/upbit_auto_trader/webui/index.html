@@ -3,106 +3,111 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Upbit Auto Trader Operator Desk</title>
+    <title>업비트 자동매매 센터</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <div class="page-shell">
       <section class="market-ribbon">
         <span id="hero-market-badge" class="ribbon-pill">KRW-BTC</span>
-        <span id="hero-mode-badge" class="ribbon-pill info">PAPER MODE</span>
-        <span id="hero-release-badge" class="ribbon-pill">RELEASE MISSING</span>
-        <span class="ribbon-pill static">KRW AUTO SELECTOR</span>
+        <span id="hero-mode-badge" class="ribbon-pill info">모의투자</span>
+        <span id="hero-release-badge" class="ribbon-pill">배포 준비 필요</span>
+        <span class="ribbon-pill static">원화 마켓 자동 선택</span>
       </section>
 
       <header class="hero">
         <div class="hero-copy">
           <p class="eyebrow">UPBIT AUTO TRADER</p>
-          <h1>Operator Desk</h1>
-          <p class="hero-text">A lighter, exchange-style control room for KRW market scanning, signal review, live safety checks, and one-click operating flows.</p>
+          <h1>자동매매 운영 센터</h1>
+          <p class="hero-text">
+            복잡한 터미널 없이 현재 시장 흐름을 보고, 자동매매를 시작하고,
+            최근 거래와 경고를 한눈에 확인할 수 있게 정리한 사용자용 화면입니다.
+          </p>
           <div class="hero-badges">
-            <span class="hero-badge">Default Flow <strong>paper-selector</strong></span>
-            <span class="hero-badge">Manual Live Gate <strong>typed LIVE</strong></span>
-            <span class="hero-badge">Frozen Preset <strong>default-krw-auto-v1</strong></span>
+            <span class="hero-badge">기본 운영 <strong>모의투자 자동선택</strong></span>
+            <span class="hero-badge">실거래 보호 <strong>LIVE 직접 입력</strong></span>
+            <span class="hero-badge">기본 전략 <strong>default-krw-auto-v1</strong></span>
           </div>
         </div>
         <div class="hero-actions">
-          <button id="refresh-dashboard" class="primary-button">Refresh</button>
-          <p class="hero-note">Live starts stay double-confirmed. Paper stays the default operator path.</p>
+          <button id="refresh-dashboard" class="primary-button">화면 새로고침</button>
+          <p class="hero-note">
+            실거래는 항상 한 번 더 확인하도록 막아두었습니다. 기본 운영 흐름은 모의투자부터 시작합니다.
+          </p>
         </div>
       </header>
 
       <section class="toolbar">
         <label class="field">
-          <span>CSV Path</span>
+          <span>캔들 데이터 파일</span>
           <input id="csv-path-input" type="text" placeholder="data/demo_krw_btc_15m.csv">
         </label>
         <label class="field">
-          <span>State Path</span>
+          <span>상태 저장 파일</span>
           <input id="state-path-input" type="text" placeholder="data/paper-state.json">
         </label>
         <label class="field">
-          <span>Selector State</span>
+          <span>자동선택 상태 파일</span>
           <input id="selector-state-path-input" type="text" placeholder="data/selector-state.json">
         </label>
         <label class="field short">
-          <span>Focus Market</span>
+          <span>집중 종목</span>
           <input id="market-focus-input" type="text" placeholder="KRW-BTC">
         </label>
         <label class="field short">
-          <span>Refresh</span>
+          <span>자동 새로고침</span>
           <select id="refresh-seconds">
-            <option value="0">Off</option>
-            <option value="3">3s</option>
-            <option value="5" selected>5s</option>
-            <option value="10">10s</option>
+            <option value="0">끔</option>
+            <option value="3">3초</option>
+            <option value="5" selected>5초</option>
+            <option value="10">10초</option>
           </select>
         </label>
         <label class="field short">
-          <span>Optimize Top</span>
+          <span>최적화 상위 개수</span>
           <input id="optimize-top-input" type="number" min="1" max="20" value="5">
         </label>
         <label class="field short">
-          <span>Scan Markets</span>
+          <span>스캔 종목 수</span>
           <input id="scan-max-markets-input" type="number" min="1" max="50" value="10">
         </label>
         <label class="field short">
-          <span>Quote</span>
+          <span>기준 화폐</span>
           <input id="quote-currency-input" type="text" value="KRW">
         </label>
         <label class="field short">
-          <span>Sync Count</span>
+          <span>동기화 캔들 수</span>
           <input id="sync-count-input" type="number" min="10" max="500" value="200">
         </label>
         <label class="field short">
-          <span>Reconcile Every</span>
+          <span>재점검 주기</span>
           <input id="reconcile-every-input" type="number" min="1" max="1000" value="10">
         </label>
       </section>
 
       <section class="status-grid">
         <article class="metric-card">
-          <span class="metric-label">Market</span>
+          <span class="metric-label">집중 종목</span>
           <strong id="market-value">-</strong>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Mode</span>
+          <span class="metric-label">운영 모드</span>
           <strong id="mode-value">-</strong>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Equity</span>
+          <span class="metric-label">평가 금액</span>
           <strong id="equity-value">-</strong>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Cash</span>
+          <span class="metric-label">보유 현금</span>
           <strong id="cash-value">-</strong>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Position</span>
+          <span class="metric-label">현재 포지션</span>
           <strong id="position-value">-</strong>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Pending Order</span>
+          <span class="metric-label">대기 주문</span>
           <strong id="pending-value">-</strong>
         </article>
       </section>
@@ -111,15 +116,15 @@
         <article class="panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Monitor</p>
-              <h2>Alert Center</h2>
+              <p class="panel-eyebrow">알림</p>
+              <h2>지금 확인할 알림</h2>
             </div>
           </div>
           <div id="alerts-summary" class="alert-summary">
-            <div class="empty-state">Loading alert summary...</div>
+            <div class="empty-state">알림 요약을 불러오는 중입니다.</div>
           </div>
           <div id="alerts-feed" class="alerts-feed">
-            <div class="empty-state">Loading alerts...</div>
+            <div class="empty-state">알림을 불러오는 중입니다.</div>
           </div>
         </article>
       </section>
@@ -128,11 +133,11 @@
         <article class="panel chart-panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Chart</p>
-              <h2>Price Curve</h2>
+              <p class="panel-eyebrow">차트</p>
+              <h2>가격 흐름</h2>
             </div>
           </div>
-          <div id="chart-meta" class="chart-meta">Loading...</div>
+          <div id="chart-meta" class="chart-meta">불러오는 중입니다.</div>
           <svg id="price-chart" class="price-chart" viewBox="0 0 960 320" preserveAspectRatio="none"></svg>
         </article>
       </section>
@@ -141,21 +146,25 @@
         <article class="panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Activity</p>
-              <h2>Recent Trades</h2>
+              <p class="panel-eyebrow">거래</p>
+              <h2>최근 거래</h2>
             </div>
           </div>
-          <pre id="recent-trades-json" class="code-block">Loading...</pre>
+          <div id="recent-trades-json" class="activity-feed">
+            <div class="empty-state">최근 거래를 불러오는 중입니다.</div>
+          </div>
         </article>
 
         <article class="panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Activity</p>
-              <h2>Recent Events</h2>
+              <p class="panel-eyebrow">동작</p>
+              <h2>최근 동작</h2>
             </div>
           </div>
-          <pre id="recent-events-json" class="code-block">Loading...</pre>
+          <div id="recent-events-json" class="activity-feed">
+            <div class="empty-state">최근 동작을 불러오는 중입니다.</div>
+          </div>
         </article>
       </section>
 
@@ -163,22 +172,24 @@
         <article class="panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Selector</p>
-              <h2>Selector Status</h2>
+              <p class="panel-eyebrow">자동 선택</p>
+              <h2>자동 종목 선택 현황</h2>
             </div>
           </div>
-          <pre id="selector-summary-json" class="code-block">Loading...</pre>
+          <div id="selector-summary-json" class="summary-stack">
+            <div class="empty-state">자동 선택 현황을 불러오는 중입니다.</div>
+          </div>
         </article>
 
         <article class="panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Selector</p>
-              <h2>Selector Candidates</h2>
+              <p class="panel-eyebrow">후보 종목</p>
+              <h2>지금 주목할 코인</h2>
             </div>
           </div>
           <div id="selector-cards" class="scan-grid">
-            <div class="empty-state">Selector state not loaded yet.</div>
+            <div class="empty-state">자동 선택 결과가 아직 없습니다.</div>
           </div>
         </article>
       </section>
@@ -187,11 +198,11 @@
         <article class="panel chart-panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Selector</p>
-              <h2>Active Market Chart</h2>
+              <p class="panel-eyebrow">선택 종목</p>
+              <h2>현재 선택된 종목 차트</h2>
             </div>
           </div>
-          <div id="selector-active-chart-meta" class="chart-meta">Loading...</div>
+          <div id="selector-active-chart-meta" class="chart-meta">불러오는 중입니다.</div>
           <svg id="selector-active-chart" class="price-chart" viewBox="0 0 960 320" preserveAspectRatio="none"></svg>
         </article>
       </section>
@@ -200,21 +211,25 @@
         <article class="panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Selector</p>
-              <h2>Active Market Runtime</h2>
+              <p class="panel-eyebrow">선택 종목</p>
+              <h2>선택 종목 요약</h2>
             </div>
           </div>
-          <pre id="selector-active-summary-json" class="code-block">Loading...</pre>
+          <div id="selector-active-summary-json" class="summary-stack">
+            <div class="empty-state">선택 종목 요약을 불러오는 중입니다.</div>
+          </div>
         </article>
 
         <article class="panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Selector</p>
-              <h2>Active Market Events</h2>
+              <p class="panel-eyebrow">선택 종목</p>
+              <h2>선택 종목 최근 기록</h2>
             </div>
           </div>
-          <pre id="selector-active-events-json" class="code-block">Loading...</pre>
+          <div id="selector-active-events-json" class="activity-feed">
+            <div class="empty-state">선택 종목 기록을 불러오는 중입니다.</div>
+          </div>
         </article>
       </section>
 
@@ -222,395 +237,416 @@
         <article class="panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Runner</p>
-              <h2>Process Control</h2>
+              <p class="panel-eyebrow">운영</p>
+              <h2>자동매매 시작과 중지</h2>
             </div>
           </div>
+          <p class="panel-copy">
+            아래 버튼으로 모의투자 또는 실거래를 시작할 수 있습니다. 실거래는 반드시 미리보기 확인 후
+            <strong>LIVE</strong>를 직접 입력해야만 시작됩니다.
+          </p>
           <div class="form-grid">
             <label class="field">
-              <span>Launch Job</span>
+              <span>실행 모드</span>
               <select id="job-type-select">
-                <option value="paper-loop">paper-loop</option>
-                <option value="paper-selector">paper-selector</option>
-                <option value="live-daemon">live-daemon</option>
-                <option value="live-supervisor">live-supervisor</option>
+                <option value="paper-loop">모의투자 단일 감시</option>
+                <option value="paper-selector">모의투자 자동 종목 선택</option>
+                <option value="live-daemon">실거래 단일 감시</option>
+                <option value="live-supervisor">실거래 상태 감시</option>
               </select>
             </label>
             <label class="field">
-              <span>Auto Restart</span>
+              <span>자동 재실행</span>
               <select id="job-auto-restart-select">
-                <option value="false">Off</option>
-                <option value="true">On</option>
+                <option value="false">끔</option>
+                <option value="true">켬</option>
               </select>
             </label>
             <label class="field">
-              <span>Max Restarts</span>
+              <span>최대 재시작 횟수</span>
               <input id="job-max-restarts-input" type="number" min="0" max="20" value="2">
             </label>
             <label class="field">
-              <span>Restart Backoff</span>
+              <span>재시작 대기 시간(초)</span>
               <input id="job-restart-backoff-input" type="number" min="0" step="0.5" value="2">
             </label>
             <label class="field">
-              <span>Exit Report Keep</span>
+              <span>종료 리포트 보관 수</span>
               <input id="job-report-keep-input" type="number" min="1" max="200" value="20">
             </label>
           </div>
           <div class="button-row">
-            <button id="preview-job" class="ghost-button">Preview Launch</button>
-            <button id="start-paper-loop" class="ghost-button">Start Paper Loop</button>
-            <button id="stop-paper-loop" class="ghost-button">Stop Paper Loop</button>
-            <button id="start-paper-selector" class="ghost-button">Start Paper Selector</button>
-            <button id="stop-paper-selector" class="ghost-button">Stop Paper Selector</button>
-            <button id="start-live-daemon" class="ghost-button">Start Live Daemon</button>
-            <button id="stop-live-daemon" class="ghost-button">Stop Live Daemon</button>
-            <button id="start-live-supervisor" class="ghost-button">Start Live Supervisor</button>
-            <button id="stop-live-supervisor" class="ghost-button">Stop Live Supervisor</button>
-            <button id="stop-all-jobs" class="ghost-button">Emergency Stop All</button>
-            <button id="cleanup-jobs" class="ghost-button">Clean Stopped Jobs</button>
-            <button id="refresh-jobs" class="ghost-button">Refresh Jobs</button>
+            <button id="preview-job" class="ghost-button">시작 전 미리보기</button>
+            <button id="start-paper-loop" class="ghost-button">모의투자 시작</button>
+            <button id="stop-paper-loop" class="ghost-button">모의투자 중지</button>
+            <button id="start-paper-selector" class="ghost-button">자동선택 시작</button>
+            <button id="stop-paper-selector" class="ghost-button">자동선택 중지</button>
+            <button id="start-live-daemon" class="ghost-button">실거래 시작</button>
+            <button id="stop-live-daemon" class="ghost-button">실거래 중지</button>
+            <button id="start-live-supervisor" class="ghost-button">실거래 상태감시 시작</button>
+            <button id="stop-live-supervisor" class="ghost-button">실거래 상태감시 중지</button>
+            <button id="stop-all-jobs" class="ghost-button danger-button">전체 즉시 중지</button>
+            <button id="cleanup-jobs" class="ghost-button">멈춘 작업 정리</button>
+            <button id="refresh-jobs" class="ghost-button">작업 새로고침</button>
           </div>
-          <p class="form-note">Live start now requires a typed <code>LIVE</code> confirmation after preview because it can place real Upbit orders.</p>
-          <pre id="jobs-json" class="code-block">Idle</pre>
+          <details class="inline-advanced">
+            <summary>실행 상세 보기</summary>
+            <pre id="jobs-json" class="code-block">대기 중</pre>
+          </details>
         </article>
 
         <article class="panel">
           <div class="panel-head">
             <div>
-              <p class="panel-eyebrow">Runner</p>
-              <h2>Job Health</h2>
-            </div>
-          </div>
-          <div id="job-health-summary" class="alert-summary">
-            <div class="empty-state">Loading job health...</div>
-          </div>
-          <pre id="job-health-json" class="code-block">Idle</pre>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Runner</p>
-              <h2>Launch Preview</h2>
-            </div>
-          </div>
-          <pre id="job-preview-json" class="code-block">Idle</pre>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Logs</p>
-              <h2>Job Tail</h2>
-            </div>
-          </div>
-          <pre id="logs-json" class="code-block">Idle</pre>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Runner</p>
-              <h2>Run History</h2>
-            </div>
-          </div>
-          <pre id="job-history-json" class="code-block">Idle</pre>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Runner</p>
-              <h2>Launch Profiles</h2>
+              <p class="panel-eyebrow">저장</p>
+              <h2>운영 프로필</h2>
             </div>
             <div class="button-row">
-              <button id="save-profile" class="ghost-button">Save Profile</button>
-              <button id="load-profile" class="ghost-button">Load Profile</button>
-              <button id="delete-profile" class="ghost-button">Delete Profile</button>
-              <button id="preview-profile" class="ghost-button">Preview Profile</button>
-              <button id="start-profile" class="ghost-button">Start Profile</button>
+              <button id="save-profile" class="ghost-button">현재 설정 저장</button>
+              <button id="load-profile" class="ghost-button">불러오기</button>
+              <button id="delete-profile" class="ghost-button">삭제</button>
+              <button id="preview-profile" class="ghost-button">미리보기</button>
+              <button id="start-profile" class="ghost-button">이 설정으로 시작</button>
             </div>
           </div>
           <div class="form-grid">
             <label class="field">
-              <span>Profile Name</span>
-              <input id="profile-name-input" type="text" placeholder="paper-btc-main">
+              <span>프로필 이름</span>
+              <input id="profile-name-input" type="text" placeholder="매일 모의투자 기본">
             </label>
             <label class="field">
-              <span>Saved Profiles</span>
+              <span>저장된 프로필</span>
               <select id="profile-select">
-                <option value="">No profiles</option>
+                <option value="">저장된 프로필이 없습니다</option>
               </select>
             </label>
             <label class="field field-span-2">
-              <span>Profile Notes</span>
-              <input id="profile-notes-input" type="text" placeholder="paper only, KRW majors, daily watchlist">
+              <span>메모</span>
+              <input id="profile-notes-input" type="text" placeholder="예: 원화 메이저 코인 위주, 모의투자 전용">
             </label>
           </div>
-          <pre id="profiles-json" class="code-block">Loading...</pre>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Finish</p>
-              <h2>Completion Workflow</h2>
-            </div>
-            <div class="button-row">
-              <button id="preview-workflow" class="ghost-button">Preview Stage</button>
-              <button id="start-workflow" class="ghost-button">Run Stage</button>
-            </div>
-          </div>
-          <div class="form-grid">
-            <label class="field">
-              <span>Workflow Stage</span>
-              <select id="workflow-stage-select">
-                <option value="verify">verify</option>
-              </select>
-            </label>
-          </div>
-          <pre id="workflow-json" class="code-block">Idle</pre>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Release</p>
-              <h2>Release Center</h2>
-            </div>
-            <div class="button-row">
-              <button id="run-release-recommended" class="primary-button">Run Recommended</button>
-              <button id="run-release-pack" class="ghost-button">Build Pack</button>
-              <button id="run-release-verify" class="ghost-button">Verify Pack</button>
-              <button id="run-release-clean" class="ghost-button">Clean Pack</button>
-            </div>
-          </div>
-          <div id="release-artifacts-summary" class="alert-summary">
-            <div class="empty-state">Loading release artifacts...</div>
-          </div>
-          <div id="release-next-step" class="release-next-step">
-            <div class="empty-state">Calculating release guidance...</div>
-          </div>
-          <pre id="release-artifacts-json" class="code-block">Idle</pre>
+          <details class="inline-advanced">
+            <summary>프로필 상세 보기</summary>
+            <pre id="profiles-json" class="code-block">불러오는 중입니다.</pre>
+          </details>
         </article>
       </section>
 
-      <section class="panel-grid">
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Snapshot</p>
-              <h2>Runtime Summary</h2>
-            </div>
-          </div>
-          <pre id="summary-json" class="code-block">Loading...</pre>
-        </article>
+      <details class="advanced-shell">
+        <summary>고급 설정 · 진단 · 배포 도구 보기</summary>
+        <p class="advanced-copy">
+          아래 영역은 세부 진단, 배포 점검, 전략 조정처럼 전문적인 항목을 모아둔 곳입니다.
+          일반 사용자는 기본 화면만으로도 운영할 수 있습니다.
+        </p>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Signal</p>
-              <h2>Latest Signal</h2>
+        <section class="panel-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">작업 상태</p>
+                <h2>실행 상태 요약</h2>
+              </div>
             </div>
-            <button id="run-signal" class="ghost-button">Run Signal</button>
-          </div>
-          <pre id="signal-json" class="code-block">Loading...</pre>
-        </article>
+            <div id="job-health-summary" class="alert-summary">
+              <div class="empty-state">작업 상태를 불러오는 중입니다.</div>
+            </div>
+            <pre id="job-health-json" class="code-block">대기 중</pre>
+          </article>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Backtest</p>
-              <h2>Quick Replay</h2>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">실행 전 확인</p>
+                <h2>시작 미리보기</h2>
+              </div>
             </div>
-            <button id="run-backtest" class="ghost-button">Run Backtest</button>
-          </div>
-          <pre id="backtest-json" class="code-block">Idle</pre>
-        </article>
+            <pre id="job-preview-json" class="code-block">대기 중</pre>
+          </article>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Optimizer</p>
-              <h2>Grid Search</h2>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">로그</p>
+                <h2>실행 로그</h2>
+              </div>
             </div>
-            <button id="run-optimize" class="ghost-button">Run Top Search</button>
-          </div>
-          <pre id="optimize-json" class="code-block">Idle</pre>
-        </article>
-      </section>
+            <pre id="logs-json" class="code-block">대기 중</pre>
+          </article>
 
-      <section class="panel-grid">
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Scanner</p>
-              <h2>Market Ranking</h2>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">이력</p>
+                <h2>최근 실행 기록</h2>
+              </div>
             </div>
-            <button id="run-scan" class="ghost-button">Run Scan</button>
-          </div>
-          <div id="scan-cards" class="scan-grid">
-            <div class="empty-state">Run a scan to load ranked markets.</div>
-          </div>
-          <pre id="scan-json" class="code-block">Idle</pre>
-        </article>
+            <pre id="job-history-json" class="code-block">대기 중</pre>
+          </article>
+        </section>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Reconcile</p>
-              <h2>Live Snapshot</h2>
+        <section class="panel-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">완료 절차</p>
+                <h2>마감 워크플로</h2>
+              </div>
+              <div class="button-row">
+                <button id="preview-workflow" class="ghost-button">단계 미리보기</button>
+                <button id="start-workflow" class="ghost-button">단계 실행</button>
+              </div>
             </div>
-            <button id="run-reconcile" class="ghost-button">Run Reconcile</button>
-          </div>
-          <pre id="reconcile-json" class="code-block">Idle</pre>
-        </article>
-      </section>
+            <div class="form-grid">
+              <label class="field">
+                <span>실행 단계</span>
+                <select id="workflow-stage-select">
+                  <option value="verify">검증</option>
+                </select>
+              </label>
+            </div>
+            <pre id="workflow-json" class="code-block">대기 중</pre>
+          </article>
 
-      <section class="panel-grid secondary">
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Config</p>
-              <h2>Strategy Editor</h2>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">배포</p>
+                <h2>배포 센터</h2>
+              </div>
+              <div class="button-row">
+                <button id="run-release-recommended" class="primary-button">추천 단계 실행</button>
+                <button id="run-release-pack" class="ghost-button">배포팩 만들기</button>
+                <button id="run-release-verify" class="ghost-button">배포팩 검증</button>
+                <button id="run-release-clean" class="ghost-button">배포팩 정리</button>
+              </div>
             </div>
-            <button id="save-config" class="ghost-button">Save Config</button>
-          </div>
-          <div class="form-grid">
-            <label class="field">
-              <span>Buy Threshold</span>
-              <input id="cfg-buy-threshold" type="number" step="0.1">
-            </label>
-            <label class="field">
-              <span>Sell Threshold</span>
-              <input id="cfg-sell-threshold" type="number" step="0.1">
-            </label>
-            <label class="field">
-              <span>Min ADX</span>
-              <input id="cfg-min-adx" type="number" step="0.1">
-            </label>
-            <label class="field">
-              <span>Min BB Width</span>
-              <input id="cfg-min-bb-width" type="number" step="0.001">
-            </label>
-            <label class="field">
-              <span>Volume Spike</span>
-              <input id="cfg-volume-spike" type="number" step="0.1">
-            </label>
-            <label class="field">
-              <span>Poll Seconds</span>
-              <input id="cfg-poll-seconds" type="number" step="0.5">
-            </label>
-            <label class="field">
-              <span>Selector Max Markets</span>
-              <input id="cfg-selector-max-markets" type="number" step="1">
-            </label>
-          </div>
-          <pre id="config-json" class="code-block">Loading...</pre>
-        </article>
+            <div id="release-artifacts-summary" class="alert-summary">
+              <div class="empty-state">배포 상태를 불러오는 중입니다.</div>
+            </div>
+            <div id="release-next-step" class="release-next-step">
+              <div class="empty-state">다음 단계를 계산하는 중입니다.</div>
+            </div>
+            <pre id="release-artifacts-json" class="code-block">대기 중</pre>
+          </article>
+        </section>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Config</p>
-              <h2>Strategy Presets</h2>
+        <section class="panel-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">요약</p>
+                <h2>운영 상태 상세</h2>
+              </div>
             </div>
-            <div class="button-row">
-              <button id="save-current-preset" class="ghost-button">Save Current</button>
-              <button id="save-best-preset" class="ghost-button">Save Best Optimize</button>
-              <button id="apply-preset" class="ghost-button">Apply Preset</button>
-            </div>
-          </div>
-          <div class="form-grid">
-            <label class="field">
-              <span>Preset Name</span>
-              <input id="preset-name-input" type="text" placeholder="krw-btc-swing-a">
-            </label>
-            <label class="field">
-              <span>Saved Presets</span>
-              <select id="preset-select">
-                <option value="">No presets</option>
-              </select>
-            </label>
-          </div>
-          <pre id="presets-json" class="code-block">Loading...</pre>
-        </article>
+            <pre id="summary-json" class="code-block">불러오는 중입니다.</pre>
+          </article>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Paths</p>
-              <h2>Workspace Inputs</h2>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">신호</p>
+                <h2>최신 매매 신호</h2>
+              </div>
+              <button id="run-signal" class="ghost-button">신호 새로 계산</button>
             </div>
-            <button id="run-sync-candles" class="ghost-button">Sync Candles</button>
-          </div>
-          <pre id="paths-json" class="code-block">Loading...</pre>
-        </article>
+            <pre id="signal-json" class="code-block">불러오는 중입니다.</pre>
+          </article>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Reports</p>
-              <h2>Session Export</h2>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">백테스트</p>
+                <h2>간단 재생</h2>
+              </div>
+              <button id="run-backtest" class="ghost-button">백테스트 실행</button>
             </div>
-            <div class="button-row">
-              <button id="run-session-report" class="ghost-button">Export Report</button>
-              <button id="load-session-report" class="ghost-button">Load Report</button>
-              <button id="delete-session-report" class="ghost-button">Delete Report</button>
-              <button id="prune-session-reports" class="ghost-button">Prune Older</button>
-            </div>
-          </div>
-          <div class="form-grid">
-            <label class="field">
-              <span>Saved Reports</span>
-              <select id="report-select">
-                <option value="">No reports</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Keep Latest</span>
-              <input id="report-keep-input" type="number" min="0" max="200" value="10">
-            </label>
-          </div>
-          <pre id="report-json" class="code-block">Idle</pre>
-        </article>
+            <pre id="backtest-json" class="code-block">대기 중</pre>
+          </article>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Broker</p>
-              <h2>Readiness</h2>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">최적화</p>
+                <h2>전략 조정 검색</h2>
+              </div>
+              <button id="run-optimize" class="ghost-button">상위 조합 찾기</button>
             </div>
-          </div>
-          <pre id="readiness-json" class="code-block">Loading...</pre>
-        </article>
+            <pre id="optimize-json" class="code-block">대기 중</pre>
+          </article>
+        </section>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Doctor</p>
-              <h2>Preflight Check</h2>
+        <section class="panel-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">시장 스캔</p>
+                <h2>후보 종목 순위</h2>
+              </div>
+              <button id="run-scan" class="ghost-button">시장 다시 스캔</button>
             </div>
-            <button id="run-doctor" class="ghost-button">Run Doctor</button>
-          </div>
-          <pre id="doctor-json" class="code-block">Idle</pre>
-        </article>
+            <div id="scan-cards" class="scan-grid">
+              <div class="empty-state">스캔을 실행하면 후보 종목이 보입니다.</div>
+            </div>
+            <pre id="scan-json" class="code-block">대기 중</pre>
+          </article>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-eyebrow">Finish</p>
-              <h2>Operator Checklist</h2>
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">재정리</p>
+                <h2>실거래 상태 재점검</h2>
+              </div>
+              <button id="run-reconcile" class="ghost-button">지금 상태 다시 확인</button>
             </div>
-          </div>
-          <div id="checklist-summary" class="alert-summary">
-            <div class="empty-state">Loading checklist...</div>
-          </div>
-          <div id="checklist-feed" class="alerts-feed">
-            <div class="empty-state">Loading checklist...</div>
-          </div>
-        </article>
-      </section>
+            <pre id="reconcile-json" class="code-block">대기 중</pre>
+          </article>
+        </section>
+
+        <section class="panel-grid secondary">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">전략 설정</p>
+                <h2>전략 값 편집</h2>
+              </div>
+              <button id="save-config" class="ghost-button">설정 저장</button>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span>매수 기준 점수</span>
+                <input id="cfg-buy-threshold" type="number" step="0.1">
+              </label>
+              <label class="field">
+                <span>매도 기준 점수</span>
+                <input id="cfg-sell-threshold" type="number" step="0.1">
+              </label>
+              <label class="field">
+                <span>최소 ADX</span>
+                <input id="cfg-min-adx" type="number" step="0.1">
+              </label>
+              <label class="field">
+                <span>최소 볼린저 폭</span>
+                <input id="cfg-min-bb-width" type="number" step="0.001">
+              </label>
+              <label class="field">
+                <span>거래량 급증 기준</span>
+                <input id="cfg-volume-spike" type="number" step="0.1">
+              </label>
+              <label class="field">
+                <span>조회 주기(초)</span>
+                <input id="cfg-poll-seconds" type="number" step="0.5">
+              </label>
+              <label class="field">
+                <span>자동선택 최대 종목 수</span>
+                <input id="cfg-selector-max-markets" type="number" step="1">
+              </label>
+            </div>
+            <pre id="config-json" class="code-block">불러오는 중입니다.</pre>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">전략 프리셋</p>
+                <h2>저장된 전략 묶음</h2>
+              </div>
+              <div class="button-row">
+                <button id="save-current-preset" class="ghost-button">현재 설정 저장</button>
+                <button id="save-best-preset" class="ghost-button">최적 조합 저장</button>
+                <button id="apply-preset" class="ghost-button">선택 프리셋 적용</button>
+              </div>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span>프리셋 이름</span>
+                <input id="preset-name-input" type="text" placeholder="원화 자동매매 기본">
+              </label>
+              <label class="field">
+                <span>저장된 프리셋</span>
+                <select id="preset-select">
+                  <option value="">저장된 프리셋이 없습니다</option>
+                </select>
+              </label>
+            </div>
+            <pre id="presets-json" class="code-block">불러오는 중입니다.</pre>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">입력 경로</p>
+                <h2>파일과 작업 경로</h2>
+              </div>
+              <button id="run-sync-candles" class="ghost-button">캔들 데이터 다시 받기</button>
+            </div>
+            <pre id="paths-json" class="code-block">불러오는 중입니다.</pre>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">리포트</p>
+                <h2>세션 결과 저장</h2>
+              </div>
+              <div class="button-row">
+                <button id="run-session-report" class="ghost-button">리포트 만들기</button>
+                <button id="load-session-report" class="ghost-button">리포트 열기</button>
+                <button id="delete-session-report" class="ghost-button">리포트 삭제</button>
+                <button id="prune-session-reports" class="ghost-button">오래된 리포트 정리</button>
+              </div>
+            </div>
+            <div class="form-grid">
+              <label class="field">
+                <span>저장된 리포트</span>
+                <select id="report-select">
+                  <option value="">저장된 리포트가 없습니다</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>최신 보관 개수</span>
+                <input id="report-keep-input" type="number" min="0" max="200" value="10">
+              </label>
+            </div>
+            <pre id="report-json" class="code-block">대기 중</pre>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">준비 상태</p>
+                <h2>브로커 연결 확인</h2>
+              </div>
+            </div>
+            <pre id="readiness-json" class="code-block">불러오는 중입니다.</pre>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">점검</p>
+                <h2>사전 진단 실행</h2>
+              </div>
+              <button id="run-doctor" class="ghost-button">지금 점검하기</button>
+            </div>
+            <pre id="doctor-json" class="code-block">대기 중</pre>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-eyebrow">체크리스트</p>
+                <h2>운영자 확인 항목</h2>
+              </div>
+            </div>
+            <div id="checklist-summary" class="alert-summary">
+              <div class="empty-state">체크리스트를 불러오는 중입니다.</div>
+            </div>
+            <div id="checklist-feed" class="alerts-feed">
+              <div class="empty-state">체크리스트를 불러오는 중입니다.</div>
+            </div>
+          </article>
+        </section>
+      </details>
     </div>
 
     <script src="/app.js"></script>
