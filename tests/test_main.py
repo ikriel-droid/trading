@@ -14,7 +14,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
 from upbit_auto_trader.jobs import HEARTBEAT_ENV_VAR, JOB_HISTORY_PATH  # noqa: E402
-from upbit_auto_trader.main import _build_doctor_report, _run_live_daemon, _run_live_supervisor, main  # noqa: E402
+from upbit_auto_trader.main import (  # noqa: E402
+    _build_doctor_report,
+    _run_live_daemon,
+    _run_live_market_validation,
+    _run_live_supervisor,
+    main,
+)
 from upbit_auto_trader.brokers.upbit import UpbitError  # noqa: E402
 from upbit_auto_trader.models import Balance, Candle  # noqa: E402
 from upbit_auto_trader.runtime import TradingRuntime  # noqa: E402
@@ -58,6 +64,103 @@ class FakeSupervisorBroker:
 
     def list_open_orders(self, market=None, state=None, states=None, page=None, limit=None, order_by=None):
         return list(self.open_orders)
+
+    def get_minute_candles(self, market, unit, count=200, to=None):
+        return list(self.minute_candles)
+
+
+class FakeValidationBroker:
+    def __init__(self):
+        self.quote_balance = 50000.0
+        self.base_balance = 0.0
+        self.fill_price = 100000000.0
+        self.fee_rate = 0.0005
+        self.open_orders = []
+        self.created_orders = []
+        self._snapshots = {}
+        self._applied = set()
+        self.minute_candles = [
+            {
+                "candle_date_time_kst": "2026-03-31T20:15:00",
+                "opening_price": self.fill_price,
+                "high_price": self.fill_price,
+                "low_price": self.fill_price,
+                "trade_price": self.fill_price,
+                "candle_acc_trade_volume": 10.0,
+            },
+            {
+                "candle_date_time_kst": "2026-03-31T20:00:00",
+                "opening_price": self.fill_price,
+                "high_price": self.fill_price,
+                "low_price": self.fill_price,
+                "trade_price": self.fill_price,
+                "candle_acc_trade_volume": 10.0,
+            },
+        ]
+
+    def get_accounts(self):
+        return [
+            Balance(currency="KRW", balance=self.quote_balance, locked=0.0, avg_buy_price=0.0, unit_currency="KRW"),
+            Balance(currency="BTC", balance=self.base_balance, locked=0.0, avg_buy_price=0.0, unit_currency="KRW"),
+        ]
+
+    def get_order_chance(self, market):
+        return {
+            "bid_account": {"balance": str(self.quote_balance)},
+            "ask_account": {"balance": str(self.base_balance)},
+            "market": {
+                "bid": {"min_total": "5000"},
+                "ask": {"min_total": "5000"},
+            },
+        }
+
+    def list_open_orders(self, market=None, state=None, states=None, page=None, limit=None, order_by=None):
+        return list(self.open_orders)
+
+    def create_order(self, market, side, ord_type, volume=None, price=None, time_in_force=None, identifier=None):
+        uuid = "{0}-{1}".format(side, len(self.created_orders) + 1)
+        self.created_orders.append(
+            {
+                "uuid": uuid,
+                "market": market,
+                "side": side,
+                "ord_type": ord_type,
+                "volume": volume,
+                "price": price,
+            }
+        )
+        if side == "bid":
+            funds = float(price)
+            quantity = funds / self.fill_price
+        else:
+            quantity = float(volume)
+            funds = quantity * self.fill_price
+        self._snapshots[uuid] = {
+            "uuid": uuid,
+            "market": market,
+            "side": side,
+            "state": "done",
+            "executed_volume": str(quantity),
+            "paid_fee": str(funds * self.fee_rate),
+            "trades": [{"funds": str(funds)}],
+        }
+        return {"uuid": uuid}
+
+    def get_order(self, uuid=None, identifier=None):
+        snapshot = dict(self._snapshots[uuid or identifier])
+        key = snapshot["uuid"]
+        if key not in self._applied:
+            self._applied.add(key)
+            funds = float(snapshot["trades"][0]["funds"])
+            fee = float(snapshot["paid_fee"])
+            quantity = float(snapshot["executed_volume"])
+            if snapshot["side"] == "bid":
+                self.quote_balance -= funds + fee
+                self.base_balance += quantity
+            else:
+                self.base_balance = max(0.0, self.base_balance - quantity)
+                self.quote_balance += funds - fee
+        return snapshot
 
     def get_minute_candles(self, market, unit, count=200, to=None):
         return list(self.minute_candles)
@@ -1018,6 +1121,49 @@ class MainTests(unittest.TestCase):
                 state_path.unlink()
             if heartbeat_path.exists():
                 heartbeat_path.unlink()
+
+    def test_run_live_market_validation_completes_buy_and_sell_roundtrip(self):
+        config = load_config(str(PROJECT_ROOT / "config.example.json"))
+        config.runtime.journal_path = ""
+        config.upbit.live_enabled = True
+        broker = FakeValidationBroker()
+        state_path = PROJECT_ROOT / "data" / "test-live-market-validation-state.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
+        if state_path.exists():
+            state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
+        try:
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = _run_live_market_validation(
+                    config=config,
+                    broker=broker,
+                    state_path=str(state_path),
+                    market="KRW-BTC",
+                    warmup_csv=str(PROJECT_ROOT / "data" / "demo_krw_btc_15m.csv"),
+                    buy_krw=6000.0,
+                    poll_seconds=0.0,
+                    max_wait_seconds=5.0,
+                    confirm="LIVE",
+                )
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(result, 0)
+            self.assertEqual(payload["kind"], "live_market_validation")
+            self.assertEqual(payload["buy_result"]["final_state"], "done")
+            self.assertEqual(payload["sell_result"]["final_state"], "done")
+            self.assertEqual(payload["summary"]["trade_count"], 1)
+            self.assertIsNone(payload["summary"]["position"])
+            self.assertIsNone(payload["summary"]["pending_order"])
+            self.assertEqual(len(broker.created_orders), 2)
+            self.assertEqual(broker.created_orders[0]["side"], "bid")
+            self.assertEqual(broker.created_orders[1]["side"], "ask")
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
 
 
 if __name__ == "__main__":

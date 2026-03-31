@@ -128,6 +128,40 @@ class ReportingTests(unittest.TestCase):
                     path.unlink()
                 reports_dir.rmdir()
 
+    def test_write_runtime_report_supports_live_mode_from_saved_state(self):
+        state_path = PROJECT_ROOT / "data" / "test-report-live-state.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
+        reports_dir = PROJECT_ROOT / "data" / "test-report-live"
+        if state_path.exists():
+            state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
+        if reports_dir.exists():
+            for path in reports_dir.glob("*"):
+                path.unlink()
+            reports_dir.rmdir()
+        try:
+            self._build_runtime_state(state_path)
+            report = write_runtime_report(
+                config_path=str(PROJECT_ROOT / "config.example.json"),
+                state_path=str(state_path),
+                mode="live",
+                output_dir=str(reports_dir),
+                label="live-report",
+            )
+
+            self.assertTrue(pathlib.Path(report["json_path"]).exists())
+            self.assertEqual(report["summary"]["mode"], "live")
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+            if reports_dir.exists():
+                for path in reports_dir.glob("*"):
+                    path.unlink()
+                reports_dir.rmdir()
+
 
 if __name__ == "__main__":
     unittest.main()

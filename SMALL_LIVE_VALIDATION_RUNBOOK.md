@@ -38,6 +38,30 @@ That file tells you whether the environment is still blocked by:
 - missing or unreadable `data/live-state.json`
 - release pack state
 
+## Fastest Checklist Path
+
+If prep is already clean and you just want to complete the live checklist with one tiny real order roundtrip, use this:
+
+```powershell
+.\run_small_live_market_validation.cmd -ConfigPath config.live.micro.json -Market KRW-BTC -BuyKrw 6000 -Confirm LIVE
+```
+
+That wrapper does all of this in one flow:
+
+1. one tiny market buy
+2. wait for the buy result
+3. immediate market sell
+4. live session report export
+5. support bundle zip export
+6. release status export
+
+The main evidence files from that path are:
+
+- `dist/live-validation/live-market-validation-summary.json`
+- `dist/live-validation/live-market-validation-result.json`
+- `dist/live-validation/live-market-validation-release-status.json`
+- `dist/upbit-control-room-support-live-validation.zip`
+
 ## Manual Validation Path
 
 1. Put real `UPBIT_ACCESS_KEY` and `UPBIT_SECRET_KEY` in `.env`.

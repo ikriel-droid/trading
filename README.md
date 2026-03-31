@@ -437,6 +437,19 @@ If you want the simplest setup path first, use this one-command bootstrap:
 
 That command fetches fresh candles, bootstraps `data/live-state.json`, and regenerates the live-readiness evidence in one pass.
 
+If you want the fastest real-money checklist path after prep is clean, use the one-shot validation wrapper:
+
+```powershell
+.\run_small_live_market_validation.cmd -ConfigPath config.live.micro.json -Market KRW-BTC -BuyKrw 6000 -Confirm LIVE
+```
+
+That path performs one tiny market buy, waits for completion, immediately performs one market sell, then saves:
+
+- `dist/live-validation/live-market-validation-summary.json`
+- a live session report under `data/session-reports`
+- `dist/upbit-control-room-support-live-validation.zip`
+- `dist/live-validation/live-market-validation-release-status.json`
+
 If you want the same flow explained as a slide deck with screenshot-style images, generate the PPT like this:
 
 ```powershell
@@ -459,6 +472,7 @@ That opens a simple Windows helper with buttons for:
 - creating or editing `config.live.micro.json`
 - toggling `live_enabled`
 - running the one-command bootstrap prep
+- running the one-shot market validation path
 - opening the PPT, readiness file, runbook, and checklist
 
 The operator checklist now also shows whether the latest release pack artifacts are missing, partial, invalid, or ready, and whether the current pack has already passed `release-verify`.

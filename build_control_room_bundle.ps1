@@ -57,6 +57,8 @@ $filesToCopy = @(
     "tail_control_room_logs.cmd",
     "setup_control_room.ps1",
     "setup_control_room.cmd",
+    "run_small_live_market_validation.ps1",
+    "run_small_live_market_validation.cmd",
     "install_control_room_shortcuts.ps1",
     "install_control_room_shortcuts.cmd",
     "uninstall_control_room_shortcuts.ps1",

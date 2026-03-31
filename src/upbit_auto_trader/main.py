@@ -19,6 +19,7 @@ from .datafeed import (
 )
 from .doctor import build_doctor_report
 from .jobs import HEARTBEAT_ENV_VAR, cleanup_job_artifacts, list_job_history, stop_jobs_by_heartbeat
+from .models import PendingOrder
 from .optimizer import run_grid_search
 from .notifier import DiscordWebhookNotifier, NotificationError
 from .presets import (
@@ -239,6 +240,16 @@ def build_parser() -> argparse.ArgumentParser:
     notify_parser = subparsers.add_parser("notify-test")
     notify_parser.add_argument("--config", required=True)
     notify_parser.add_argument("--message", default="manual notification test")
+
+    live_validation_parser = subparsers.add_parser("run-live-market-validation")
+    live_validation_parser.add_argument("--config", required=True)
+    live_validation_parser.add_argument("--state", required=True)
+    live_validation_parser.add_argument("--market")
+    live_validation_parser.add_argument("--warmup-csv")
+    live_validation_parser.add_argument("--buy-krw", type=float, default=6000.0)
+    live_validation_parser.add_argument("--poll-seconds", type=float, default=1.0)
+    live_validation_parser.add_argument("--max-wait-seconds", type=float, default=30.0)
+    live_validation_parser.add_argument("--confirm", required=True)
 
     reconcile_parser = subparsers.add_parser("live-reconcile")
     reconcile_parser.add_argument("--config", required=True)
@@ -712,6 +723,247 @@ def _run_live_daemon(
         last_processed_timestamp=runtime.state.last_processed_timestamp,
     )
     _print_json({"kind": "final", "summary": runtime.summary()})
+    return 0
+
+
+def _submit_live_market_validation_buy(
+    runtime: TradingRuntime,
+    budget_krw: float,
+    event_timestamp: str,
+) -> dict:
+    if runtime.state is None:
+        raise ValueError("runtime must be bootstrapped before validation buy")
+    if runtime.state.pending_order is not None:
+        raise ValueError("validation requires no existing pending order")
+    if runtime.state.position is not None:
+        raise ValueError("validation requires no existing position")
+
+    chance = runtime._get_live_order_chance()
+    available_cash = runtime._chance_balance(chance, "bid_account")
+    min_total = runtime._chance_min_total(chance, "bid")
+    if budget_krw < min_total:
+        raise ValueError("validation buy amount must be at least {0:.0f} KRW".format(min_total))
+    if budget_krw > available_cash:
+        raise ValueError("validation buy amount exceeds available KRW balance")
+
+    approx_price = runtime.state.history[-1].close if runtime.state.history else budget_krw
+    requested_volume = (budget_krw / approx_price) if approx_price > 0 else 0.0
+    response = runtime.broker.create_order(
+        market=runtime.config.market,
+        side="bid",
+        ord_type="price",
+        price=runtime._format_order_number(budget_krw),
+    )
+    runtime.state.pending_order = PendingOrder(
+        uuid=response["uuid"],
+        market=runtime.config.market,
+        side="bid",
+        order_type="price",
+        requested_price=budget_krw,
+        requested_volume=requested_volume,
+        created_timestamp=event_timestamp,
+        created_bar_index=runtime.state.processed_bars,
+        strategy_score=0.0,
+        stop_loss=0.0,
+        take_profit=0.0,
+        trailing_stop=0.0,
+    )
+    runtime.state.last_order_timestamp = event_timestamp
+    runtime.state.last_order_action = "BUY"
+    runtime.state.events.append(
+        "{0} LIVE VALIDATION BUY_SUBMITTED {1} uuid={2} budget={3:.2f}".format(
+            event_timestamp,
+            runtime.config.market,
+            response["uuid"],
+            budget_krw,
+        )
+    )
+    runtime.state.events = runtime.state.events[-500:]
+    runtime._append_journal(
+        {
+            "event_type": "validation_buy_submitted",
+            "timestamp": event_timestamp,
+            "market": runtime.config.market,
+            "uuid": response["uuid"],
+            "budget": round(budget_krw, 2),
+        }
+    )
+    runtime._save_state()
+    return response
+
+
+def _submit_live_market_validation_sell(
+    runtime: TradingRuntime,
+    event_timestamp: str,
+) -> dict:
+    if runtime.state is None:
+        raise ValueError("runtime must be bootstrapped before validation sell")
+    if runtime.state.pending_order is not None:
+        raise ValueError("validation requires no existing pending order before sell")
+
+    chance = runtime._get_live_order_chance()
+    available_quantity = runtime._chance_balance(chance, "ask_account")
+    min_total = runtime._chance_min_total(chance, "ask")
+    sell_quantity = runtime.state.position.quantity if runtime.state.position is not None else 0.0
+    sell_quantity = min(sell_quantity, available_quantity)
+    if sell_quantity <= 0.0:
+        raise ValueError("validation sell requires a filled live position")
+
+    reference_price = runtime.state.history[-1].close if runtime.state.history else 0.0
+    if min_total > 0 and reference_price > 0 and (reference_price * sell_quantity) < min_total:
+        raise ValueError("validation sell notional is below minimum order total")
+
+    response = runtime.broker.create_order(
+        market=runtime.config.market,
+        side="ask",
+        ord_type="market",
+        volume=runtime._format_order_number(sell_quantity),
+    )
+    runtime.state.pending_order = PendingOrder(
+        uuid=response["uuid"],
+        market=runtime.config.market,
+        side="ask",
+        order_type="market",
+        requested_price=reference_price,
+        requested_volume=sell_quantity,
+        created_timestamp=event_timestamp,
+        created_bar_index=runtime.state.processed_bars,
+        strategy_score=0.0,
+        stop_loss=0.0,
+        take_profit=0.0,
+        trailing_stop=0.0,
+    )
+    runtime.state.last_order_timestamp = event_timestamp
+    runtime.state.last_order_action = "SELL"
+    runtime.state.events.append(
+        "{0} LIVE VALIDATION SELL_SUBMITTED {1} uuid={2} qty={3:.8f}".format(
+            event_timestamp,
+            runtime.config.market,
+            response["uuid"],
+            sell_quantity,
+        )
+    )
+    runtime.state.events = runtime.state.events[-500:]
+    runtime._append_journal(
+        {
+            "event_type": "validation_sell_submitted",
+            "timestamp": event_timestamp,
+            "market": runtime.config.market,
+            "uuid": response["uuid"],
+            "quantity": round(sell_quantity, 8),
+        }
+    )
+    runtime._save_state()
+    return response
+
+
+def _poll_live_validation_order(
+    runtime: TradingRuntime,
+    uuid: str,
+    poll_seconds: float,
+    max_wait_seconds: float,
+) -> dict:
+    deadline = time.time() + max(max_wait_seconds, 1.0)
+    snapshots: List[dict] = []
+    events: List[str] = []
+    final_snapshot = None
+
+    while True:
+        snapshot = runtime.broker.get_order(uuid=uuid)
+        snapshots.append(snapshot)
+        final_snapshot = snapshot
+        events.extend(runtime._apply_order_snapshot(snapshot, fallback_timestamp=datetime.now(timezone.utc).isoformat()))
+        state_name = str(snapshot.get("state", ""))
+        if state_name in ("done", "cancel", "prevented"):
+            return {
+                "uuid": uuid,
+                "final_state": state_name,
+                "poll_count": len(snapshots),
+                "events": events,
+                "snapshot": final_snapshot,
+            }
+        if time.time() >= deadline:
+            raise ValueError("validation order timeout for {0}".format(uuid))
+        time.sleep(max(poll_seconds, 0.2))
+
+
+def _run_live_market_validation(
+    config: AppConfig,
+    broker: UpbitBroker,
+    state_path: str,
+    market: str,
+    warmup_csv: Optional[str],
+    buy_krw: float,
+    poll_seconds: float,
+    max_wait_seconds: float,
+    confirm: str,
+) -> int:
+    if confirm != "LIVE":
+        raise ValueError("run-live-market-validation requires --confirm LIVE")
+
+    validation_config = copy.deepcopy(config)
+    validation_config.market = market
+    validation_config.upbit.market = market
+    runtime = TradingRuntime(config=validation_config, mode="live", state_path=state_path, broker=broker)
+    if os.path.exists(state_path):
+        runtime.bootstrap([])
+    else:
+        runtime.bootstrap(_load_or_fetch_warmup(runtime, validation_config, broker, warmup_csv))
+
+    fetch_count = max(validation_config.upbit.candle_count, runtime.strategy.minimum_history() + 5)
+    startup_payload = broker.get_minute_candles(
+        market=market,
+        unit=validation_config.upbit.candle_unit,
+        count=fetch_count,
+    )
+    startup_candles = upbit_candles_to_internal(startup_payload)
+    startup_recenter = runtime.recenter_live_state_to_latest_candles(startup_candles)
+    initial_reconcile = runtime.reconcile_live_snapshot()
+    existing_open_orders = broker.list_open_orders(market=market, states=["wait", "watch"])
+    if existing_open_orders:
+        raise ValueError("validation requires no existing open orders for {0}".format(market))
+    if runtime.state.pending_order is not None:
+        raise ValueError("validation requires no existing pending order")
+    if runtime.state.position is not None:
+        raise ValueError("validation requires no existing position")
+
+    buy_timestamp = datetime.now(timezone.utc).isoformat()
+    buy_order = _submit_live_market_validation_buy(runtime, budget_krw=buy_krw, event_timestamp=buy_timestamp)
+    buy_result = _poll_live_validation_order(
+        runtime=runtime,
+        uuid=buy_order["uuid"],
+        poll_seconds=poll_seconds,
+        max_wait_seconds=max_wait_seconds,
+    )
+    after_buy_reconcile = runtime.reconcile_live_snapshot()
+    if runtime.state.position is None:
+        raise ValueError("validation buy completed without a saved live position")
+
+    sell_timestamp = datetime.now(timezone.utc).isoformat()
+    sell_order = _submit_live_market_validation_sell(runtime, event_timestamp=sell_timestamp)
+    sell_result = _poll_live_validation_order(
+        runtime=runtime,
+        uuid=sell_order["uuid"],
+        poll_seconds=poll_seconds,
+        max_wait_seconds=max_wait_seconds,
+    )
+    final_reconcile = runtime.reconcile_live_snapshot()
+
+    payload = {
+        "kind": "live_market_validation",
+        "market": market,
+        "buy_krw": round(buy_krw, 2),
+        "startup_recenter": startup_recenter,
+        "initial_reconcile": initial_reconcile,
+        "buy_order": buy_order,
+        "buy_result": buy_result,
+        "after_buy_reconcile": after_buy_reconcile,
+        "sell_order": sell_order,
+        "sell_result": sell_result,
+        "final_reconcile": final_reconcile,
+        "summary": runtime.summary(),
+    }
+    _print_json(payload)
     return 0
 
 
@@ -1365,6 +1617,22 @@ def main(argv: Optional[List[str]] = None) -> int:
                 }
             )
             return 0
+
+        if args.command == "run-live-market-validation":
+            if not config.upbit.live_enabled:
+                print("run-live-market-validation requires upbit.live_enabled=true", file=sys.stderr)
+                return 2
+            return _run_live_market_validation(
+                config=config,
+                broker=broker,
+                state_path=args.state,
+                market=_market_arg(args, config),
+                warmup_csv=args.warmup_csv,
+                buy_krw=args.buy_krw,
+                poll_seconds=args.poll_seconds,
+                max_wait_seconds=args.max_wait_seconds,
+                confirm=args.confirm,
+            )
 
         if args.command == "live-reconcile":
             if not os.path.exists(args.state):

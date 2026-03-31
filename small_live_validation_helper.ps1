@@ -1,8 +1,10 @@
 param(
-    [ValidateSet("", "status", "edit-env", "create-live-config", "edit-live-config", "enable-live", "disable-live", "bootstrap", "generate-guide", "open-guide", "open-readiness", "open-runbook", "open-checklist")]
+    [ValidateSet("", "status", "edit-env", "create-live-config", "edit-live-config", "enable-live", "disable-live", "bootstrap", "run-market-validation", "generate-guide", "open-guide", "open-readiness", "open-runbook", "open-checklist")]
     [string]$Action = "",
     [string]$ConfigPath = "config.live.micro.json",
-    [string]$Market = "KRW-BTC"
+    [string]$Market = "KRW-BTC",
+    [double]$BuyKrw = 6000.0,
+    [string]$Confirm = ""
 )
 
 Set-StrictMode -Version Latest
@@ -18,7 +20,10 @@ $GuidePath = Join-Path $ProjectRoot "dist\small-live-validation-guide\Upbit-Smal
 $RunbookPath = Join-Path $ProjectRoot "SMALL_LIVE_VALIDATION_RUNBOOK.md"
 $ChecklistPath = Join-Path $ProjectRoot "PRODUCT_COMPLETION_CHECKLIST.md"
 $BootstrapScript = Join-Path $ProjectRoot "bootstrap_small_live_validation.ps1"
+$MarketValidationScript = Join-Path $ProjectRoot "run_small_live_market_validation.ps1"
 $GuideScript = Join-Path $ProjectRoot "generate_small_live_validation_ppt.ps1"
+$DefaultLiveStatePath = Join-Path $ProjectRoot "data\live-state.json"
+$DefaultMarketValidationSummaryPath = Join-Path $ProjectRoot "dist\live-validation\live-market-validation-summary.json"
 
 function Resolve-ProjectPath {
     param([string]$PathValue)
@@ -195,7 +200,9 @@ function Invoke-HelperAction {
     param(
         [string]$RequestedAction,
         [string]$ResolvedConfigPath,
-        [string]$ResolvedMarket
+        [string]$ResolvedMarket,
+        [double]$RequestedBuyKrw = 6000.0,
+        [string]$ConfirmText = ""
     )
 
     switch ($RequestedAction) {
@@ -232,6 +239,21 @@ function Invoke-HelperAction {
                 "-Market", $ResolvedMarket
             )
             return "Easy prep finished.`r`n`r`n$output"
+        }
+        "run-market-validation" {
+            Ensure-LiveConfigFile -ResolvedConfigPath $ResolvedConfigPath -ResolvedMarket $ResolvedMarket | Out-Null
+            if ($ConfirmText -ne "LIVE") {
+                throw "Market validation canceled. Type LIVE to continue."
+            }
+            $buyKrwText = $RequestedBuyKrw.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+            $output = Invoke-ProjectPowerShell -ScriptPath $MarketValidationScript -Arguments @(
+                "-ConfigPath", $ResolvedConfigPath,
+                "-StatePath", $DefaultLiveStatePath,
+                "-Market", $ResolvedMarket,
+                "-BuyKrw", $buyKrwText,
+                "-Confirm", $ConfirmText
+            )
+            return $output
         }
         "generate-guide" {
             $output = Invoke-ProjectPowerShell -ScriptPath $GuideScript -Arguments @()
@@ -277,13 +299,14 @@ $ResolvedConfigPath = Resolve-ProjectPath $ConfigPath
 $ResolvedMarket = $Market
 
 if ($Action) {
-    $result = Invoke-HelperAction -RequestedAction $Action -ResolvedConfigPath $ResolvedConfigPath -ResolvedMarket $ResolvedMarket
+    $result = Invoke-HelperAction -RequestedAction $Action -ResolvedConfigPath $ResolvedConfigPath -ResolvedMarket $ResolvedMarket -RequestedBuyKrw $BuyKrw -ConfirmText $Confirm
     Write-Output $result
     return
 }
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName Microsoft.VisualBasic
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Upbit Small Live Helper"
@@ -330,8 +353,8 @@ $configBox.Text = $ConfigPath
 $form.Controls.Add($configBox)
 
 $statusBox = New-Object System.Windows.Forms.TextBox
-$statusBox.Location = New-Object System.Drawing.Point(28, 340)
-$statusBox.Size = New-Object System.Drawing.Size(908, 290)
+$statusBox.Location = New-Object System.Drawing.Point(28, 364)
+$statusBox.Size = New-Object System.Drawing.Size(908, 266)
 $statusBox.Multiline = $true
 $statusBox.ReadOnly = $true
 $statusBox.ScrollBars = "Vertical"
@@ -375,6 +398,23 @@ function Set-ActionFeedback {
             $detailLines += "Action: Build PPT"
             $detailLines += "Latest PPT: $(Get-LatestGuidePath)"
         }
+        "run-market-validation" {
+            $summary = "Market validation finished."
+            $detailLines += "Action: Run Market Validation"
+            try {
+                $parsed = $RawResult | ConvertFrom-Json
+                $detailLines += "Market: $($parsed.market)"
+                $detailLines += "Buy KRW: $($parsed.buy_krw)"
+                $detailLines += "Validation summary: $($parsed.validation_summary_path)"
+                $detailLines += "Session report: $($parsed.session_report_json_path)"
+                $detailLines += "Support bundle: $($parsed.support_bundle_zip_path)"
+                $detailLines += "Release status: $($parsed.release_status_json_path)"
+            }
+            catch {
+                $detailLines += "Raw output:"
+                $detailLines += $RawResult.Trim()
+            }
+        }
         default {
             $summary = (($RawResult -split "(`r`n|`n)")[0]).Trim()
             if (-not $summary) {
@@ -385,7 +425,7 @@ function Set-ActionFeedback {
         }
     }
 
-    if ($RawResult -and $RequestedAction -notin @("bootstrap", "generate-guide")) {
+    if ($RawResult -and $RequestedAction -notin @("bootstrap", "generate-guide", "run-market-validation")) {
         $detailLines += ""
         $detailLines += "Raw output:"
         $detailLines += $RawResult.Trim()
@@ -414,7 +454,50 @@ function Invoke-UiAction {
     param([string]$RequestedAction)
     try {
         $resolvedConfig = Resolve-ProjectPath $configBox.Text
-        $result = Invoke-HelperAction -RequestedAction $RequestedAction -ResolvedConfigPath $resolvedConfig -ResolvedMarket $marketBox.Text
+        if ($RequestedAction -eq "run-market-validation") {
+            $budgetInput = [Microsoft.VisualBasic.Interaction]::InputBox(
+                "Enter the tiny KRW amount for the one-shot live validation buy.",
+                "Market Validation Amount",
+                "6000"
+            )
+            if ([string]::IsNullOrWhiteSpace($budgetInput)) {
+                $script:LastActionSummary = "Market validation canceled."
+                $script:LastActionDetail = "Canceled before entering a KRW amount."
+                Refresh-StatusBox
+                return
+            }
+
+            $budget = 0.0
+            $parsedBudget = [double]::TryParse(
+                $budgetInput,
+                [System.Globalization.NumberStyles]::Float,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [ref]$budget
+            )
+            if (-not $parsedBudget) {
+                $parsedBudget = [double]::TryParse($budgetInput, [ref]$budget)
+            }
+            if (-not $parsedBudget -or $budget -le 0) {
+                throw "Enter a valid KRW amount such as 6000."
+            }
+
+            $confirmInput = [Microsoft.VisualBasic.Interaction]::InputBox(
+                "This will place one real market buy and one real market sell on Upbit.`r`n`r`nType LIVE to continue.",
+                "Confirm Real Order",
+                ""
+            )
+            if ($confirmInput -ne "LIVE") {
+                $script:LastActionSummary = "Market validation canceled."
+                $script:LastActionDetail = "Confirmation was not LIVE."
+                Refresh-StatusBox
+                return
+            }
+
+            $result = Invoke-HelperAction -RequestedAction $RequestedAction -ResolvedConfigPath $resolvedConfig -ResolvedMarket $marketBox.Text -RequestedBuyKrw $budget -ConfirmText $confirmInput
+        }
+        else {
+            $result = Invoke-HelperAction -RequestedAction $RequestedAction -ResolvedConfigPath $resolvedConfig -ResolvedMarket $marketBox.Text -RequestedBuyKrw $BuyKrw -ConfirmText $Confirm
+        }
         Set-ActionFeedback -RequestedAction $RequestedAction -RawResult $result
         Refresh-StatusBox
         [System.Windows.Forms.MessageBox]::Show($script:LastActionSummary, "Done", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
@@ -437,7 +520,8 @@ $buttonSpecs = @(
     @{ Text = "Build PPT"; X = 188; Y = 208; Action = "generate-guide" },
     @{ Text = "Open Readiness"; X = 348; Y = 208; Action = "open-readiness" },
     @{ Text = "Open Runbook"; X = 508; Y = 208; Action = "open-runbook" },
-    @{ Text = "Open Checklist"; X = 668; Y = 208; Action = "open-checklist" }
+    @{ Text = "Open Checklist"; X = 668; Y = 208; Action = "open-checklist" },
+    @{ Text = "Run Market Test"; X = 28; Y = 266; Action = "run-market-validation" }
 )
 
 foreach ($spec in $buttonSpecs) {
@@ -456,15 +540,15 @@ foreach ($spec in $buttonSpecs) {
 }
 
 $info = New-Object System.Windows.Forms.Label
-$info.Text = "Recommended order: 1) Open .env  2) Create/Open Config  3) LIVE ON  4) Run Easy Prep  5) Open PPT"
-$info.Location = New-Object System.Drawing.Point(30, 276)
+$info.Text = "Recommended order: 1) Open .env  2) Create/Open Config  3) LIVE ON  4) Run Easy Prep  5) Run Market Test"
+$info.Location = New-Object System.Drawing.Point(190, 274)
 $info.Size = New-Object System.Drawing.Size(900, 24)
 $info.Font = New-Object System.Drawing.Font('Malgun Gothic', 10, [System.Drawing.FontStyle]::Bold)
 $form.Controls.Add($info)
 
 $info2 = New-Object System.Windows.Forms.Label
-$info2.Text = "Real-money order execution should still be confirmed manually by you."
-$info2.Location = New-Object System.Drawing.Point(30, 300)
+$info2.Text = "Run Market Test asks for a tiny KRW amount and then requires typing LIVE before sending a real order."
+$info2.Location = New-Object System.Drawing.Point(190, 298)
 $info2.Size = New-Object System.Drawing.Size(900, 22)
 $info2.Font = New-Object System.Drawing.Font('Malgun Gothic', 9)
 $form.Controls.Add($info2)

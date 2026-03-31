@@ -70,9 +70,11 @@ def _serialize_trade(trade: Any) -> Dict[str, Any]:
 
 def build_runtime_report(config_path: str, state_path: str, mode: str = "paper") -> Dict[str, Any]:
     config = load_config(config_path)
-    runtime = TradingRuntime(config=config, mode=mode, state_path=state_path)
+    runtime_mode = "paper" if mode == "live" else mode
+    runtime = TradingRuntime(config=config, mode=runtime_mode, state_path=state_path)
     runtime.bootstrap([])
     summary = runtime.summary()
+    summary["mode"] = mode
     closed_trades = runtime.state.closed_trades if runtime.state is not None else []
     history = runtime.state.history if runtime.state is not None else []
     recent_events = list(runtime.state.events[-40:]) if runtime.state is not None else []
