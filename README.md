@@ -231,6 +231,8 @@ Start the browser-based control room UI:
 .venv\Scripts\python.exe -m upbit_auto_trader.main web-ui --config config.example.json --state data\paper-state.json --selector-state data\selector-state.json --csv data/demo_krw_btc_15m.csv --mode paper --port 8765
 ```
 
+The UI now uses a lighter Upbit-style operator theme with a KRW market ribbon, release-state badges, and a cleaner exchange-style chart palette so the dashboard reads more like a trading desk than a raw debug screen.
+
 Or use the one-click PowerShell launcher:
 
 ```powershell
@@ -262,6 +264,28 @@ Or use the hidden-window launcher:
 ```powershell
 .\launch_control_room_hidden.cmd
 ```
+
+Build the optional Windows launcher executable:
+
+```powershell
+.\build_control_room_launcher_exe.cmd
+```
+
+Verify the built launcher without opening the GUI:
+
+```powershell
+.\verify_control_room_launcher_exe.cmd
+```
+
+Clean the launcher build output if you want a fresh rebuild:
+
+```powershell
+.\clean_control_room_launcher_exe.cmd
+```
+
+The verified launcher lives here after a successful build:
+
+`dist\windows-launcher\UpbitControlRoomLauncher\UpbitControlRoomLauncher.exe`
 
 Launching the hidden-window command again now reuses the running server on the same host or port instead of opening duplicate control-room instances.
 

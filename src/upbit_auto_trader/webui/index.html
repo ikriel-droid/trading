@@ -1,21 +1,34 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Upbit Auto Trader Control Room</title>
+    <title>Upbit Auto Trader Operator Desk</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <div class="page-shell">
+      <section class="market-ribbon">
+        <span id="hero-market-badge" class="ribbon-pill">KRW-BTC</span>
+        <span id="hero-mode-badge" class="ribbon-pill info">PAPER MODE</span>
+        <span id="hero-release-badge" class="ribbon-pill">RELEASE MISSING</span>
+        <span class="ribbon-pill static">KRW AUTO SELECTOR</span>
+      </section>
+
       <header class="hero">
         <div class="hero-copy">
           <p class="eyebrow">UPBIT AUTO TRADER</p>
-          <h1>Control Room</h1>
-          <p class="hero-text">A browser dashboard for runtime state, signal review, scan results, backtests, and parameter exploration.</p>
+          <h1>Operator Desk</h1>
+          <p class="hero-text">A lighter, exchange-style control room for KRW market scanning, signal review, live safety checks, and one-click operating flows.</p>
+          <div class="hero-badges">
+            <span class="hero-badge">Default Flow <strong>paper-selector</strong></span>
+            <span class="hero-badge">Manual Live Gate <strong>typed LIVE</strong></span>
+            <span class="hero-badge">Frozen Preset <strong>default-krw-auto-v1</strong></span>
+          </div>
         </div>
         <div class="hero-actions">
           <button id="refresh-dashboard" class="primary-button">Refresh</button>
+          <p class="hero-note">Live starts stay double-confirmed. Paper stays the default operator path.</p>
         </div>
       </header>
 

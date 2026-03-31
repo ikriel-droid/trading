@@ -83,8 +83,22 @@ From this point on, each completed finish task should update this file.
 
 ## Optional Polish
 
-- [ ] UI visual pass for a more Upbit-like look
-- [ ] Optional Windows app packaging or `.exe` packaging
+- [x] UI visual pass for a more Upbit-like look
+  - Completed: `2026-03-31`
+  - Evidence:
+    `src/upbit_auto_trader/webui/index.html`
+    `src/upbit_auto_trader/webui/styles.css`
+    `src/upbit_auto_trader/webui/app.js`
+  - Notes: refreshed the control room with a cleaner Upbit-style blue palette, KRW market ribbon, release-state badges, and a lighter chart/desk treatment while preserving the existing runtime workflows.
+- [x] Optional Windows app packaging or `.exe` packaging
+  - Completed: `2026-03-31`
+  - Evidence:
+    `src/upbit_auto_trader/control_room_launcher.py`
+    `build_control_room_launcher_exe.cmd`
+    `verify_control_room_launcher_exe.cmd`
+    `dist/windows-launcher/UpbitControlRoomLauncher/UpbitControlRoomLauncher.exe`
+    `dist/windows-launcher/launcher-diagnostics.json`
+  - Notes: added a desktop launcher that can start or stop the control room, open the helper, and open operator docs; verified the PyInstaller-built executable against the project root using `--diagnose-write`.
 
 ## Completion Rule
 

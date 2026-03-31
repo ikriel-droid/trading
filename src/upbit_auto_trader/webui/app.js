@@ -1,4 +1,7 @@
 const ids = {
+  heroMarket: document.getElementById("hero-market-badge"),
+  heroMode: document.getElementById("hero-mode-badge"),
+  heroRelease: document.getElementById("hero-release-badge"),
   market: document.getElementById("market-value"),
   mode: document.getElementById("mode-value"),
   equity: document.getElementById("equity-value"),
@@ -102,6 +105,14 @@ function escapeXml(value) {
 
 function setMetric(element, value) {
   element.textContent = value ?? "-";
+}
+
+function setRibbonBadge(element, text, tone = "") {
+  if (!element) {
+    return;
+  }
+  element.textContent = text;
+  element.className = `ribbon-pill${tone ? ` ${tone}` : ""}`;
 }
 
 function currentInputs() {
@@ -213,6 +224,19 @@ function renderJobHealth(jobHealthPayload) {
   ids.jobHealth.textContent = pretty(jobHealthPayload || { summary: {}, items: [] });
 }
 
+function renderHeroContext(payload) {
+  const market = payload?.app?.market || dashboardState.app.market || "KRW-BTC";
+  const mode = String(payload?.app?.mode || dashboardState.app.mode || "paper").toLowerCase();
+  const releaseStatus = String(payload?.release_artifacts?.status || "missing").toLowerCase();
+  const modeTone = mode === "live" ? "warning" : "info";
+  const releaseTone = releaseStatus === "ready" ? "success" : releaseStatus === "invalid" ? "error" : "warning";
+
+  setRibbonBadge(ids.heroMarket, market);
+  setRibbonBadge(ids.heroMode, `${mode.toUpperCase()} MODE`, modeTone);
+  setRibbonBadge(ids.heroRelease, `RELEASE ${releaseStatus.toUpperCase()}`, releaseTone);
+  document.body.dataset.mode = mode;
+}
+
 function renderAlerts(alertPayload) {
   const summary = alertPayload?.summary || {};
   const items = alertPayload?.items || [];
@@ -233,7 +257,7 @@ function renderAlerts(alertPayload) {
     <article class="alert-card ${escapeXml(item.level || "info")}">
       <div class="alert-card-head">
         <span class="chip ${escapeXml(item.level || "info")}">${escapeXml(item.level || "info")}</span>
-        <span class="alert-source">${escapeXml(item.source || "runtime")}${item.market ? ` • ${escapeXml(item.market)}` : ""}</span>
+        <span class="alert-source">${escapeXml(item.source || "runtime")}${item.market ? ` | ${escapeXml(item.market)}` : ""}</span>
       </div>
       <h3>${escapeXml(item.headline || "Alert")}</h3>
       <p>${escapeXml(item.message || "")}</p>
@@ -756,14 +780,14 @@ function renderChart(chartElement, metaElement, chartPayload) {
   chartElement.innerHTML = `
     <defs>
       <linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="rgba(199, 92, 42, 0.34)"></stop>
-        <stop offset="100%" stop-color="rgba(199, 92, 42, 0.02)"></stop>
+        <stop offset="0%" stop-color="rgba(20, 86, 255, 0.26)"></stop>
+        <stop offset="100%" stop-color="rgba(20, 86, 255, 0.02)"></stop>
       </linearGradient>
     </defs>
     <path d="${areaPath}" fill="url(#${gradientId})"></path>
-    <path d="${linePath}" fill="none" stroke="#c75c2a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path d="${linePath}" fill="none" stroke="#1456ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
     ${markers}
-    <circle cx="${latest.x}" cy="${latest.y}" r="6" fill="#8d2f1b"></circle>
+    <circle cx="${latest.x}" cy="${latest.y}" r="6" fill="#0d3cae"></circle>
   `;
   metaElement.textContent = `Last ${chartPayload.points.length} candles | markers ${(chartPayload.markers || []).length} | low ${min.toFixed(2)} | high ${max.toFixed(2)} | latest ${latest.close.toFixed(2)} @ ${latest.timestamp}`;
 }
@@ -801,6 +825,7 @@ async function refreshDashboard() {
     });
     const payload = await getJson(`/api/dashboard?${query.toString()}`);
     syncInputsFromDashboard(payload);
+    renderHeroContext(payload);
     const summary = payload.state_summary || {};
     setMetric(ids.market, payload.app.market);
     setMetric(ids.mode, payload.app.mode);
