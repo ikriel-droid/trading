@@ -151,6 +151,75 @@ class MainTests(unittest.TestCase):
             if state_path.exists():
                 state_path.unlink()
 
+    def test_run_live_daemon_recenters_stale_state_without_processing_backlog(self):
+        config = load_config(str(PROJECT_ROOT / "config.example.json"))
+        config.runtime.journal_path = ""
+        config.upbit.live_enabled = True
+        broker = FakeSupervisorBroker()
+        broker.minute_candles = [
+            {
+                "candle_date_time_kst": "2026-03-26T10:15:00",
+                "opening_price": 102.0,
+                "high_price": 103.0,
+                "low_price": 101.0,
+                "trade_price": 103.0,
+                "candle_acc_trade_volume": 1400.0,
+            },
+            {
+                "candle_date_time_kst": "2026-03-26T10:00:00",
+                "opening_price": 101.0,
+                "high_price": 102.0,
+                "low_price": 100.0,
+                "trade_price": 102.0,
+                "candle_acc_trade_volume": 1200.0,
+            },
+        ]
+        state_path = PROJECT_ROOT / "data" / "test-live-daemon-stale-state.json"
+        backup_path = pathlib.Path(str(state_path) + ".bak")
+        if state_path.exists():
+            state_path.unlink()
+        if backup_path.exists():
+            backup_path.unlink()
+        try:
+            runtime = TradingRuntime(config=config, mode="live", state_path=state_path, broker=broker)
+            minimum_history = runtime.strategy.minimum_history()
+            runtime.bootstrap(
+                [
+                    Candle(
+                        timestamp="2026-03-26T09:{0:02d}:00".format(index),
+                        open=100.0,
+                        high=100.0,
+                        low=100.0,
+                        close=100.0,
+                        volume=1000.0,
+                    )
+                    for index in range(minimum_history)
+                ]
+            )
+
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                result = _run_live_daemon(
+                    config=config,
+                    broker=broker,
+                    state_path=str(state_path),
+                    warmup_csv=None,
+                    poll_seconds=0.0,
+                    max_loops=1,
+                    reconcile_every_loops=0,
+                )
+
+            output = stdout.getvalue()
+            self.assertEqual(result, 0)
+            self.assertIn('"kind": "startup_recenter"', output)
+            self.assertIn('"processed_candles": 0', output)
+            self.assertIn('"last_processed_timestamp": "2026-03-26T10:15:00"', output)
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+
     def test_doctor_reports_state_backup_and_missing_webhook(self):
         config = load_config(str(PROJECT_ROOT / "config.example.json"))
         config.runtime.journal_path = ""

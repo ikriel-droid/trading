@@ -101,6 +101,60 @@ class TradingRuntime:
         )
         state.events = state.events[-500:]
 
+    def recenter_live_state_to_latest_candles(self, candles: List[Candle]) -> Dict[str, Any]:
+        if self.state is None:
+            raise ValueError("runtime must be bootstrapped before recenter_live_state_to_latest_candles")
+
+        if self.mode != "live" or not candles:
+            return {
+                "recentered": False,
+                "previous_timestamp": self.state.last_processed_timestamp,
+                "latest_timestamp": self.state.last_processed_timestamp,
+                "skipped_visible_candles": 0,
+            }
+
+        latest_history = list(candles)[-self.config.runtime.max_history :]
+        latest_timestamp = latest_history[-1].timestamp
+        previous_timestamp = self.state.last_processed_timestamp
+        if previous_timestamp and latest_timestamp <= previous_timestamp:
+            return {
+                "recentered": False,
+                "previous_timestamp": previous_timestamp,
+                "latest_timestamp": latest_timestamp,
+                "skipped_visible_candles": 0,
+            }
+
+        skipped_visible_candles = 0
+        if previous_timestamp:
+            skipped_visible_candles = sum(1 for candle in candles if candle.timestamp > previous_timestamp)
+        else:
+            skipped_visible_candles = len(candles)
+
+        self.state.history = latest_history
+        self.state.last_processed_timestamp = latest_timestamp
+        self.state.processed_bars = max(
+            int(self.state.processed_bars or 0) + max(skipped_visible_candles, 0),
+            len(self.state.history),
+        )
+        event = (
+            "LIVE STARTUP RECENTERED {0} from={1} to={2} skipped_visible_candles={3}".format(
+                self.config.market,
+                previous_timestamp or "<none>",
+                latest_timestamp,
+                skipped_visible_candles,
+            )
+        )
+        self.state.events.append(event)
+        self.state.events = self.state.events[-500:]
+        self._save_state()
+        return {
+            "recentered": True,
+            "previous_timestamp": previous_timestamp,
+            "latest_timestamp": latest_timestamp,
+            "skipped_visible_candles": skipped_visible_candles,
+            "event": event,
+        }
+
     def process_candle(self, candle: Candle) -> List[str]:
         if self.state is None:
             raise ValueError("runtime must be bootstrapped before process_candle")

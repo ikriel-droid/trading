@@ -197,6 +197,34 @@ class RuntimeLiveTests(unittest.TestCase):
             if backup_path.exists():
                 backup_path.unlink()
 
+    def test_live_recenter_skips_historical_catchup_candles(self):
+        broker = FakeLiveBroker(quote_balance=123456.78, base_balance=0.0)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-recenter.json", broker)
+        try:
+            runtime.strategy = FakeStrategy({})
+            runtime.bootstrap([self.make_candle("2026-03-26T09:00:00", 100.0)])
+
+            payload = runtime.recenter_live_state_to_latest_candles(
+                [
+                    self.make_candle("2026-03-26T10:00:00", 101.0),
+                    self.make_candle("2026-03-26T10:15:00", 102.0),
+                    self.make_candle("2026-03-26T10:30:00", 103.0),
+                ]
+            )
+
+            self.assertTrue(payload["recentered"])
+            self.assertEqual(payload["previous_timestamp"], "2026-03-26T09:00:00")
+            self.assertEqual(payload["latest_timestamp"], "2026-03-26T10:30:00")
+            self.assertEqual(payload["skipped_visible_candles"], 3)
+            self.assertEqual(runtime.state.last_processed_timestamp, "2026-03-26T10:30:00")
+            self.assertEqual(runtime.state.history[-1].timestamp, "2026-03-26T10:30:00")
+            self.assertTrue(any("LIVE STARTUP RECENTERED" in item for item in runtime.state.events))
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+
     def test_live_bootstrap_blocks_existing_asset_balance(self):
         broker = FakeLiveBroker(quote_balance=100000.0, base_balance=0.25)
         runtime, state_path, backup_path = self.build_runtime("test-runtime-live-2.json", broker)

@@ -615,15 +615,25 @@ def _run_live_daemon(
     reconcile_every_loops: int,
 ) -> int:
     runtime = TradingRuntime(config=config, mode="live", state_path=state_path, broker=broker)
+    fetch_count = max(config.upbit.candle_count, runtime.strategy.minimum_history() + 5)
     if os.path.exists(state_path):
         runtime.bootstrap([])
     else:
         runtime.bootstrap(_load_or_fetch_warmup(runtime, config, broker, warmup_csv))
 
+    startup_payload = broker.get_minute_candles(
+        market=config.market,
+        unit=config.upbit.candle_unit,
+        count=fetch_count,
+    )
+    startup_candles = upbit_candles_to_internal(startup_payload)
+    startup_recenter = runtime.recenter_live_state_to_latest_candles(startup_candles)
+    if startup_recenter.get("recentered"):
+        _print_json({"kind": "startup_recenter", "data": startup_recenter, "summary": runtime.summary()})
+
     _print_json({"kind": "reconcile", "data": runtime.reconcile_live_snapshot()})
 
     poll_interval = poll_seconds if poll_seconds is not None else config.runtime.poll_seconds
-    fetch_count = max(config.upbit.candle_count, runtime.strategy.minimum_history() + 5)
     loops = 0
     heartbeat_stale_after = max(30.0, float(poll_interval or 0.0) * 3.0)
     _write_heartbeat(
