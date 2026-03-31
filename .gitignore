@@ -16,6 +16,9 @@ data/*.pid
 data/*.bak
 data/live_*.csv
 data/webui-jobs/
-data/strategy-presets/
-data/operator-profiles/
+data/strategy-presets/*
+data/operator-profiles/*
 data/session-reports/
+!data/operator-defaults.json
+!data/strategy-presets/default-krw-auto-v1.json
+!data/operator-profiles/default-paper-selector-krw-auto.json

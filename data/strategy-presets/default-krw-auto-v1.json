@@ -1,0 +1,27 @@
+{
+  "name": "default-krw-auto-v1",
+  "slug": "default-krw-auto-v1",
+  "created_at": "2026-03-31T10:21:56.368624+00:00",
+  "source": "current_config",
+  "market": "KRW-BTC",
+  "csv_path": "data/demo_krw_btc_15m.csv",
+  "notes": "",
+  "strategy": {
+    "fast_ema": 8,
+    "slow_ema": 21,
+    "rsi_period": 14,
+    "macd_fast": 8,
+    "macd_slow": 21,
+    "macd_signal": 5,
+    "adx_period": 14,
+    "min_adx": 18.0,
+    "bollinger_period": 20,
+    "bollinger_stddev": 2.0,
+    "min_bollinger_width_fraction": 0.015,
+    "breakout_lookback": 20,
+    "volume_sma_period": 20,
+    "volume_spike_multiplier": 1.3,
+    "buy_threshold": 65.0,
+    "sell_threshold": 40.0
+  }
+}

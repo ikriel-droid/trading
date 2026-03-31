@@ -94,6 +94,13 @@ Validate the clean-workspace deployment path end-to-end by generating a fresh bu
 .\validate_fresh_environment_deployment.cmd
 ```
 
+The official default operator path is now frozen in `data/operator-defaults.json`. Today that means:
+
+- default paper profile: `default-paper-selector-krw-auto`
+- default strategy preset: `default-krw-auto-v1`
+
+The default paper profile uses `paper-selector`, so it scans KRW markets and auto-selects the strongest candidate instead of staying pinned to one market. Live remains intentionally manual until the small live validation checklist item is completed.
+
 Optional: create `.env` from the example file so API keys and webhook settings load automatically from the project root:
 
 ```powershell

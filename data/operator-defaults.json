@@ -1,0 +1,19 @@
+{
+  "frozen_at": "2026-03-31T10:21:56+00:00",
+  "default_profile": {
+    "name": "default-paper-selector-krw-auto",
+    "path": "data/operator-profiles/default-paper-selector-krw-auto.json",
+    "job_type": "paper-selector",
+    "notes": "Official default paper operating path. Uses KRW auto-selection with the frozen default strategy preset."
+  },
+  "default_preset": {
+    "name": "default-krw-auto-v1",
+    "path": "data/strategy-presets/default-krw-auto-v1.json",
+    "source": "current_config",
+    "notes": "Frozen default strategy preset for the official paper operator path."
+  },
+  "live_policy": {
+    "status": "manual_validation_required",
+    "notes": "Live operation remains gated until the small live validation checklist item is intentionally completed."
+  }
+}

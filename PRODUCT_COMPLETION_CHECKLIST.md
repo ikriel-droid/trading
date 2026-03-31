@@ -54,9 +54,17 @@ From this point on, each completed finish task should update this file.
     `dist/fresh-environment-validation/workspace/dist/clean-run-release-pack.zip`
   - Notes: `validate_fresh_environment_deployment.cmd` extracted the generated bundle into a clean workspace, ran `setup_control_room`, created a paper state, launched the hidden control room on port `8876`, captured status, then built and verified both the clean-run support bundle and release pack
 
-- [ ] Default operating profile and preset frozen
+- [x] Default operating profile and preset frozen
   - Goal: choose the one paper profile and one strategy preset that become the default operational path
   - Evidence to save: profile name + preset name recorded in this file
+  - Completed: `2026-03-31`
+  - Default paper profile: `default-paper-selector-krw-auto`
+    `data/operator-profiles/default-paper-selector-krw-auto.json`
+  - Default strategy preset: `default-krw-auto-v1`
+    `data/strategy-presets/default-krw-auto-v1.json`
+  - Canonical defaults file:
+    `data/operator-defaults.json`
+  - Notes: default operation is now the `paper-selector` path that auto-selects KRW markets and applies the frozen `default-krw-auto-v1` strategy preset before start. Live remains manually gated until `Small live validation completed` is intentionally closed.
 
 - [ ] Final operator handoff pass completed
   - Goal: confirm the manual operating path is short and consistent
