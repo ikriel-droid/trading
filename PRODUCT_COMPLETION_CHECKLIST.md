@@ -1,6 +1,6 @@
 # Product Completion Checklist
 
-Current overall completion: `99%`
+Current overall completion: `100%`
 
 This file is the product-finish checklist for the Upbit auto-trader.
 From this point on, each completed finish task should update this file.
@@ -67,9 +67,19 @@ From this point on, each completed finish task should update this file.
     `data/operator-defaults.json`
   - Notes: default operation is now the `paper-selector` path that auto-selects KRW markets and applies the frozen `default-krw-auto-v1` strategy preset before start. Live remains manually gated until `Small live validation completed` is intentionally closed.
 
-- [ ] Final operator handoff pass completed
+- [x] Final operator handoff pass completed
   - Goal: confirm the manual operating path is short and consistent
   - Minimum path: `setup -> launch -> doctor -> paper/live start -> status -> release pack -> support bundle`
+  - Completed: `2026-03-31`
+  - Evidence:
+    `dist/operator-handoff/operator-handoff-summary.json`
+    `dist/operator-handoff/evidence/control-room-status.json`
+    `dist/operator-handoff/evidence/doctor.json`
+    `dist/operator-handoff/evidence/profile-start.json`
+    `dist/upbit-control-room-support-operator-handoff.zip`
+    `dist/operator-handoff/operator-handoff-release-pack.zip`
+    `dist/operator-handoff/release-pack/release-pack-verification.json`
+  - Notes: validated `setup -> hidden launch -> doctor -> default paper profile start -> status -> release pack -> support bundle` using the frozen `default-paper-selector-krw-auto` profile and `default-krw-auto-v1` preset. `doctor` only surfaced expected paper-path warnings: `discord_webhook_not_configured` and `live_enabled=false`.
 
 ## Optional Polish
 

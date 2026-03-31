@@ -188,6 +188,16 @@ class UiTests(unittest.TestCase):
         self.job_heartbeat_path = PROJECT_ROOT / "data" / "webui-jobs" / "test-ui-heartbeat.heartbeat.json"
         self.release_pack_dir = PROJECT_ROOT / "data" / "test-ui-release-pack"
         self.release_pack_zip_path = PROJECT_ROOT / "data" / "test-ui-release-pack.zip"
+        self.release_pack_dir_patcher = mock.patch(
+            "upbit_auto_trader.ui._default_release_pack_directory",
+            return_value=str(self.release_pack_dir),
+        )
+        self.release_pack_zip_patcher = mock.patch(
+            "upbit_auto_trader.ui._default_release_pack_zip_path",
+            return_value=str(self.release_pack_zip_path),
+        )
+        self.release_pack_dir_patcher.start()
+        self.release_pack_zip_patcher.start()
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
@@ -304,6 +314,8 @@ class UiTests(unittest.TestCase):
             )
 
     def tearDown(self):
+        self.release_pack_dir_patcher.stop()
+        self.release_pack_zip_patcher.stop()
         if self.state_path.exists():
             self.state_path.unlink()
         if self.state_backup_path.exists():
