@@ -45,9 +45,9 @@
   },
   "selector": {
     "quote_currency": "KRW",
-    "include_markets": [],
+    "include_markets": ["KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-SOL", "KRW-ADA"],
     "exclude_markets": ["KRW-BTT"],
-    "max_markets": 10,
+    "max_markets": 5,
     "min_score": 65.0,
     "min_acc_trade_price_24h": 5000000000.0,
     "use_trade_flow_filter": true,
