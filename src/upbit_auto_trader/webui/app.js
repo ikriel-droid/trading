@@ -39,6 +39,12 @@ const ids = {
   liveControlStatus: document.getElementById("live-control-status"),
   liveControlJson: document.getElementById("live-control-json"),
   liveTestKrw: document.getElementById("live-test-krw-input"),
+  liveCfgBuyThreshold: document.getElementById("live-cfg-buy-threshold"),
+  liveCfgSellThreshold: document.getElementById("live-cfg-sell-threshold"),
+  liveCfgMaxPositionFraction: document.getElementById("live-cfg-max-position-fraction"),
+  liveCfgMaxTradesPerDay: document.getElementById("live-cfg-max-trades-per-day"),
+  liveCfgSelectorMaxMarkets: document.getElementById("live-cfg-selector-max-markets"),
+  liveCfgIncludeMarkets: document.getElementById("live-cfg-include-markets"),
   recentTrades: document.getElementById("recent-trades-json"),
   recentEvents: document.getElementById("recent-events-json"),
   selectorSummary: document.getElementById("selector-summary-json"),
@@ -88,6 +94,7 @@ const ids = {
   disableLiveMode: document.getElementById("disable-live-mode"),
   runLiveEasyPrep: document.getElementById("run-live-easy-prep"),
   runLiveMarketTest: document.getElementById("run-live-market-test"),
+  saveLiveConfig: document.getElementById("save-live-config"),
 };
 
 let dashboardState = {
@@ -521,6 +528,14 @@ function syncInputsFromDashboard(payload) {
   ids.cfgMinAdx.value = editableConfig["strategy.min_adx"] ?? "";
   ids.cfgMinBbWidth.value = editableConfig["strategy.min_bollinger_width_fraction"] ?? "";
   ids.cfgVolumeSpike.value = editableConfig["strategy.volume_spike_multiplier"] ?? "";
+  ids.liveCfgBuyThreshold.value = editableConfig["strategy.buy_threshold"] ?? "";
+  ids.liveCfgSellThreshold.value = editableConfig["strategy.sell_threshold"] ?? "";
+  ids.liveCfgMaxPositionFraction.value = editableConfig["risk.max_position_fraction"] ?? "";
+  ids.liveCfgMaxTradesPerDay.value = editableConfig["runtime.max_trades_per_day"] ?? "";
+  ids.liveCfgSelectorMaxMarkets.value = editableConfig["selector.max_markets"] ?? "";
+  ids.liveCfgIncludeMarkets.value = Array.isArray(editableConfig["selector.include_markets"])
+    ? editableConfig["selector.include_markets"].join(", ")
+    : (editableConfig["selector.include_markets"] ?? "");
   ids.cfgPollSeconds.value = editableConfig["runtime.poll_seconds"] ?? "";
   ids.cfgSelectorMaxMarkets.value = editableConfig["selector.max_markets"] ?? "";
   ids.config.textContent = pretty(editableConfig);
@@ -1552,6 +1567,25 @@ async function saveConfig() {
   }
 }
 
+async function saveLiveConfig() {
+  try {
+    ids.liveControlStatus.textContent = "실거래 설정을 저장하고 있습니다...";
+    const payload = await postJson("/api/config-save", {
+      "strategy.buy_threshold": Number(ids.liveCfgBuyThreshold.value || "0"),
+      "strategy.sell_threshold": Number(ids.liveCfgSellThreshold.value || "0"),
+      "risk.max_position_fraction": Number(ids.liveCfgMaxPositionFraction.value || "0"),
+      "runtime.max_trades_per_day": Number(ids.liveCfgMaxTradesPerDay.value || "0"),
+      "selector.max_markets": Number(ids.liveCfgSelectorMaxMarkets.value || "0"),
+      "selector.include_markets": ids.liveCfgIncludeMarkets.value.trim(),
+    });
+    ids.liveControlStatus.textContent = "실거래 설정을 저장했습니다. 준비 다시 확인 후 시작하면 됩니다.";
+    ids.liveControlJson.textContent = pretty(payload);
+    await refreshDashboard();
+  } catch (error) {
+    ids.liveControlStatus.textContent = `실거래 설정 저장 중 문제가 발생했습니다: ${error.message}`;
+  }
+}
+
 async function saveCurrentPreset() {
   try {
     ids.presets.textContent = "현재 전략을 저장하고 있습니다...";
@@ -1779,6 +1813,7 @@ document.getElementById("enable-live-mode").addEventListener("click", () => togg
 document.getElementById("disable-live-mode").addEventListener("click", () => toggleLiveMode(false));
 document.getElementById("run-live-easy-prep").addEventListener("click", runLiveEasyPrep);
 document.getElementById("run-live-market-test").addEventListener("click", runLiveMarketTest);
+document.getElementById("save-live-config").addEventListener("click", saveLiveConfig);
 document.getElementById("run-sync-candles").addEventListener("click", runSyncCandles);
 document.getElementById("run-session-report").addEventListener("click", runSessionReport);
 document.getElementById("load-session-report").addEventListener("click", loadSessionReport);

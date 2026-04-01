@@ -61,7 +61,10 @@ EDITABLE_CONFIG_FIELDS = {
     "strategy.min_adx": float,
     "strategy.min_bollinger_width_fraction": float,
     "strategy.volume_spike_multiplier": float,
+    "risk.max_position_fraction": float,
     "runtime.poll_seconds": float,
+    "runtime.max_trades_per_day": int,
+    "selector.include_markets": lambda value: _cast_market_list(value),
     "selector.max_markets": int,
 }
 ALERT_HEADLINES = {
@@ -510,6 +513,25 @@ def _set_nested_value(payload: Dict[str, Any], dotted_path: str, value: Any) -> 
     for part in parts[:-1]:
         current = current.setdefault(part, {})
     current[parts[-1]] = value
+
+
+def _cast_market_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        raw_items = value
+    else:
+        raw_items = str(value).split(",")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        market = str(item).strip().upper()
+        if not market or market in seen:
+            continue
+        normalized.append(market)
+        seen.add(market)
+    return normalized
 
 
 def load_editable_config(config_path: str) -> Dict[str, Any]:

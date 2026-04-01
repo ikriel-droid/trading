@@ -1200,6 +1200,9 @@ class UiTests(unittest.TestCase):
             {
                 "strategy.buy_threshold": 70.0,
                 "strategy.sell_threshold": 42.0,
+                "risk.max_position_fraction": 0.08,
+                "runtime.max_trades_per_day": 3,
+                "selector.include_markets": "KRW-BTC, KRW-ETH, KRW-SOL",
                 "selector.max_markets": 7,
             },
         )
@@ -1207,6 +1210,12 @@ class UiTests(unittest.TestCase):
 
         self.assertNotEqual(before["strategy.buy_threshold"], after["strategy.buy_threshold"])
         self.assertEqual(result["current"]["strategy.buy_threshold"], 70.0)
+        self.assertEqual(result["current"]["risk.max_position_fraction"], 0.08)
+        self.assertEqual(result["current"]["runtime.max_trades_per_day"], 3)
+        self.assertEqual(
+            result["current"]["selector.include_markets"],
+            ["KRW-BTC", "KRW-ETH", "KRW-SOL"],
+        )
         self.assertEqual(result["current"]["selector.max_markets"], 7)
 
     def test_sync_candles_action_writes_csv(self):

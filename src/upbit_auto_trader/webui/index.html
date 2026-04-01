@@ -193,7 +193,34 @@
               <div id="live-control-status" class="panel-copy">실거래 준비 상태를 확인하고 있습니다.</div>
             </label>
           </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>매수 기준 점수</span>
+              <input id="live-cfg-buy-threshold" type="number" step="0.1">
+            </label>
+            <label class="field">
+              <span>매도 기준 점수</span>
+              <input id="live-cfg-sell-threshold" type="number" step="0.1">
+            </label>
+            <label class="field">
+              <span>최대 매수 비율</span>
+              <input id="live-cfg-max-position-fraction" type="number" min="0.01" max="1" step="0.01">
+            </label>
+            <label class="field">
+              <span>하루 최대 거래 수</span>
+              <input id="live-cfg-max-trades-per-day" type="number" min="1" max="50" step="1">
+            </label>
+            <label class="field">
+              <span>후보 종목 수</span>
+              <input id="live-cfg-selector-max-markets" type="number" min="1" max="50" step="1">
+            </label>
+            <label class="field field-span-2">
+              <span>후보 종목 목록(쉼표로 구분)</span>
+              <input id="live-cfg-include-markets" type="text" placeholder="KRW-BTC, KRW-ETH, KRW-XRP, KRW-SOL, KRW-ADA">
+            </label>
+          </div>
           <div class="button-row">
+            <button id="save-live-config" class="ghost-button">실거래 설정 저장</button>
             <button id="enable-live-mode" class="ghost-button">실거래 켜기</button>
             <button id="disable-live-mode" class="ghost-button">실거래 끄기</button>
             <button id="run-live-easy-prep" class="ghost-button">실거래 준비 다시 확인</button>
