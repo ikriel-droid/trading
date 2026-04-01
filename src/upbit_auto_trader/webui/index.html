@@ -289,6 +289,7 @@
               <select id="job-type-select">
                 <option value="paper-loop">모의투자 단일 감시</option>
                 <option value="paper-selector">모의투자 자동 종목 선택</option>
+                <option value="live-selector">실거래 자동 종목 선택</option>
                 <option value="live-daemon">실거래 단일 감시</option>
                 <option value="live-supervisor">실거래 상태 감시</option>
               </select>
@@ -319,8 +320,10 @@
             <button id="stop-paper-loop" class="ghost-button">모의투자 중지</button>
             <button id="start-paper-selector" class="ghost-button">자동선택 시작</button>
             <button id="stop-paper-selector" class="ghost-button">자동선택 중지</button>
-            <button id="start-live-daemon" class="ghost-button">실거래 시작</button>
-            <button id="stop-live-daemon" class="ghost-button">실거래 중지</button>
+            <button id="start-live-selector" class="ghost-button">실거래 자동선택 시작</button>
+            <button id="stop-live-selector" class="ghost-button">실거래 자동선택 중지</button>
+            <button id="start-live-daemon" class="ghost-button">실거래 단일감시 시작</button>
+            <button id="stop-live-daemon" class="ghost-button">실거래 단일감시 중지</button>
             <button id="start-live-supervisor" class="ghost-button">실거래 상태감시 시작</button>
             <button id="stop-live-supervisor" class="ghost-button">실거래 상태감시 중지</button>
             <button id="stop-all-jobs" class="ghost-button danger-button">전체 즉시 중지</button>

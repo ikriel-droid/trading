@@ -130,6 +130,7 @@ const STATUS_LABELS = {
 const JOB_TYPE_LABELS = {
   "paper-loop": "모의투자 단일 감시",
   "paper-selector": "모의투자 자동 종목 선택",
+  "live-selector": "실거래 자동 종목 선택",
   "live-daemon": "실거래 단일 감시",
   "live-supervisor": "실거래 상태 감시",
 };
@@ -292,7 +293,7 @@ function currentJobSettings() {
 }
 
 function isLiveJobType(jobType) {
-  return jobType === "live-daemon" || jobType === "live-supervisor";
+  return jobType === "live-selector" || jobType === "live-daemon" || jobType === "live-supervisor";
 }
 
 function formatBlockingIssues(items) {
@@ -1820,6 +1821,8 @@ document.getElementById("start-paper-loop").addEventListener("click", () => star
 document.getElementById("stop-paper-loop").addEventListener("click", () => stopJob("paper-loop"));
 document.getElementById("start-paper-selector").addEventListener("click", () => startJob("paper-selector"));
 document.getElementById("stop-paper-selector").addEventListener("click", () => stopJob("paper-selector"));
+document.getElementById("start-live-selector").addEventListener("click", () => startJob("live-selector"));
+document.getElementById("stop-live-selector").addEventListener("click", () => stopJob("live-selector"));
 document.getElementById("start-live-daemon").addEventListener("click", () => startJob("live-daemon"));
 document.getElementById("stop-live-daemon").addEventListener("click", () => stopJob("live-daemon"));
 document.getElementById("start-live-supervisor").addEventListener("click", () => startJob("live-supervisor"));

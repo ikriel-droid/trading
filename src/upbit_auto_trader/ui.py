@@ -19,6 +19,7 @@ from .doctor import build_doctor_report
 from .jobs import (
     BackgroundJobManager,
     build_live_daemon_command,
+    build_live_selector_command,
     build_live_supervisor_command,
     build_paper_loop_command,
     build_paper_selector_command,
@@ -2158,6 +2159,16 @@ def start_managed_job(
             quote_currency=quote_currency,
             max_markets=max_markets,
         )
+    elif job_type == "live-selector":
+        effective_state_path = state_path or "data/live-state.json"
+        command = build_live_selector_command(
+            config_path=config_path,
+            selector_state_path=resolved_selector_state_path,
+            poll_seconds=poll_seconds,
+            quote_currency=quote_currency,
+            max_markets=max_markets,
+        )
+        report_mode = "live"
     elif job_type == "live-daemon":
         effective_state_path = state_path or "data/live-state-ui.json"
         command = build_live_daemon_command(
@@ -2203,6 +2214,10 @@ def start_managed_job(
         "preflight": None,
         "can_start": True,
     }
+
+    if job_type == "live-selector":
+        preview["report_on_exit"] = False
+        preview["report_state_path"] = ""
 
     if report_mode == "live":
         live_config = _override_market(load_config(config_path), market)
@@ -2281,6 +2296,16 @@ def preview_managed_job(
             quote_currency=quote_currency,
             max_markets=max_markets,
         )
+    elif job_type == "live-selector":
+        effective_state_path = state_path or "data/live-state.json"
+        command = build_live_selector_command(
+            config_path=config_path,
+            selector_state_path=resolved_selector_state_path,
+            poll_seconds=poll_seconds,
+            quote_currency=quote_currency,
+            max_markets=max_markets,
+        )
+        report_mode = "live"
     elif job_type == "live-daemon":
         effective_state_path = state_path or "data/live-state-ui.json"
         command = build_live_daemon_command(
@@ -2325,6 +2350,9 @@ def preview_managed_job(
         "preflight": None,
         "can_start": True,
     }
+    if job_type == "live-selector":
+        preview["report_on_exit"] = False
+        preview["report_state_path"] = ""
     if report_mode == "live":
         live_config = _override_market(load_config(config_path), market)
         preflight = build_doctor_report(

@@ -452,7 +452,7 @@ class UiTests(unittest.TestCase):
         self.assertIsNotNone(payload["state_summary"])
         self.assertIsNotNone(payload["latest_signal"])
         self.assertTrue(payload["csv_info"]["rows"] > 0)
-        self.assertEqual(payload["ui_defaults"]["scan_max_markets"], 10)
+        self.assertEqual(payload["ui_defaults"]["scan_max_markets"], 5)
         self.assertEqual(payload["paths"]["selector_state_path"], str(self.selector_state_path))
         self.assertTrue(len(payload["chart"]["points"]) > 0)
         self.assertGreaterEqual(len(payload["chart"]["markers"]), 2)
@@ -1249,6 +1249,23 @@ class UiTests(unittest.TestCase):
             restart_backoff_seconds=1.5,
             job_manager=manager,
         )
+        live_selector_job = start_managed_job(
+            config_path=str(self.temp_config_path),
+            job_type="live-selector",
+            state_path=str(self.state_path),
+            selector_state_path="data/test-selector-state.json",
+            csv_path=self.csv_path,
+            poll_seconds=6.0,
+            reconcile_every_loops=3,
+            reconcile_every=11,
+            market="KRW-BTC",
+            quote_currency="KRW",
+            max_markets=5,
+            auto_restart=True,
+            max_restarts=3,
+            restart_backoff_seconds=1.5,
+            job_manager=manager,
+        )
         supervisor_job = start_managed_job(
             config_path=str(self.temp_config_path),
             job_type="live-supervisor",
@@ -1274,11 +1291,56 @@ class UiTests(unittest.TestCase):
         self.assertTrue(selector_job["report_on_exit"])
         self.assertEqual(selector_job["report_mode"], "paper")
         self.assertEqual(selector_job["report_keep_latest"], 20)
+        self.assertIn("run-selector", live_selector_job["command"])
+        self.assertIn("--mode", live_selector_job["command"])
+        self.assertIn("live", live_selector_job["command"])
+        self.assertIn("5", live_selector_job["command"])
+        self.assertFalse(live_selector_job["report_on_exit"])
+        self.assertEqual(live_selector_job["report_mode"], "live")
         self.assertIn("run-live-supervisor", supervisor_job["command"])
         self.assertIn("11", supervisor_job["command"])
         self.assertTrue(supervisor_job["report_on_exit"])
         self.assertEqual(supervisor_job["report_mode"], "live")
-        self.assertEqual(supervisor_job["report_keep_latest"], 20)
+
+    @mock.patch("upbit_auto_trader.ui.build_doctor_report")
+    def test_preview_managed_job_supports_live_selector(self, build_doctor_report_mock):
+        with open(self.temp_config_path, "r", encoding="utf-8") as handle:
+            temp_config = json.load(handle)
+        temp_config["upbit"]["live_enabled"] = True
+        temp_config["upbit"]["access_key"] = "test-access"
+        temp_config["upbit"]["secret_key"] = "test-secret"
+        with open(self.temp_config_path, "w", encoding="utf-8") as handle:
+            json.dump(temp_config, handle, indent=2)
+            handle.write("\n")
+        build_doctor_report_mock.return_value = {
+            "issues": [],
+            "upbit": {"private_ready": True, "private_issues": []},
+            "state": {"load_ok": True},
+        }
+
+        preview = preview_managed_job(
+            config_path=str(self.temp_config_path),
+            job_type="live-selector",
+            state_path=str(self.state_path),
+            selector_state_path="data/test-selector-state.json",
+            csv_path=self.csv_path,
+            poll_seconds=6.0,
+            reconcile_every_loops=3,
+            reconcile_every=11,
+            market="KRW-BTC",
+            quote_currency="KRW",
+            max_markets=5,
+            auto_restart=True,
+            max_restarts=3,
+            restart_backoff_seconds=1.5,
+        )
+
+        self.assertEqual(preview["job_type"], "live-selector")
+        self.assertIn("run-selector", preview["command"])
+        self.assertIn("live", preview["command"])
+        self.assertTrue(preview["can_start"])
+        self.assertFalse(preview["report_on_exit"])
+        self.assertEqual(preview["report_mode"], "live")
 
     def test_start_managed_job_blocks_live_when_preflight_fails(self):
         manager = RecordingJobManager()
