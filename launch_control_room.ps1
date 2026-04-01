@@ -2,7 +2,7 @@ param(
     [string]$Config = "config.example.json",
     [string]$State = "data/paper-state.json",
     [string]$SelectorState = "data/selector-state.json",
-    [string]$Csv = "data/demo_krw_btc_15m.csv",
+    [string]$Csv = "data/demo_krw_btc_240m.csv",
     [ValidateSet("paper", "live")]
     [string]$Mode = "paper",
     [string]$BindHost = "127.0.0.1",

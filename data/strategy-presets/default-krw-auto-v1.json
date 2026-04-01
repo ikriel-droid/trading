@@ -4,7 +4,7 @@
   "created_at": "2026-03-31T10:21:56.368624+00:00",
   "source": "current_config",
   "market": "KRW-BTC",
-  "csv_path": "data/demo_krw_btc_15m.csv",
+  "csv_path": "data/demo_krw_btc_240m.csv",
   "notes": "",
   "strategy": {
     "fast_ema": 8,

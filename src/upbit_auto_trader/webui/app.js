@@ -545,7 +545,7 @@ function defaultCsvPathForMarket(market) {
   if (!market) {
     return "";
   }
-  const candleUnit = Number(dashboardState.app.candle_unit || 15);
+  const candleUnit = Number(dashboardState.app.candle_unit || 240);
   return `data/${String(market).toLowerCase().replaceAll("-", "_")}_${candleUnit}m.csv`;
 }
 

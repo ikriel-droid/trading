@@ -83,7 +83,7 @@ class UpbitConfig:
     market: str = "KRW-BTC"
     access_key: str = ""
     secret_key: str = ""
-    candle_unit: int = 15
+    candle_unit: int = 240
     candle_count: int = 200
     request_timeout_seconds: float = 10.0
     max_retries: int = 2

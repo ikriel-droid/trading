@@ -182,7 +182,7 @@ Invoke-FreshPython -WorkspaceRoot $WorkspaceRoot -Arguments @(
     "--config", "config.example.json",
     "--mode", "paper",
     "--state", "data/paper-state.json",
-    "--replay-csv", "data/demo_krw_btc_15m.csv",
+    "--replay-csv", "data/demo_krw_btc_240m.csv",
     "--max-steps", $PaperSteps.ToString()
 )
 
@@ -191,7 +191,7 @@ try {
         "-Config", "config.example.json",
         "-State", "data/paper-state.json",
         "-SelectorState", "data/selector-state.json",
-        "-Csv", "data/demo_krw_btc_15m.csv",
+        "-Csv", "data/demo_krw_btc_240m.csv",
         "-Mode", "paper",
         "-BindHost", "127.0.0.1",
         "-Port", $Port.ToString(),

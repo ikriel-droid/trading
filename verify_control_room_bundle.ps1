@@ -62,7 +62,7 @@ $requiredPaths = @(
     "src/upbit_auto_trader/ui.py",
     "src/upbit_auto_trader/webui/index.html",
     "src/upbit_auto_trader/webui/app.js",
-    "data/demo_krw_btc_15m.csv"
+    "data/demo_krw_btc_240m.csv"
 )
 
 if (-not (Test-Path $ResolvedBundleDirectory)) {

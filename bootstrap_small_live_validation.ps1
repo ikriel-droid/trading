@@ -33,7 +33,11 @@ if (-not $ResolvedMarket) {
 
 if (-not $CsvPath) {
     $Slug = $ResolvedMarket.ToLower().Replace("-", "_")
-    $CsvPath = "data/live_$Slug`_15m.csv"
+    $CandleUnit = 240
+    if ($ConfigJson.upbit -and $ConfigJson.upbit.candle_unit) {
+        $CandleUnit = [int]$ConfigJson.upbit.candle_unit
+    }
+    $CsvPath = "data/live_{0}_{1}m.csv" -f $Slug, $CandleUnit
 }
 
 Push-Location $ProjectRoot

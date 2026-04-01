@@ -663,7 +663,7 @@ class UiTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["app"]["market"], "KRW-XRP")
-        self.assertTrue(payload["paths"]["suggested_market_csv_path"].endswith("krw_xrp_15m.csv"))
+        self.assertTrue(payload["paths"]["suggested_market_csv_path"].endswith("krw_xrp_240m.csv"))
         self.assertIsNone(payload["latest_signal"])
         self.assertEqual(payload["chart"]["points"], [])
 

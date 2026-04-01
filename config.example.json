@@ -83,7 +83,7 @@
     "market": "KRW-BTC",
     "access_key": "${UPBIT_ACCESS_KEY}",
     "secret_key": "${UPBIT_SECRET_KEY}",
-    "candle_unit": 15,
+    "candle_unit": 240,
     "candle_count": 200,
     "request_timeout_seconds": 10.0,
     "max_retries": 2,

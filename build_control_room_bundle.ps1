@@ -127,7 +127,7 @@ $filesToCopy = @(
     "src/upbit_auto_trader/webui/app.js",
     "src/upbit_auto_trader/webui/index.html",
     "src/upbit_auto_trader/webui/styles.css",
-    "data/demo_krw_btc_15m.csv"
+    "data/demo_krw_btc_240m.csv"
 )
 
 if (Test-Path $ResolvedOutputDirectory) {

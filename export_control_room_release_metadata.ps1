@@ -120,7 +120,7 @@ $metadata = [pscustomobject]@{
         readme = (Test-Path $ReadmePath)
         config_example = (Test-Path (Join-Path $ProjectRoot "config.example.json"))
         env_example = (Test-Path (Join-Path $ProjectRoot ".env.example"))
-        demo_csv = (Test-Path (Join-Path $ProjectRoot "data\demo_krw_btc_15m.csv"))
+        demo_csv = (Test-Path (Join-Path $ProjectRoot "data\demo_krw_btc_240m.csv"))
         web_ui = (Test-Path (Join-Path $ProjectRoot "src\upbit_auto_trader\webui\index.html"))
     }
 }

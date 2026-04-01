@@ -13,7 +13,7 @@ $DefaultNodeExe = "C:\Program Files\nodejs\node.exe"
 $NodeExe = if ($env:NODE_EXE) { $env:NODE_EXE } else { $DefaultNodeExe }
 
 $ConfigPath = if ($env:CONFIG_PATH) { $env:CONFIG_PATH } else { "config.example.json" }
-$CsvPath = if ($env:CSV_PATH) { $env:CSV_PATH } else { "data/demo_krw_btc_15m.csv" }
+$CsvPath = if ($env:CSV_PATH) { $env:CSV_PATH } else { "data/demo_krw_btc_240m.csv" }
 $PaperStatePath = if ($env:PAPER_STATE_PATH) { $env:PAPER_STATE_PATH } else { "data/paper-state.json" }
 $SelectorStatePath = if ($env:SELECTOR_STATE_PATH) { $env:SELECTOR_STATE_PATH } else { "data/selector-state.json" }
 $LiveStatePath = if ($env:LIVE_STATE_PATH) { $env:LIVE_STATE_PATH } else { "data/live-state.json" }

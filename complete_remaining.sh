@@ -8,7 +8,7 @@ PYTHON_EXE="${PYTHON_EXE:-$ROOT_DIR/.venv/Scripts/python.exe}"
 NODE_EXE="${NODE_EXE:-/c/Program Files/nodejs/node.exe}"
 
 CONFIG_PATH="${CONFIG_PATH:-config.example.json}"
-CSV_PATH="${CSV_PATH:-data/demo_krw_btc_15m.csv}"
+CSV_PATH="${CSV_PATH:-data/demo_krw_btc_240m.csv}"
 PAPER_STATE_PATH="${PAPER_STATE_PATH:-data/paper-state.json}"
 SELECTOR_STATE_PATH="${SELECTOR_STATE_PATH:-data/selector-state.json}"
 LIVE_STATE_PATH="${LIVE_STATE_PATH:-data/live-state.json}"
