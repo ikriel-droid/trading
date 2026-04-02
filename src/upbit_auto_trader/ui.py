@@ -2437,6 +2437,9 @@ def _build_handler(
             if parsed.path == "/app.js":
                 self._serve_asset("app.js", "application/javascript; charset=utf-8")
                 return
+            if parsed.path == "/selector-status-ui.js":
+                self._serve_asset("selector-status-ui.js", "application/javascript; charset=utf-8")
+                return
             if parsed.path == "/api/dashboard":
                 self._write_json(
                     build_dashboard_payload(
