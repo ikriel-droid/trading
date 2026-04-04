@@ -96,7 +96,7 @@ class RotatingMarketSelector:
         candles = self._fetch_market_candles(market)
         return self._update_market_runtime_from_history(market, candles)
 
-    def _update_market_runtime_from_history(self, market: str, candles) -> tuple[Dict[str, Any], List[str]]:
+    def _update_market_runtime_from_history(self, market: str, candles, live_price: Optional[float] = None) -> tuple[Dict[str, Any], List[str]]:
         market_config = self._market_config(market)
         state_path = self._market_state_path(market)
         runtime = TradingRuntime(config=market_config, mode=self.mode, state_path=state_path, broker=self.broker)
@@ -134,6 +134,8 @@ class RotatingMarketSelector:
                 continue
             events.extend(runtime.process_candle(candle))
             last_timestamp = runtime.state.last_processed_timestamp
+        if self.mode == "live":
+            events.extend(runtime.check_live_market_exit(current_price=live_price))
         return runtime.summary(), events
 
     def _summary_has_active_engagement(self, summary: Optional[Dict[str, Any]]) -> bool:
@@ -289,6 +291,16 @@ class StreamingMarketSelector(RotatingMarketSelector):
 
         if self.state.active_market and market == self.state.active_market and payload_type.startswith("candle.") and updated_bar:
             active_summary, new_events = self._update_market_runtime_from_history(market, self.histories[market])
+            events.extend(new_events)
+            if not self._summary_has_active_engagement(active_summary):
+                self.state.active_market = ""
+
+        if self.state.active_market and market == self.state.active_market and payload_type == "ticker":
+            active_summary, new_events = self._update_market_runtime_from_history(
+                market,
+                self.histories.get(market, []),
+                live_price=float(payload.get("trade_price", 0.0) or 0.0),
+            )
             events.extend(new_events)
             if not self._summary_has_active_engagement(active_summary):
                 self.state.active_market = ""

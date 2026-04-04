@@ -121,11 +121,14 @@ class FakeLiveSelectorBroker(FakeBroker):
     def __init__(self):
         super().__init__()
         self.orders = []
+        self.current_trade_price = 121.8
+        self.base_balance = 0.0
+        self.ask_min_total = 5000.0
 
     def get_accounts(self):
         return [
             Balance(currency="KRW", balance=200000.0, locked=0.0, avg_buy_price=0.0, unit_currency="KRW"),
-            Balance(currency="BTC", balance=0.0, locked=0.0, avg_buy_price=0.0, unit_currency="KRW"),
+            Balance(currency="BTC", balance=self.base_balance, locked=0.0, avg_buy_price=0.0, unit_currency="KRW"),
         ]
 
     def list_open_orders(self, market=None, state=None, states=None, page=None, limit=None, order_by=None):
@@ -134,16 +137,22 @@ class FakeLiveSelectorBroker(FakeBroker):
     def get_order_chance(self, market):
         return {
             "bid_account": {"balance": "200000"},
-            "ask_account": {"balance": "0"},
+            "ask_account": {"balance": str(self.base_balance)},
             "market": {
                 "bid": {"min_total": "5000"},
-                "ask": {"min_total": "5000"},
+                "ask": {"min_total": str(self.ask_min_total)},
             },
         }
 
     def create_order(self, **kwargs):
         self.orders.append(kwargs)
         return {"uuid": "fake-live-selector-order"}
+
+    def get_ticker(self, markets):
+        payload = super().get_ticker(markets)
+        for item in payload:
+            item["trade_price"] = self.current_trade_price
+        return payload
 
 
 class ScannerSelectorTests(unittest.TestCase):
@@ -342,6 +351,81 @@ class ScannerSelectorTests(unittest.TestCase):
 
         self.assertEqual(second_result["active_market"], "KRW-BTC")
         self.assertEqual(len(live_broker.orders), 1)
+
+    def test_live_selector_exits_using_current_market_price_without_new_bar(self):
+        self.config.upbit.live_enabled = True
+        self.config.selector.include_markets = ["KRW-BTC"]
+        self.config.selector.use_trade_flow_filter = False
+        self.config.runtime.max_trades_per_day = 50
+        live_broker = FakeLiveSelectorBroker()
+        live_broker.current_trade_price = 106.0
+        live_broker.base_balance = 100.0
+        live_broker.ask_min_total = 1.0
+
+        state_path = pathlib.Path(self.config.selector.states_dir) / "KRW_BTC.json"
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(state_path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "market": "KRW-BTC",
+                    "cash": 205000.0,
+                    "peak_equity": 205000.0,
+                    "candle_unit": self.config.upbit.candle_unit,
+                    "history": [
+                        {
+                            "timestamp": "2026-03-26T09:00:00",
+                            "open": 100.0,
+                            "high": 100.0,
+                            "low": 100.0,
+                            "close": 100.0,
+                            "volume": 1000.0,
+                        }
+                    ],
+                    "last_processed_timestamp": "2026-03-26T09:00:00",
+                    "processed_bars": 1,
+                    "position": {
+                        "market": "KRW-BTC",
+                        "entry_timestamp": "2026-03-26T09:00:00",
+                        "entry_price": 100.0,
+                            "quantity": 100.0,
+                        "stop_loss": 95.0,
+                        "take_profit": 105.0,
+                        "trailing_stop": 98.0,
+                        "entry_score": 80.0,
+                    },
+                    "pending_order": None,
+                },
+                handle,
+                indent=2,
+            )
+        with open(self.selector_state, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "candle_unit": self.config.upbit.candle_unit,
+                    "active_market": "KRW-BTC",
+                    "cycle_count": 1,
+                    "last_selected_market": "KRW-BTC",
+                    "last_selected_score": 90.0,
+                    "last_scan_timestamp": "2026-03-26T09:00:00",
+                    "last_scan_results": [],
+                },
+                handle,
+                indent=2,
+            )
+
+        selector = RotatingMarketSelector(
+            config=self.config,
+            mode="live",
+            selector_state_path=str(self.selector_state),
+            broker=live_broker,
+        )
+
+        result = selector.run_cycle()
+
+        self.assertEqual(result["active_market"], "KRW-BTC")
+        self.assertTrue(any("LIVE ORDER_SUBMITTED SELL" in event for event in result["events"]))
+        self.assertEqual(len(live_broker.orders), 1)
+        self.assertEqual(live_broker.orders[0]["side"], "ask")
 
     def test_streaming_selector_activates_best_market_from_realtime_message(self):
         self.config.selector.include_markets = ["KRW-BTC", "KRW-XRP"]

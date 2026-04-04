@@ -58,6 +58,7 @@ class FakeLiveBroker:
         self.cancel_snapshot = cancel_snapshot
         self.cancelled_orders = []
         self.open_orders = []
+        self.current_trade_price = 100.0
 
     def get_order_chance(self, market):
         return {
@@ -120,6 +121,15 @@ class FakeLiveBroker:
             "paid_fee": "0",
             "trades": [],
         }
+
+    def get_ticker(self, markets):
+        return [
+            {
+                "market": market,
+                "trade_price": self.current_trade_price,
+            }
+            for market in markets
+        ]
 
 
 class RecordingNotifier:
@@ -362,6 +372,60 @@ class RuntimeLiveTests(unittest.TestCase):
             self.assertAlmostEqual(restored.state.position.quantity, 0.25)
             self.assertAlmostEqual(restored.state.position.entry_price, 100000.0)
             self.assertTrue(any("LIVE SYNC BUY_PROMOTED" in item for item in restored.state.events))
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+
+    def test_live_market_exit_uses_current_price_without_waiting_for_new_candle(self):
+        broker = FakeLiveBroker(quote_balance=205000.0, base_balance=100.0, ask_min_total=1.0)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-market-exit.json", broker)
+        try:
+            payload = {
+                "market": "KRW-BTC",
+                "cash": 205000.0,
+                "peak_equity": 205000.0,
+                "candle_unit": runtime.config.upbit.candle_unit,
+                "history": [
+                    {
+                        "timestamp": "2026-03-26T09:00:00",
+                        "open": 100.0,
+                        "high": 100.0,
+                        "low": 100.0,
+                        "close": 100.0,
+                        "volume": 1000.0,
+                    }
+                ],
+                "last_processed_timestamp": "2026-03-26T09:00:00",
+                "processed_bars": 1,
+                "position": {
+                    "market": "KRW-BTC",
+                    "entry_timestamp": "2026-03-26T09:00:00",
+                    "entry_price": 100.0,
+                    "quantity": 100.0,
+                    "stop_loss": 95.0,
+                    "take_profit": 105.0,
+                    "trailing_stop": 98.0,
+                    "entry_score": 80.0,
+                },
+                "pending_order": None,
+            }
+            with open(state_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
+
+            restored = TradingRuntime(config=runtime.config, mode="live", state_path=state_path, broker=broker)
+            restored.bootstrap([])
+            broker.current_trade_price = 106.0
+
+            events = restored.check_live_market_exit()
+
+            self.assertTrue(any("LIVE ORDER_SUBMITTED SELL" in item for item in events))
+            self.assertIsNotNone(restored.state.pending_order)
+            self.assertEqual(restored.state.pending_order.side, "ask")
+            self.assertEqual(len(broker.orders), 1)
+            self.assertEqual(broker.orders[0]["side"], "ask")
+            self.assertEqual(broker.orders[0]["ord_type"], "market")
         finally:
             if state_path.exists():
                 state_path.unlink()

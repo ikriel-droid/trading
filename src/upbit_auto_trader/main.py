@@ -675,6 +675,8 @@ def _run_live_daemon(
             processed_candles += 1
             last_timestamp = runtime.state.last_processed_timestamp
 
+        cycle_events.extend(runtime.check_live_market_exit())
+
         loops += 1
         _print_json(
             {

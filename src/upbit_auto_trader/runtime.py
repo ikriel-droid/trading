@@ -281,6 +281,54 @@ class TradingRuntime:
         self._save_state()
         return new_events
 
+    def check_live_market_exit(self, current_price: Optional[float] = None, timestamp: Optional[str] = None) -> List[str]:
+        if self.state is None:
+            raise ValueError("runtime must be bootstrapped before check_live_market_exit")
+        if self.mode != "live":
+            return []
+        if self.broker is None:
+            raise ValueError("live mode requires broker")
+        if self.state.position is None or self.state.pending_order is not None:
+            return []
+
+        market_price = current_price
+        if market_price is None:
+            ticker_payload = self.broker.get_ticker([self.config.market])
+            if not ticker_payload:
+                return []
+            market_price = float(ticker_payload[0].get("trade_price", 0.0))
+        if market_price <= 0:
+            return []
+
+        history = list(self.state.history)
+        atr_values = atr(history, self.config.risk.atr_period)
+        atr_value = atr_values[-1] or (market_price * self.config.risk.minimum_stop_fraction)
+        previous_trailing_stop = float(self.state.position.trailing_stop)
+        self._update_trailing_stop(self.state.position, market_price, atr_value)
+
+        event_timestamp = timestamp or datetime.now(timezone.utc).isoformat()
+        synthetic_candle = Candle(
+            timestamp=event_timestamp,
+            open=market_price,
+            high=market_price,
+            low=market_price,
+            close=market_price,
+            volume=0.0,
+        )
+        exit_result = self._maybe_exit_position(synthetic_candle, history, allow_strategy_exit=False)
+
+        changed = exit_result is not None or self.state.position.trailing_stop != previous_trailing_stop
+        if not changed:
+            return []
+
+        events: List[str] = []
+        if exit_result is not None:
+            events.append(exit_result)
+            self.state.events.append(exit_result)
+            self.state.events = self.state.events[-500:]
+        self._save_state()
+        return events
+
     def summary(self) -> Dict[str, Any]:
         if self.state is None:
             raise ValueError("runtime must be bootstrapped before summary")
@@ -583,7 +631,7 @@ class TradingRuntime:
         )
         return event
 
-    def _maybe_exit_position(self, candle: Candle, history: List[Candle]) -> Optional[str]:
+    def _maybe_exit_position(self, candle: Candle, history: List[Candle], allow_strategy_exit: bool = True) -> Optional[str]:
         position = self.state.position
         if position is None:
             return None
@@ -601,7 +649,7 @@ class TradingRuntime:
         elif candle.high >= position.take_profit:
             exit_reason = "take_profit"
             raw_exit_price = position.take_profit
-        else:
+        elif allow_strategy_exit:
             signal = self.strategy.evaluate(history, position)
             self.state.last_signal = self._serialize_signal(signal, candle.timestamp)
             if signal.action == Action.SELL and not self._is_duplicate_order("SELL", candle.timestamp):
