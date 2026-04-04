@@ -16,6 +16,7 @@ data/*.pid
 data/*.bak
 data/live_*.csv
 data/webui-jobs/
+data/selector-states/
 data/strategy-presets/*
 data/operator-profiles/*
 data/session-reports/

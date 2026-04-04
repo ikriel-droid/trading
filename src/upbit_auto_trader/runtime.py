@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, time as datetime_time, timezone
 from typing import Any, Dict, List, Optional
@@ -19,6 +20,7 @@ class RuntimeState:
     market: str
     cash: float
     peak_equity: float
+    candle_unit: int = 0
     history: List[Candle] = field(default_factory=list)
     position: Optional[Position] = None
     closed_trades: List[ClosedTrade] = field(default_factory=list)
@@ -55,6 +57,7 @@ class TradingRuntime:
         self.risk = RiskManager(config.risk)
         self.notifier = notifier or DiscordWebhookNotifier(config.notifications)
         self.state = None
+        self._state_restore_notice = ""
 
     def bootstrap(self, warmup_candles: List[Candle]) -> RuntimeState:
         existing = self._load_state()
@@ -79,8 +82,12 @@ class TradingRuntime:
             market=self.config.market,
             cash=self.config.initial_cash,
             peak_equity=self.config.initial_cash,
+            candle_unit=self.config.upbit.candle_unit,
             history=list(warmup_candles)[-self.config.runtime.max_history :],
         )
+        if self._state_restore_notice:
+            state.events.append(self._state_restore_notice)
+            state.events = state.events[-500:]
         if self.mode == "live":
             self._prime_live_state_cursor(state)
             self._sync_live_state(state, is_new_state=True)
@@ -963,11 +970,13 @@ class TradingRuntime:
         return event
 
     def _load_state(self) -> Optional[RuntimeState]:
+        self._state_restore_notice = ""
         state_candidates = [
             (self.state_path, False),
             (self._backup_state_path(), True),
         ]
         last_error = None
+        saw_resettable_mismatch = False
 
         for candidate_path, is_backup in state_candidates:
             if not os.path.exists(candidate_path):
@@ -976,6 +985,15 @@ class TradingRuntime:
                 with open(candidate_path, "r", encoding="utf-8-sig") as handle:
                     payload = json.load(handle)
                 state = self._runtime_state_from_payload(payload)
+                mismatch_reason = self._state_config_mismatch_reason(state)
+                if mismatch_reason:
+                    self._state_restore_notice = "STATE RESET reason={0} path={1}".format(
+                        mismatch_reason,
+                        candidate_path,
+                    )
+                    last_error = ValueError(mismatch_reason)
+                    saw_resettable_mismatch = True
+                    continue
                 if is_backup:
                     state.events.append("STATE RECOVERED source=backup path={0}".format(candidate_path))
                     state.events = state.events[-500:]
@@ -985,6 +1003,8 @@ class TradingRuntime:
                 continue
 
         if last_error is not None:
+            if saw_resettable_mismatch:
+                return None
             raise ValueError("state restore failed for {0}: {1}".format(self.state_path, last_error))
         return None
 
@@ -993,6 +1013,7 @@ class TradingRuntime:
             market=payload["market"],
             cash=float(payload["cash"]),
             peak_equity=float(payload["peak_equity"]),
+            candle_unit=int(payload.get("candle_unit", 0)),
             history=[self._deserialize_candle(item) for item in payload.get("history", [])],
             position=self._deserialize_position(payload.get("position")),
             closed_trades=[self._deserialize_trade(item) for item in payload.get("closed_trades", [])],
@@ -1018,6 +1039,7 @@ class TradingRuntime:
             "market": self.state.market,
             "cash": self.state.cash,
             "peak_equity": self.state.peak_equity,
+            "candle_unit": self.config.upbit.candle_unit,
             "history": [self._serialize_candle(candle) for candle in self.state.history[-self.config.runtime.max_history :]],
             "position": self._serialize_position(self.state.position),
             "pending_order": self._serialize_pending_order(self.state.pending_order),
@@ -1049,6 +1071,53 @@ class TradingRuntime:
 
     def _backup_state_path(self) -> str:
         return self.state_path + ".bak"
+
+    def _state_config_mismatch_reason(self, state: RuntimeState) -> str:
+        if state.market != self.config.market:
+            return "market_mismatch expected={0} actual={1}".format(self.config.market, state.market)
+
+        state_candle_unit = self._state_candle_unit(state)
+        expected_candle_unit = int(self.config.upbit.candle_unit)
+        if state_candle_unit and state_candle_unit != expected_candle_unit:
+            return "candle_unit_mismatch expected={0} actual={1}".format(
+                expected_candle_unit,
+                state_candle_unit,
+            )
+        return ""
+
+    def _state_candle_unit(self, state: RuntimeState) -> int:
+        if state.candle_unit > 0:
+            return int(state.candle_unit)
+        return self._infer_history_candle_unit(state.history)
+
+    def _infer_history_candle_unit(self, history: List[Candle]) -> int:
+        if len(history) < 2:
+            return 0
+
+        deltas: List[int] = []
+        previous_timestamp = None
+        for candle in history[-50:]:
+            current_timestamp = self._parse_candle_timestamp(candle.timestamp)
+            if current_timestamp is None:
+                continue
+            if previous_timestamp is not None:
+                delta_minutes = int(round((current_timestamp - previous_timestamp).total_seconds() / 60.0))
+                if delta_minutes > 0:
+                    deltas.append(delta_minutes)
+            previous_timestamp = current_timestamp
+
+        if not deltas:
+            return 0
+
+        return Counter(deltas).most_common(1)[0][0]
+
+    def _parse_candle_timestamp(self, timestamp: str) -> Optional[datetime]:
+        if not timestamp:
+            return None
+        try:
+            return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return None
 
     def _write_backup_state(self) -> None:
         backup_path = self._backup_state_path()

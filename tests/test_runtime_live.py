@@ -197,6 +197,51 @@ class RuntimeLiveTests(unittest.TestCase):
             if backup_path.exists():
                 backup_path.unlink()
 
+    def test_live_bootstrap_resets_state_when_candle_unit_mismatches(self):
+        broker = FakeLiveBroker(quote_balance=123456.78, base_balance=0.0)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-unit-reset.json", broker)
+        try:
+            stale_payload = {
+                "market": "KRW-BTC",
+                "cash": 500000.0,
+                "peak_equity": 500000.0,
+                "history": [
+                    {
+                        "timestamp": "2026-03-26T09:00:00",
+                        "open": 100.0,
+                        "high": 100.0,
+                        "low": 100.0,
+                        "close": 100.0,
+                        "volume": 1000.0,
+                    },
+                    {
+                        "timestamp": "2026-03-26T09:15:00",
+                        "open": 101.0,
+                        "high": 101.0,
+                        "low": 101.0,
+                        "close": 101.0,
+                        "volume": 1000.0,
+                    },
+                ],
+                "last_processed_timestamp": "2026-03-26T09:15:00",
+                "processed_bars": 2,
+            }
+            with open(state_path, "w", encoding="utf-8") as handle:
+                json.dump(stale_payload, handle, indent=2)
+
+            runtime.strategy = FakeStrategy({})
+            runtime.bootstrap([self.make_candle("2026-03-26T13:00:00", 120.0)])
+
+            self.assertEqual(runtime.state.candle_unit, runtime.config.upbit.candle_unit)
+            self.assertEqual(runtime.state.history[-1].timestamp, "2026-03-26T13:00:00")
+            self.assertEqual(runtime.state.last_processed_timestamp, "2026-03-26T13:00:00")
+            self.assertTrue(any("STATE RESET reason=candle_unit_mismatch" in item for item in runtime.state.events))
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+
     def test_live_recenter_skips_historical_catchup_candles(self):
         broker = FakeLiveBroker(quote_balance=123456.78, base_balance=0.0)
         runtime, state_path, backup_path = self.build_runtime("test-runtime-live-recenter.json", broker)
