@@ -860,6 +860,14 @@ function renderPresets(presetPayload) {
   ids.presetSelect.value = nextValue;
 }
 
+function assignOptionalNumber(target, key, rawValue) {
+  const normalized = String(rawValue ?? "").trim();
+  if (!normalized) {
+    return;
+  }
+  target[key] = Number(normalized);
+}
+
 function renderProfiles(profilePayload) {
   const items = profilePayload?.items || [];
   ids.profiles.textContent = pretty(profilePayload || { dir: "", items: [] });
@@ -1551,15 +1559,15 @@ async function cleanupJobs() {
 async function saveConfig() {
   try {
     ids.config.textContent = "설정을 저장하고 있습니다...";
-    const payload = await postJson("/api/config-save", {
-      "strategy.buy_threshold": Number(ids.cfgBuyThreshold.value || "0"),
-      "strategy.sell_threshold": Number(ids.cfgSellThreshold.value || "0"),
-      "strategy.min_adx": Number(ids.cfgMinAdx.value || "0"),
-      "strategy.min_bollinger_width_fraction": Number(ids.cfgMinBbWidth.value || "0"),
-      "strategy.volume_spike_multiplier": Number(ids.cfgVolumeSpike.value || "0"),
-      "runtime.poll_seconds": Number(ids.cfgPollSeconds.value || "0"),
-      "selector.max_markets": Number(ids.cfgSelectorMaxMarkets.value || "0"),
-    });
+    const request = {};
+    assignOptionalNumber(request, "strategy.buy_threshold", ids.cfgBuyThreshold.value);
+    assignOptionalNumber(request, "strategy.sell_threshold", ids.cfgSellThreshold.value);
+    assignOptionalNumber(request, "strategy.min_adx", ids.cfgMinAdx.value);
+    assignOptionalNumber(request, "strategy.min_bollinger_width_fraction", ids.cfgMinBbWidth.value);
+    assignOptionalNumber(request, "strategy.volume_spike_multiplier", ids.cfgVolumeSpike.value);
+    assignOptionalNumber(request, "runtime.poll_seconds", ids.cfgPollSeconds.value);
+    assignOptionalNumber(request, "selector.max_markets", ids.cfgSelectorMaxMarkets.value);
+    const payload = await postJson("/api/config-save", request);
     ids.config.textContent = pretty(payload);
     await refreshDashboard();
   } catch (error) {
@@ -1570,14 +1578,14 @@ async function saveConfig() {
 async function saveLiveConfig() {
   try {
     ids.liveControlStatus.textContent = "실거래 설정을 저장하고 있습니다...";
-    const payload = await postJson("/api/config-save", {
-      "strategy.buy_threshold": Number(ids.liveCfgBuyThreshold.value || "0"),
-      "strategy.sell_threshold": Number(ids.liveCfgSellThreshold.value || "0"),
-      "risk.max_position_fraction": Number(ids.liveCfgMaxPositionFraction.value || "0"),
-      "runtime.max_trades_per_day": Number(ids.liveCfgMaxTradesPerDay.value || "0"),
-      "selector.max_markets": Number(ids.liveCfgSelectorMaxMarkets.value || "0"),
-      "selector.include_markets": ids.liveCfgIncludeMarkets.value.trim(),
-    });
+    const request = {};
+    assignOptionalNumber(request, "strategy.buy_threshold", ids.liveCfgBuyThreshold.value);
+    assignOptionalNumber(request, "strategy.sell_threshold", ids.liveCfgSellThreshold.value);
+    assignOptionalNumber(request, "risk.max_position_fraction", ids.liveCfgMaxPositionFraction.value);
+    assignOptionalNumber(request, "runtime.max_trades_per_day", ids.liveCfgMaxTradesPerDay.value);
+    assignOptionalNumber(request, "selector.max_markets", ids.liveCfgSelectorMaxMarkets.value);
+    request["selector.include_markets"] = ids.liveCfgIncludeMarkets.value.trim();
+    const payload = await postJson("/api/config-save", request);
     ids.liveControlStatus.textContent = "실거래 설정을 저장했습니다. 준비 다시 확인 후 시작하면 됩니다.";
     ids.liveControlJson.textContent = pretty(payload);
     await refreshDashboard();
