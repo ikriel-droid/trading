@@ -1548,6 +1548,16 @@ def load_selector_summary(config_path: str, selector_state_path: Optional[str], 
     with open(resolved_state_path, "r", encoding="utf-8-sig") as handle:
         payload = json.load(handle)
 
+    config = load_config(config_path)
+    include_markets = list(config.selector.include_markets)
+    scan_results = list(payload.get("last_scan_results", []))
+    if include_markets:
+        include_market_set = set(include_markets)
+        scan_results = [
+            item for item in scan_results
+            if str(item.get("market", "")) in include_market_set
+        ]
+
     active_market = payload.get("active_market", "")
     active_market_summary = None
     if active_market:
@@ -1567,7 +1577,7 @@ def load_selector_summary(config_path: str, selector_state_path: Optional[str], 
         "last_selected_market": payload.get("last_selected_market", ""),
         "last_selected_score": float(payload.get("last_selected_score", 0.0)),
         "last_scan_timestamp": payload.get("last_scan_timestamp", ""),
-        "last_scan_results": list(payload.get("last_scan_results", []))[:6],
+        "last_scan_results": scan_results[:6],
         "active_market_summary": active_market_summary,
         "active_market_activity": _build_recent_activity(active_runtime),
         "active_market_chart": _build_runtime_chart(active_runtime),

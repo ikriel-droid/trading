@@ -520,6 +520,28 @@ class UiTests(unittest.TestCase):
         self.assertEqual(payload["selector_summary"]["active_market"], "KRW-BTC")
         self.assertIsNotNone(payload["selector_summary"]["active_market_summary"])
 
+    def test_build_dashboard_payload_filters_selector_results_to_include_markets(self):
+        with open(self.temp_config_path, "r", encoding="utf-8") as handle:
+            temp_config = json.load(handle)
+        temp_config["selector"]["include_markets"] = ["KRW-BTC"]
+        with open(self.temp_config_path, "w", encoding="utf-8") as handle:
+            json.dump(temp_config, handle, indent=2)
+            handle.write("\n")
+
+        payload = build_dashboard_payload(
+            config_path=str(self.temp_config_path),
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="live",
+            job_manager=BackgroundJobManager(),
+        )
+
+        self.assertEqual(
+            [item["market"] for item in payload["selector_summary"]["last_scan_results"]],
+            ["KRW-BTC"],
+        )
+
     def test_build_dashboard_payload_includes_live_control(self):
         self.live_readiness_path.write_text(
             json.dumps({"blockers": ["access_key_missing"]}, indent=2),
