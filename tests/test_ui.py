@@ -183,6 +183,7 @@ class UiTests(unittest.TestCase):
         self.state_path = PROJECT_ROOT / "data" / "test-ui-state.json"
         self.state_backup_path = pathlib.Path(str(self.state_path) + ".bak")
         self.selector_state_path = PROJECT_ROOT / "data" / "test-ui-selector-state.json"
+        self.selector_state_bom_path = PROJECT_ROOT / "data" / "test-ui-selector-state-bom.json"
         self.selector_market_state_path = PROJECT_ROOT / "data" / "selector-states" / "KRW_BTC.json"
         self.preset_dir = PROJECT_ROOT / "data" / "strategy-presets"
         self.profile_dir = PROJECT_ROOT / "data" / "operator-profiles"
@@ -219,6 +220,8 @@ class UiTests(unittest.TestCase):
             self.state_backup_path.unlink()
         if self.selector_state_path.exists():
             self.selector_state_path.unlink()
+        if self.selector_state_bom_path.exists():
+            self.selector_state_bom_path.unlink()
         if self.selector_market_state_path.exists():
             self.selector_market_state_path.unlink()
         if self.temp_config_path.exists():
@@ -343,6 +346,8 @@ class UiTests(unittest.TestCase):
             self.state_backup_path.unlink()
         if self.selector_state_path.exists():
             self.selector_state_path.unlink()
+        if self.selector_state_bom_path.exists():
+            self.selector_state_bom_path.unlink()
         if self.selector_market_state_path.exists():
             self.selector_market_state_path.unlink()
         if self.temp_config_path.exists():
@@ -490,6 +495,30 @@ class UiTests(unittest.TestCase):
         self.assertEqual(payload["app"]["mode"], "live")
         self.assertIsNotNone(payload["selector_summary"]["active_market_summary"])
         self.assertEqual(payload["selector_summary"]["active_market_summary"]["mode"], "live")
+
+    def test_build_dashboard_payload_reads_selector_state_with_bom(self):
+        bom_selector_state_path = self.selector_state_bom_path
+        bom_selector_runtime_path = self.selector_market_state_path
+        bom_selector_state_path.write_text(
+            self.selector_state_path.read_text(encoding="utf-8"),
+            encoding="utf-8-sig",
+        )
+        bom_selector_runtime_path.write_text(
+            self.selector_market_state_path.read_text(encoding="utf-8"),
+            encoding="utf-8-sig",
+        )
+
+        payload = build_dashboard_payload(
+            config_path=self.config_path,
+            state_path=str(self.state_path),
+            selector_state_path=str(bom_selector_state_path),
+            csv_path=self.csv_path,
+            mode="live",
+            job_manager=BackgroundJobManager(),
+        )
+
+        self.assertEqual(payload["selector_summary"]["active_market"], "KRW-BTC")
+        self.assertIsNotNone(payload["selector_summary"]["active_market_summary"])
 
     def test_build_dashboard_payload_includes_live_control(self):
         self.live_readiness_path.write_text(

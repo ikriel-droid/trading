@@ -145,7 +145,7 @@ class RotatingMarketSelector:
     def _load_state(self) -> SelectorState:
         if not os.path.exists(self.selector_state_path):
             return SelectorState()
-        with open(self.selector_state_path, "r", encoding="utf-8") as handle:
+        with open(self.selector_state_path, "r", encoding="utf-8-sig") as handle:
             payload = json.load(handle)
         return SelectorState(
             active_market=payload.get("active_market", ""),

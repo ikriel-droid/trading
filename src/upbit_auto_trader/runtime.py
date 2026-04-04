@@ -973,7 +973,7 @@ class TradingRuntime:
             if not os.path.exists(candidate_path):
                 continue
             try:
-                with open(candidate_path, "r", encoding="utf-8") as handle:
+                with open(candidate_path, "r", encoding="utf-8-sig") as handle:
                     payload = json.load(handle)
                 state = self._runtime_state_from_payload(payload)
                 if is_backup:

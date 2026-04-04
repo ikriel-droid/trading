@@ -1545,7 +1545,7 @@ def load_selector_summary(config_path: str, selector_state_path: Optional[str], 
             "active_market_chart": {"points": [], "markers": []},
         }
 
-    with open(resolved_state_path, "r", encoding="utf-8") as handle:
+    with open(resolved_state_path, "r", encoding="utf-8-sig") as handle:
         payload = json.load(handle)
 
     active_market = payload.get("active_market", "")
