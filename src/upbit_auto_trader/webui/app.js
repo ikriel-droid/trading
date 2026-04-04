@@ -704,12 +704,33 @@ function renderSelectorSummary(selectorPayload) {
     return;
   }
   const lastScan = selectorPayload.last_scan_results || [];
-  ids.selectorSummary.innerHTML = buildFactGrid([
+  const position = selectorPayload.active_market_summary?.position || null;
+  const summaryGrid = buildFactGrid([
     factCard("현재 선택 종목", selectorPayload.active_market || "없음"),
     factCard("후보 종목 수", formatNumber(lastScan.length, 0)),
     factCard("최근 스캔 시각", compactTimestamp(selectorPayload.last_scan_timestamp || "")),
     factCard("자동 선택 상태", selectorPayload.active_market ? "선택 중" : "대기 중"),
   ]);
+  const positionSummary = position ? `
+    <div class="position-plan-card">
+      <p class="position-plan-eyebrow">현재 포지션 자동 매도 기준</p>
+      <h3>${escapeXml(selectorPayload.active_market || position.market || "현재 종목")} 보유 중일 때 이 기준으로 자동 매도합니다.</h3>
+      <div class="fact-grid">
+        ${factCard("평균단가", formatCurrency(position.entry_price || 0))}
+        ${factCard("보유 수량", formatNumber(position.quantity || 0, 8))}
+        ${factCard("손절가", formatCurrency(position.stop_loss || 0))}
+        ${factCard("익절가", formatCurrency(position.take_profit || 0))}
+        ${factCard("추적 손절가", formatCurrency(position.trailing_stop || 0))}
+        ${factCard("현재 상태", "보유 중", "success")}
+      </div>
+      <ul class="position-plan-list">
+        <li><strong>손절</strong> 4시간봉 저가가 <strong>${escapeXml(formatCurrency(position.stop_loss || 0))}</strong> 이하로 내려가면 자동 매도</li>
+        <li><strong>익절</strong> 4시간봉 고가가 <strong>${escapeXml(formatCurrency(position.take_profit || 0))}</strong> 이상 올라가면 자동 매도</li>
+        <li><strong>추적 손절</strong> 오른 뒤 다시 <strong>${escapeXml(formatCurrency(position.trailing_stop || 0))}</strong> 이하로 밀리면 자동 매도</li>
+      </ul>
+    </div>
+  ` : "";
+  ids.selectorSummary.innerHTML = `${summaryGrid}${positionSummary}`;
 }
 
 function renderSelectorActiveSummary(summary) {
