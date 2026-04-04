@@ -231,6 +231,61 @@ class ScannerSelectorTests(unittest.TestCase):
         self.assertEqual(selector.state.last_selected_market, "")
         self.assertIn("candle_unit_mismatch", selector._state_restore_notice)
 
+    def test_selector_recovers_from_stale_market_runtime_state(self):
+        self.config.selector.include_markets = ["KRW-BTC", "KRW-XRP"]
+        self.config.selector.use_trade_flow_filter = False
+        states_dir = pathlib.Path(self.config.selector.states_dir)
+        states_dir.mkdir(parents=True, exist_ok=True)
+        stale_market_state = states_dir / "KRW_BTC.json"
+        with open(stale_market_state, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "market": "KRW-BTC",
+                    "cash": 100000.0,
+                    "peak_equity": 100000.0,
+                    "history": [
+                        {
+                            "timestamp": "2026-03-26T00:00:00",
+                            "open": 100.0,
+                            "high": 100.0,
+                            "low": 100.0,
+                            "close": 100.0,
+                            "volume": 1000.0,
+                        },
+                        {
+                            "timestamp": "2026-03-26T00:15:00",
+                            "open": 101.0,
+                            "high": 101.0,
+                            "low": 101.0,
+                            "close": 101.0,
+                            "volume": 1000.0,
+                        },
+                    ],
+                    "last_processed_timestamp": "2026-03-26T00:15:00",
+                    "processed_bars": 2,
+                    "position": None,
+                    "pending_order": None,
+                },
+                handle,
+                indent=2,
+            )
+
+        selector = RotatingMarketSelector(
+            config=self.config,
+            mode="paper",
+            selector_state_path=str(self.selector_state),
+            broker=self.broker,
+        )
+
+        result = selector.run_cycle()
+
+        self.assertEqual(result["active_market"], "KRW-BTC")
+        self.assertIsNotNone(result["active_summary"])
+        with open(stale_market_state, "r", encoding="utf-8") as handle:
+            restored_payload = json.load(handle)
+        self.assertEqual(restored_payload["candle_unit"], self.config.upbit.candle_unit)
+        self.assertTrue(any("PAPER BUY KRW-BTC" in event for event in result["events"]))
+
     def test_streaming_selector_activates_best_market_from_realtime_message(self):
         self.config.selector.include_markets = ["KRW-BTC", "KRW-XRP"]
         selector = StreamingMarketSelector(

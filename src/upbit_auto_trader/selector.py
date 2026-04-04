@@ -102,18 +102,21 @@ class RotatingMarketSelector:
         runtime = TradingRuntime(config=market_config, mode=self.mode, state_path=state_path, broker=self.broker)
         minimum_history = runtime.strategy.minimum_history()
 
-        if os.path.exists(state_path):
-            runtime.bootstrap([])
-        else:
-            if len(candles) < minimum_history:
-                raise ValueError(
-                    "market {0} has insufficient candles: need {1}, got {2}".format(
-                        market,
-                        minimum_history,
-                        len(candles),
-                    )
+        if len(candles) < minimum_history:
+            raise ValueError(
+                "market {0} has insufficient candles: need {1}, got {2}".format(
+                    market,
+                    minimum_history,
+                    len(candles),
                 )
-            runtime.bootstrap(candles[:minimum_history])
+            )
+
+        # Always pass warmup candles. If the saved runtime state is still valid,
+        # TradingRuntime.bootstrap will restore it and ignore the warmup data.
+        # If the saved state is stale (for example an older candle unit), the
+        # same warmup data lets the runtime recover immediately instead of
+        # failing with an empty bootstrap.
+        runtime.bootstrap(candles[:minimum_history])
 
         events = []
         last_timestamp = runtime.state.last_processed_timestamp
