@@ -119,6 +119,14 @@ class RotatingMarketSelector:
         runtime.bootstrap(candles[:minimum_history])
 
         events = []
+        if self.mode == "live":
+            # In live mode we must never replay historical bars as if they were
+            # fresh signals. Recenter to the latest visible candle so the next
+            # cycle only reacts to genuinely new 4h bars after startup/recovery.
+            recenter = runtime.recenter_live_state_to_latest_candles(candles)
+            if recenter.get("recentered") and recenter.get("event"):
+                events.append(recenter["event"])
+
         last_timestamp = runtime.state.last_processed_timestamp
         for candle in candles:
             if last_timestamp and candle.timestamp <= last_timestamp:

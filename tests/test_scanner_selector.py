@@ -10,6 +10,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from upbit_auto_trader.config import load_config  # noqa: E402
+from upbit_auto_trader.models import Balance  # noqa: E402
 from upbit_auto_trader.scanner import MarketScanner  # noqa: E402
 from upbit_auto_trader.selector import RotatingMarketSelector, StreamingMarketSelector  # noqa: E402
 from upbit_auto_trader.websocket_client import build_selector_stream_subscription  # noqa: E402
@@ -114,6 +115,35 @@ class FakeBroker:
 
     def get_ticker(self, markets):
         return [self.tickers[market] for market in markets]
+
+
+class FakeLiveSelectorBroker(FakeBroker):
+    def __init__(self):
+        super().__init__()
+        self.orders = []
+
+    def get_accounts(self):
+        return [
+            Balance(currency="KRW", balance=200000.0, locked=0.0, avg_buy_price=0.0, unit_currency="KRW"),
+            Balance(currency="BTC", balance=0.0, locked=0.0, avg_buy_price=0.0, unit_currency="KRW"),
+        ]
+
+    def list_open_orders(self, market=None, state=None, states=None, page=None, limit=None, order_by=None):
+        return []
+
+    def get_order_chance(self, market):
+        return {
+            "bid_account": {"balance": "200000"},
+            "ask_account": {"balance": "0"},
+            "market": {
+                "bid": {"min_total": "5000"},
+                "ask": {"min_total": "5000"},
+            },
+        }
+
+    def create_order(self, **kwargs):
+        self.orders.append(kwargs)
+        return {"uuid": "fake-live-selector-order"}
 
 
 class ScannerSelectorTests(unittest.TestCase):
@@ -285,6 +315,26 @@ class ScannerSelectorTests(unittest.TestCase):
             restored_payload = json.load(handle)
         self.assertEqual(restored_payload["candle_unit"], self.config.upbit.candle_unit)
         self.assertTrue(any("PAPER BUY KRW-BTC" in event for event in result["events"]))
+
+    def test_live_selector_recenters_instead_of_replaying_historical_bars(self):
+        self.config.upbit.live_enabled = True
+        self.config.selector.include_markets = ["KRW-BTC", "KRW-XRP"]
+        self.config.selector.use_trade_flow_filter = False
+        self.config.runtime.max_trades_per_day = 50
+        live_broker = FakeLiveSelectorBroker()
+
+        selector = RotatingMarketSelector(
+            config=self.config,
+            mode="live",
+            selector_state_path=str(self.selector_state),
+            broker=live_broker,
+        )
+
+        result = selector.run_cycle()
+
+        self.assertEqual(result["active_market"], "")
+        self.assertTrue(any("LIVE STARTUP RECENTERED KRW-BTC" in event for event in result["events"]))
+        self.assertEqual(live_broker.orders, [])
 
     def test_streaming_selector_activates_best_market_from_realtime_message(self):
         self.config.selector.include_markets = ["KRW-BTC", "KRW-XRP"]
