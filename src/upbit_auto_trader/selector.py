@@ -41,7 +41,7 @@ class RotatingMarketSelector:
 
         if self.state.active_market:
             active_summary, events = self._update_market_runtime(self.state.active_market)
-            if active_summary["position"] is None:
+            if not self._summary_has_active_engagement(active_summary):
                 self.state.active_market = ""
 
         if not self.state.active_market:
@@ -56,7 +56,7 @@ class RotatingMarketSelector:
                 self.state.last_selected_score = selected.score
                 active_summary, new_events = self._update_market_runtime(selected.market)
                 events.extend(new_events)
-                if active_summary["position"] is not None:
+                if self._summary_has_active_engagement(active_summary):
                     self.state.active_market = selected.market
                 else:
                     self.state.active_market = ""
@@ -126,6 +126,7 @@ class RotatingMarketSelector:
             recenter = runtime.recenter_live_state_to_latest_candles(candles)
             if recenter.get("recentered") and recenter.get("event"):
                 events.append(recenter["event"])
+            events.extend(runtime.evaluate_startup_latest_candle_once(candles[-1]))
 
         last_timestamp = runtime.state.last_processed_timestamp
         for candle in candles:
@@ -134,6 +135,11 @@ class RotatingMarketSelector:
             events.extend(runtime.process_candle(candle))
             last_timestamp = runtime.state.last_processed_timestamp
         return runtime.summary(), events
+
+    def _summary_has_active_engagement(self, summary: Optional[Dict[str, Any]]) -> bool:
+        if not summary:
+            return False
+        return summary.get("position") is not None or summary.get("pending_order") is not None
 
     def _fetch_market_candles(self, market: str):
         fetch_count = max(self.config.upbit.candle_count, self.scanner.strategy.minimum_history() + 5)
@@ -284,7 +290,7 @@ class StreamingMarketSelector(RotatingMarketSelector):
         if self.state.active_market and market == self.state.active_market and payload_type.startswith("candle.") and updated_bar:
             active_summary, new_events = self._update_market_runtime_from_history(market, self.histories[market])
             events.extend(new_events)
-            if active_summary["position"] is None:
+            if not self._summary_has_active_engagement(active_summary):
                 self.state.active_market = ""
 
         if not self.state.active_market and payload_type.startswith("candle.") and updated_bar:
@@ -300,7 +306,7 @@ class StreamingMarketSelector(RotatingMarketSelector):
                     self.histories[selected.market],
                 )
                 events.extend(new_events)
-                if active_summary["position"] is not None:
+                if self._summary_has_active_engagement(active_summary):
                     self.state.active_market = selected.market
                 else:
                     self.state.active_market = ""

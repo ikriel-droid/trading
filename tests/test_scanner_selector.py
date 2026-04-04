@@ -316,7 +316,7 @@ class ScannerSelectorTests(unittest.TestCase):
         self.assertEqual(restored_payload["candle_unit"], self.config.upbit.candle_unit)
         self.assertTrue(any("PAPER BUY KRW-BTC" in event for event in result["events"]))
 
-    def test_live_selector_recenters_instead_of_replaying_historical_bars(self):
+    def test_live_selector_enters_from_latest_confirmed_bar_without_replaying_history(self):
         self.config.upbit.live_enabled = True
         self.config.selector.include_markets = ["KRW-BTC", "KRW-XRP"]
         self.config.selector.use_trade_flow_filter = False
@@ -332,9 +332,16 @@ class ScannerSelectorTests(unittest.TestCase):
 
         result = selector.run_cycle()
 
-        self.assertEqual(result["active_market"], "")
+        self.assertEqual(result["active_market"], "KRW-BTC")
         self.assertTrue(any("LIVE STARTUP RECENTERED KRW-BTC" in event for event in result["events"]))
-        self.assertEqual(live_broker.orders, [])
+        self.assertEqual(len(live_broker.orders), 1)
+        self.assertEqual(live_broker.orders[0]["market"], "KRW-BTC")
+        self.assertIsNotNone(result["active_summary"]["pending_order"])
+
+        second_result = selector.run_cycle()
+
+        self.assertEqual(second_result["active_market"], "KRW-BTC")
+        self.assertEqual(len(live_broker.orders), 1)
 
     def test_streaming_selector_activates_best_market_from_realtime_message(self):
         self.config.selector.include_markets = ["KRW-BTC", "KRW-XRP"]

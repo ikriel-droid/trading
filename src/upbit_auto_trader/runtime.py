@@ -32,6 +32,7 @@ class RuntimeState:
     last_exit_bar_index: int = -1
     processed_bars: int = 0
     last_signal: Optional[Dict[str, Any]] = None
+    last_startup_signal_timestamp: str = ""
     pending_order: Optional[PendingOrder] = None
     asset_snapshot: Dict[str, Dict[str, float]] = field(default_factory=dict)
     last_asset_sync_timestamp: str = ""
@@ -161,6 +162,63 @@ class TradingRuntime:
             "skipped_visible_candles": skipped_visible_candles,
             "event": event,
         }
+
+    def evaluate_startup_latest_candle_once(self, candle: Candle) -> List[str]:
+        if self.state is None:
+            raise ValueError("runtime must be bootstrapped before evaluate_startup_latest_candle_once")
+
+        if self.mode != "live":
+            return []
+
+        if self.state.last_startup_signal_timestamp == candle.timestamp:
+            return []
+
+        history = list(self.state.history)
+        if not history or history[-1].timestamp != candle.timestamp:
+            history = (history + [candle])[-self.config.runtime.max_history :]
+
+        atr_values = atr(history, self.config.risk.atr_period)
+        atr_value = atr_values[-1] or (candle.close * self.config.risk.minimum_stop_fraction)
+        mark_to_market = self.state.cash + self._position_market_value(self.state.position, candle.close)
+        self.state.peak_equity = max(self.state.peak_equity, mark_to_market)
+        drawdown_fraction = 0.0
+        if self.state.peak_equity > 0:
+            drawdown_fraction = (self.state.peak_equity - mark_to_market) / self.state.peak_equity
+
+        current_bar_index = max(int(self.state.processed_bars) - 1, 0)
+        signal = self.strategy.evaluate(history, None if self.state.position is None else self.state.position)
+        self.state.last_signal = self._serialize_signal(signal, candle.timestamp)
+
+        events: List[str] = []
+        if (
+            self.state.position is None
+            and self.state.pending_order is None
+            and signal.action == Action.BUY
+            and not self._is_duplicate_order("BUY", candle.timestamp)
+            and self.state.last_order_timestamp != candle.timestamp
+        ):
+            block_reason = self._entry_block_reason(candle, current_bar_index)
+            if block_reason:
+                event = "{0} BLOCKED {1} reason={2}".format(candle.timestamp, self.config.market, block_reason)
+                events.append(event)
+                self._append_journal(
+                    {
+                        "event_type": "blocked",
+                        "timestamp": candle.timestamp,
+                        "market": self.config.market,
+                        "reason": block_reason,
+                    }
+                )
+            else:
+                event = self._maybe_enter_position(candle, atr_value, drawdown_fraction, signal)
+                if event:
+                    events.append(event)
+
+        self.state.last_startup_signal_timestamp = candle.timestamp
+        self.state.events.extend(events)
+        self.state.events = self.state.events[-500:]
+        self._save_state()
+        return events
 
     def process_candle(self, candle: Candle) -> List[str]:
         if self.state is None:
@@ -785,11 +843,31 @@ class TradingRuntime:
 
     def _sync_live_state(self, state: RuntimeState, is_new_state: bool) -> None:
         chance = self._get_live_order_chance()
-        quote_balance = self._chance_balance(chance, "bid_account")
-        base_balance = self._chance_balance(chance, "ask_account")
+        accounts = self.broker.get_accounts()
+        accounts_by_currency = {item.currency.upper(): item for item in accounts}
+        quote_account = accounts_by_currency.get(self._quote_currency())
+        base_account = accounts_by_currency.get(self._base_currency())
+
+        quote_balance = quote_account.balance if quote_account is not None else self._chance_balance(chance, "bid_account")
+        base_balance = 0.0
+        base_avg_buy_price = 0.0
+        if base_account is not None:
+            base_balance = float(base_account.balance) + float(base_account.locked)
+            base_avg_buy_price = float(base_account.avg_buy_price)
+        else:
+            base_balance = self._chance_balance(chance, "ask_account")
 
         state.cash = quote_balance
         state.peak_equity = quote_balance if is_new_state else max(state.peak_equity, quote_balance)
+        state.asset_snapshot = {
+            item.currency.upper(): {
+                "balance": float(item.balance),
+                "locked": float(item.locked),
+            }
+            for item in accounts
+            if item.currency
+        }
+        state.last_asset_sync_timestamp = datetime.now(timezone.utc).isoformat()
 
         if is_new_state and base_balance > 0.0:
             raise ValueError(
@@ -800,6 +878,13 @@ class TradingRuntime:
             )
 
         if not is_new_state and state.position is None and base_balance > 0.0:
+            if state.pending_order is not None and state.pending_order.side == "bid":
+                self._promote_pending_buy_from_exchange_balance(
+                    state,
+                    base_balance=base_balance,
+                    base_avg_buy_price=base_avg_buy_price,
+                )
+                return
             raise ValueError(
                 "live state mismatch: account already holds {0} for {1}".format(
                     self._base_currency(),
@@ -808,11 +893,83 @@ class TradingRuntime:
             )
 
         if not is_new_state and state.position is not None and base_balance <= 0.0:
+            if state.pending_order is not None and state.pending_order.side == "ask":
+                self._finalize_pending_sell_from_exchange_sync(state)
+                return
             raise ValueError(
                 "live state mismatch: saved position exists but exchange balance is empty for {0}".format(
                     self.config.market,
                 )
             )
+
+    def _promote_pending_buy_from_exchange_balance(
+        self,
+        state: RuntimeState,
+        base_balance: float,
+        base_avg_buy_price: float,
+    ) -> None:
+        order = state.pending_order
+        if order is None:
+            return
+
+        entry_price = base_avg_buy_price
+        if entry_price <= 0.0 and order.applied_executed_volume > 0.0:
+            entry_price = order.applied_executed_funds / order.applied_executed_volume
+        if entry_price <= 0.0 and order.requested_volume > 0.0:
+            entry_price = order.requested_price / order.requested_volume
+
+        event_timestamp = datetime.now(timezone.utc).isoformat()
+        state.position = Position(
+            market=order.market,
+            entry_timestamp=order.last_update_timestamp or event_timestamp,
+            entry_price=entry_price,
+            quantity=base_balance,
+            stop_loss=order.stop_loss,
+            take_profit=order.take_profit,
+            trailing_stop=order.trailing_stop,
+            entry_score=order.strategy_score,
+        )
+        state.pending_order = None
+        state.last_order_action = "BUY"
+        state.last_order_timestamp = order.last_update_timestamp or order.created_timestamp or event_timestamp
+        state.events.append(
+            "LIVE SYNC BUY_PROMOTED {0} qty={1:.8f} avg={2:.2f}".format(
+                order.market,
+                base_balance,
+                entry_price,
+            )
+        )
+        state.events = state.events[-500:]
+
+    def _finalize_pending_sell_from_exchange_sync(self, state: RuntimeState) -> None:
+        order = state.pending_order
+        position = state.position
+        if order is None or position is None:
+            return
+
+        event_timestamp = datetime.now(timezone.utc).isoformat()
+        trade = self._close_trade(
+            position,
+            event_timestamp,
+            order.requested_price,
+            "exchange_sync_exit",
+            quantity=position.quantity,
+        )
+        state.closed_trades.append(trade)
+        state.position = None
+        state.pending_order = None
+        state.last_order_action = "SELL"
+        state.last_order_timestamp = event_timestamp
+        state.last_exit_timestamp = event_timestamp
+        state.last_exit_bar_index = int(state.processed_bars or 0)
+        state.events.append(
+            "LIVE SYNC SELL_FINALIZED {0} qty={1:.8f} price={2:.2f}".format(
+                trade.market,
+                trade.quantity,
+                trade.exit_price,
+            )
+        )
+        state.events = state.events[-500:]
 
     def _get_live_order_chance(self) -> Dict[str, Any]:
         if self.broker is None:
@@ -1025,6 +1182,7 @@ class TradingRuntime:
             last_exit_bar_index=int(payload.get("last_exit_bar_index", -1)),
             processed_bars=int(payload.get("processed_bars", len(payload.get("history", [])))),
             last_signal=payload.get("last_signal"),
+            last_startup_signal_timestamp=payload.get("last_startup_signal_timestamp", ""),
             pending_order=self._deserialize_pending_order(payload.get("pending_order")),
             asset_snapshot=payload.get("asset_snapshot", {}),
             last_asset_sync_timestamp=payload.get("last_asset_sync_timestamp", ""),
@@ -1054,6 +1212,7 @@ class TradingRuntime:
             "last_exit_bar_index": self.state.last_exit_bar_index,
             "processed_bars": self.state.processed_bars,
             "last_signal": self.state.last_signal,
+            "last_startup_signal_timestamp": self.state.last_startup_signal_timestamp,
             "saved_at": datetime.now(timezone.utc).isoformat(),
         }
         temp_path = self.state_path + ".tmp"

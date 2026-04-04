@@ -270,6 +270,37 @@ class RuntimeLiveTests(unittest.TestCase):
             if backup_path.exists():
                 backup_path.unlink()
 
+    def test_live_startup_latest_candle_buy_runs_once(self):
+        broker = FakeLiveBroker(quote_balance=1000000.0, base_balance=0.0)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-startup-entry.json", broker)
+        try:
+            runtime.strategy = FakeStrategy({("2026-03-26T10:30:00", False): Action.BUY})
+            runtime.risk = FakeRiskManager(size_fraction=0.1)
+            runtime.bootstrap([self.make_candle("2026-03-26T09:00:00", 100.0)])
+
+            latest = self.make_candle("2026-03-26T10:30:00", 103.0)
+            runtime.recenter_live_state_to_latest_candles(
+                [
+                    self.make_candle("2026-03-26T10:00:00", 101.0),
+                    self.make_candle("2026-03-26T10:15:00", 102.0),
+                    latest,
+                ]
+            )
+
+            events = runtime.evaluate_startup_latest_candle_once(latest)
+            second_events = runtime.evaluate_startup_latest_candle_once(latest)
+
+            self.assertTrue(any("LIVE ORDER_SUBMITTED BUY" in event for event in events))
+            self.assertEqual(second_events, [])
+            self.assertEqual(len(broker.orders), 1)
+            self.assertEqual(runtime.state.last_startup_signal_timestamp, "2026-03-26T10:30:00")
+            self.assertIsNotNone(runtime.state.pending_order)
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+
     def test_live_bootstrap_blocks_existing_asset_balance(self):
         broker = FakeLiveBroker(quote_balance=100000.0, base_balance=0.25)
         runtime, state_path, backup_path = self.build_runtime("test-runtime-live-2.json", broker)
@@ -277,6 +308,60 @@ class RuntimeLiveTests(unittest.TestCase):
             runtime.strategy = FakeStrategy({})
             with self.assertRaises(ValueError):
                 runtime.bootstrap([self.make_candle("2026-03-26T09:00:00", 100.0)])
+        finally:
+            if state_path.exists():
+                state_path.unlink()
+            if backup_path.exists():
+                backup_path.unlink()
+
+    def test_live_bootstrap_promotes_pending_buy_when_exchange_balance_exists(self):
+        broker = FakeLiveBroker(quote_balance=205000.0, base_balance=0.25)
+        runtime, state_path, backup_path = self.build_runtime("test-runtime-live-promote-buy.json", broker)
+        try:
+            payload = {
+                "market": "KRW-BTC",
+                "cash": 216000.0,
+                "peak_equity": 216000.0,
+                "candle_unit": runtime.config.upbit.candle_unit,
+                "history": [
+                    {
+                        "timestamp": "2026-03-26T09:00:00",
+                        "open": 100.0,
+                        "high": 100.0,
+                        "low": 100.0,
+                        "close": 100.0,
+                        "volume": 1000.0,
+                    }
+                ],
+                "last_processed_timestamp": "2026-03-26T09:00:00",
+                "processed_bars": 1,
+                "position": None,
+                "pending_order": {
+                    "uuid": "fake-order",
+                    "market": "KRW-BTC",
+                    "side": "bid",
+                    "order_type": "price",
+                    "requested_price": 25000.0,
+                    "requested_volume": 0.25,
+                    "created_timestamp": "2026-03-26T09:00:00",
+                    "created_bar_index": 1,
+                    "strategy_score": 80.0,
+                    "stop_loss": 95.0,
+                    "take_profit": 105.0,
+                    "trailing_stop": 98.0,
+                },
+            }
+            with open(state_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
+
+            restored = TradingRuntime(config=runtime.config, mode="live", state_path=state_path, broker=broker)
+            restored.bootstrap([])
+
+            self.assertIsNone(restored.state.pending_order)
+            self.assertIsNotNone(restored.state.position)
+            self.assertAlmostEqual(restored.state.position.quantity, 0.25)
+            self.assertAlmostEqual(restored.state.position.entry_price, 100000.0)
+            self.assertTrue(any("LIVE SYNC BUY_PROMOTED" in item for item in restored.state.events))
         finally:
             if state_path.exists():
                 state_path.unlink()
