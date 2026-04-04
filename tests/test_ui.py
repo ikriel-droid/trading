@@ -477,6 +477,20 @@ class UiTests(unittest.TestCase):
         self.assertEqual(payload["job_health"]["summary"]["requires_attention"], 0)
         self.assertIsInstance(payload["job_history"]["items"], list)
 
+    def test_build_dashboard_payload_uses_live_mode_for_selector_runtime(self):
+        payload = build_dashboard_payload(
+            config_path=self.config_path,
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="live",
+            job_manager=BackgroundJobManager(),
+        )
+
+        self.assertEqual(payload["app"]["mode"], "live")
+        self.assertIsNotNone(payload["selector_summary"]["active_market_summary"])
+        self.assertEqual(payload["selector_summary"]["active_market_summary"]["mode"], "live")
+
     def test_build_dashboard_payload_includes_live_control(self):
         self.live_readiness_path.write_text(
             json.dumps({"blockers": ["access_key_missing"]}, indent=2),

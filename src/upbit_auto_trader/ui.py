@@ -1527,7 +1527,7 @@ def _selector_market_state_path(config_path: str, selector_state_path: str, mark
     return str(states_dir / (market.replace("-", "_") + ".json"))
 
 
-def load_selector_summary(config_path: str, selector_state_path: Optional[str]) -> Dict[str, Any]:
+def load_selector_summary(config_path: str, selector_state_path: Optional[str], mode: str = "paper") -> Dict[str, Any]:
     resolved_state_path = _resolve_selector_state_path(config_path, selector_state_path)
     if not Path(resolved_state_path).exists():
         return {
@@ -1552,7 +1552,7 @@ def load_selector_summary(config_path: str, selector_state_path: Optional[str]) 
     active_market_summary = None
     if active_market:
         active_state_path = _selector_market_state_path(config_path, resolved_state_path, active_market)
-        active_runtime = _load_runtime_for_dashboard(config_path, active_state_path, mode="paper")
+        active_runtime = _load_runtime_for_dashboard(config_path, active_state_path, mode=mode)
         active_market_summary = active_runtime.summary() if active_runtime is not None else None
     else:
         active_state_path = ""
@@ -2026,7 +2026,7 @@ def build_dashboard_payload(
     job_manager = job_manager or JOB_MANAGER
     runtime = _load_runtime_for_dashboard(config_path, state_path, mode)
     resolved_selector_state_path = _resolve_selector_state_path(config_path, selector_state_path)
-    selector_summary = load_selector_summary(config_path, resolved_selector_state_path)
+    selector_summary = load_selector_summary(config_path, resolved_selector_state_path, mode=mode)
     jobs = job_manager.list_jobs()
     job_history = job_manager.list_history()
     broker_readiness = broker.readiness_report()
