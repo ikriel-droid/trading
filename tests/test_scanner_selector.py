@@ -1,3 +1,4 @@
+import json
 import pathlib
 import shutil
 import sys
@@ -199,6 +200,36 @@ class ScannerSelectorTests(unittest.TestCase):
         self.assertEqual(result["active_market"], "")
         self.assertEqual(result["last_selected_market"], "")
         self.assertGreaterEqual(len(result["scan_results"]), 2)
+
+    def test_selector_resets_state_when_candle_unit_mismatches(self):
+        self.config.selector.include_markets = ["KRW-BTC", "KRW-XRP"]
+        self.config.selector.use_trade_flow_filter = False
+        with open(self.selector_state, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "candle_unit": 15,
+                    "active_market": "KRW-BTC",
+                    "cycle_count": 3,
+                    "last_selected_market": "KRW-BTC",
+                    "last_selected_score": 81.0,
+                    "last_scan_timestamp": "2026-03-26T06:45:00",
+                    "last_scan_results": [{"market": "KRW-BTC", "score": 81.0}],
+                },
+                handle,
+                indent=2,
+            )
+
+        selector = RotatingMarketSelector(
+            config=self.config,
+            mode="paper",
+            selector_state_path=str(self.selector_state),
+            broker=self.broker,
+        )
+
+        self.assertEqual(selector.state.candle_unit, self.config.upbit.candle_unit)
+        self.assertEqual(selector.state.active_market, "")
+        self.assertEqual(selector.state.last_selected_market, "")
+        self.assertIn("candle_unit_mismatch", selector._state_restore_notice)
 
     def test_streaming_selector_activates_best_market_from_realtime_message(self):
         self.config.selector.include_markets = ["KRW-BTC", "KRW-XRP"]

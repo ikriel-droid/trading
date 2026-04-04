@@ -12,6 +12,7 @@ class MarketScanResult:
     action: str
     score: float
     confidence: float
+    candle_unit: int = 0
     reasons: List[str] = field(default_factory=list)
     timestamp: str = ""
     close: float = 0.0
@@ -118,6 +119,7 @@ class MarketScanner:
             action=signal.action.value,
             score=signal.score,
             confidence=signal.confidence,
+            candle_unit=int(self.config.upbit.candle_unit),
             reasons=signal.reasons,
             timestamp=last_candle.timestamp,
             close=last_candle.close,

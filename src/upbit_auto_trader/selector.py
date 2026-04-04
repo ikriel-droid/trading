@@ -12,6 +12,7 @@ from .scanner import MarketScanResult, MarketScanner
 
 @dataclass
 class SelectorState:
+    candle_unit: int = 0
     active_market: str = ""
     cycle_count: int = 0
     last_selected_market: str = ""
@@ -30,12 +31,13 @@ class RotatingMarketSelector:
         self.selector_state_path = os.fspath(selector_state_path)
         self.broker = broker
         self.scanner = MarketScanner(config, broker)
+        self._state_restore_notice = ""
         self.state = self._load_state()
 
     def run_cycle(self, markets: Optional[List[str]] = None) -> Dict[str, Any]:
         results: List[MarketScanResult] = []
         active_summary = None
-        events: List[str] = []
+        events: List[str] = self._consume_state_restore_notice()
 
         if self.state.active_market:
             active_summary, events = self._update_market_runtime(self.state.active_market)
@@ -69,6 +71,7 @@ class RotatingMarketSelector:
             "cycle_count": self.state.cycle_count,
             "last_selected_market": self.state.last_selected_market,
             "last_selected_score": self.state.last_selected_score,
+            "candle_unit": self.state.candle_unit,
             "scan_results": self.state.last_scan_results,
             "selector_state_path": self.selector_state_path,
         }
@@ -144,10 +147,19 @@ class RotatingMarketSelector:
 
     def _load_state(self) -> SelectorState:
         if not os.path.exists(self.selector_state_path):
-            return SelectorState()
+            return SelectorState(candle_unit=int(self.config.upbit.candle_unit))
         with open(self.selector_state_path, "r", encoding="utf-8-sig") as handle:
             payload = json.load(handle)
+        state_candle_unit = int(payload.get("candle_unit", 0) or 0)
+        expected_candle_unit = int(self.config.upbit.candle_unit)
+        if state_candle_unit != expected_candle_unit:
+            self._state_restore_notice = "SELECTOR STATE RESET reason=candle_unit_mismatch expected={0} actual={1}".format(
+                expected_candle_unit,
+                state_candle_unit or "<missing>",
+            )
+            return SelectorState(candle_unit=expected_candle_unit)
         return SelectorState(
+            candle_unit=state_candle_unit,
             active_market=payload.get("active_market", ""),
             cycle_count=int(payload.get("cycle_count", 0)),
             last_selected_market=payload.get("last_selected_market", ""),
@@ -163,6 +175,7 @@ class RotatingMarketSelector:
         with open(self.selector_state_path, "w", encoding="utf-8") as handle:
             json.dump(
                 {
+                    "candle_unit": int(self.config.upbit.candle_unit),
                     "active_market": self.state.active_market,
                     "cycle_count": self.state.cycle_count,
                     "last_selected_market": self.state.last_selected_market,
@@ -180,6 +193,7 @@ class RotatingMarketSelector:
             "action": item.action,
             "score": item.score,
             "confidence": item.confidence,
+            "candle_unit": item.candle_unit,
             "reasons": item.reasons,
             "timestamp": item.timestamp,
             "close": item.close,
@@ -195,6 +209,13 @@ class RotatingMarketSelector:
             "total_bid_ask_ratio": item.total_bid_ask_ratio,
             "orderbook_ok": item.orderbook_ok,
         }
+
+    def _consume_state_restore_notice(self) -> List[str]:
+        if not self._state_restore_notice:
+            return []
+        notice = self._state_restore_notice
+        self._state_restore_notice = ""
+        return [notice]
 
 
 class StreamingMarketSelector(RotatingMarketSelector):
@@ -247,7 +268,7 @@ class StreamingMarketSelector(RotatingMarketSelector):
             updated_bar = candle.timestamp != previous_timestamp
 
         active_summary = None
-        events: List[str] = []
+        events: List[str] = self._consume_state_restore_notice()
 
         if self.state.active_market and market == self.state.active_market and payload_type.startswith("candle.") and updated_bar:
             active_summary, new_events = self._update_market_runtime_from_history(market, self.histories[market])
@@ -283,6 +304,7 @@ class StreamingMarketSelector(RotatingMarketSelector):
             "cycle_count": self.state.cycle_count,
             "last_selected_market": self.state.last_selected_market,
             "last_selected_score": self.state.last_selected_score,
+            "candle_unit": self.state.candle_unit,
             "scan_results": self.state.last_scan_results,
             "selector_state_path": self.selector_state_path,
             "event_market": market,
