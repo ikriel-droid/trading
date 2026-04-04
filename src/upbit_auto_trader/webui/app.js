@@ -725,7 +725,7 @@ function renderSelectorActiveSummary(summary) {
     factCard("익절가", formatCurrency(position.take_profit || 0)),
     factCard("추적 손절가", formatCurrency(position.trailing_stop || 0)),
   ] : [];
-  ids.selectorActiveSummary.innerHTML = buildFactGrid([
+  const factGrid = buildFactGrid([
     factCard("종목", summary.market || "-"),
     factCard("모드", modeLabel(summary.mode || dashboardState.app.mode || "paper")),
     factCard("평가 금액", formatCurrency(summary.equity || 0)),
@@ -734,6 +734,19 @@ function renderSelectorActiveSummary(summary) {
     factCard("마지막 신호", summary.last_signal?.action ? actionLabel(summary.last_signal.action) : "없음"),
     ...positionFacts,
   ]);
+  const exitPlan = position ? `
+    <div class="position-plan-card">
+      <p class="position-plan-eyebrow">자동 매도 계획</p>
+      <h3>현재 보유 종목은 아래 조건 중 하나가 오면 자동으로 정리됩니다.</h3>
+      <ul class="position-plan-list">
+        <li><strong>손절</strong> 현재 4시간봉 저가가 <strong>${escapeXml(formatCurrency(position.stop_loss || 0))}</strong> 이하로 내려가면 매도</li>
+        <li><strong>익절</strong> 현재 4시간봉 고가가 <strong>${escapeXml(formatCurrency(position.take_profit || 0))}</strong> 이상 올라가면 매도</li>
+        <li><strong>추적 손절</strong> 올라간 뒤 다시 <strong>${escapeXml(formatCurrency(position.trailing_stop || 0))}</strong> 이하로 밀리면 매도</li>
+        <li><strong>전략 약화</strong> 점수가 약해져 매도 신호가 나오면 자동 매도</li>
+      </ul>
+    </div>
+  ` : "";
+  ids.selectorActiveSummary.innerHTML = `${factGrid}${exitPlan}`;
 }
 
 function renderLiveControl(liveControl) {
