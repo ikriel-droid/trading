@@ -496,6 +496,39 @@ class UiTests(unittest.TestCase):
         self.assertIsNotNone(payload["selector_summary"]["active_market_summary"])
         self.assertEqual(payload["selector_summary"]["active_market_summary"]["mode"], "live")
 
+    def test_build_dashboard_payload_includes_selector_position_levels(self):
+        with open(self.selector_market_state_path, "r", encoding="utf-8") as handle:
+            runtime_state = json.load(handle)
+        runtime_state["position"] = {
+            "market": "KRW-BTC",
+            "entry_timestamp": "2026-04-05T00:00:00",
+            "entry_price": 100000000.0,
+            "quantity": 0.00123456,
+            "stop_loss": 97000000.0,
+            "take_profit": 105000000.0,
+            "trailing_stop": 98500000.0,
+            "entry_score": 89.0,
+        }
+        with open(self.selector_market_state_path, "w", encoding="utf-8") as handle:
+            json.dump(runtime_state, handle, indent=2)
+            handle.write("\n")
+
+        payload = build_dashboard_payload(
+            config_path=self.config_path,
+            state_path=str(self.state_path),
+            selector_state_path=str(self.selector_state_path),
+            csv_path=self.csv_path,
+            mode="live",
+            job_manager=BackgroundJobManager(),
+        )
+
+        position = payload["selector_summary"]["active_market_summary"]["position"]
+        self.assertIsNotNone(position)
+        self.assertEqual(position["market"], "KRW-BTC")
+        self.assertAlmostEqual(position["stop_loss"], 97000000.0)
+        self.assertAlmostEqual(position["take_profit"], 105000000.0)
+        self.assertAlmostEqual(position["trailing_stop"], 98500000.0)
+
     def test_build_dashboard_payload_reads_selector_state_with_bom(self):
         bom_selector_state_path = self.selector_state_bom_path
         bom_selector_runtime_path = self.selector_market_state_path

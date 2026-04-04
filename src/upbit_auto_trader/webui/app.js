@@ -717,6 +717,14 @@ function renderSelectorActiveSummary(summary) {
     ids.selectorActiveSummary.innerHTML = '<div class="empty-state">선택된 종목이 아직 없습니다.</div>';
     return;
   }
+  const position = summary.position || null;
+  const positionFacts = position ? [
+    factCard("보유 수량", formatNumber(position.quantity || 0, 8)),
+    factCard("평균단가", formatCurrency(position.entry_price || 0)),
+    factCard("손절가", formatCurrency(position.stop_loss || 0)),
+    factCard("익절가", formatCurrency(position.take_profit || 0)),
+    factCard("추적 손절가", formatCurrency(position.trailing_stop || 0)),
+  ] : [];
   ids.selectorActiveSummary.innerHTML = buildFactGrid([
     factCard("종목", summary.market || "-"),
     factCard("모드", modeLabel(summary.mode || dashboardState.app.mode || "paper")),
@@ -724,6 +732,7 @@ function renderSelectorActiveSummary(summary) {
     factCard("보유 현금", formatCurrency(summary.cash || 0)),
     factCard("거래 횟수", formatNumber(summary.trade_count || 0, 0)),
     factCard("마지막 신호", summary.last_signal?.action ? actionLabel(summary.last_signal.action) : "없음"),
+    ...positionFacts,
   ]);
 }
 
