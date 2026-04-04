@@ -190,6 +190,10 @@ class TradingRuntime:
         self.state.last_signal = self._serialize_signal(signal, candle.timestamp)
 
         events: List[str] = []
+        if self.state.position is not None:
+            extend_event = self._maybe_extend_take_profit(self.state.position, candle, atr_value, signal)
+            if extend_event:
+                events.append(extend_event)
         if (
             self.state.position is None
             and self.state.pending_order is None
@@ -246,8 +250,17 @@ class TradingRuntime:
         closed_this_bar = False
 
         if self.state.position is not None and not had_pending_order:
+            signal = self.strategy.evaluate(history, self.state.position)
+            self.state.last_signal = self._serialize_signal(signal, candle.timestamp)
+            extend_event = self._maybe_extend_take_profit(self.state.position, candle, atr_value, signal)
+            if extend_event:
+                new_events.append(extend_event)
             self._update_trailing_stop(self.state.position, candle.close, atr_value)
-            exit_result = None if self.state.pending_order is not None else self._maybe_exit_position(candle, history)
+            exit_result = None if self.state.pending_order is not None else self._maybe_exit_position(
+                candle,
+                history,
+                signal=signal,
+            )
             if exit_result is not None:
                 new_events.append(exit_result)
                 closed_this_bar = True
@@ -529,7 +542,12 @@ class TradingRuntime:
         return events
 
     def _maybe_enter_position(self, candle: Candle, atr_value: float, drawdown_fraction: float, signal: Signal) -> Optional[str]:
-        trade_plan = self.risk.build_trade_plan(candle.close, atr_value, drawdown_fraction)
+        trade_plan = self.risk.build_trade_plan(
+            candle.close,
+            atr_value,
+            drawdown_fraction,
+            signal.reasons,
+        )
         if trade_plan.blocked:
             return self._blocked_event(candle.timestamp, trade_plan.block_reason)
 
@@ -631,7 +649,13 @@ class TradingRuntime:
         )
         return event
 
-    def _maybe_exit_position(self, candle: Candle, history: List[Candle], allow_strategy_exit: bool = True) -> Optional[str]:
+    def _maybe_exit_position(
+        self,
+        candle: Candle,
+        history: List[Candle],
+        allow_strategy_exit: bool = True,
+        signal: Optional[Signal] = None,
+    ) -> Optional[str]:
         position = self.state.position
         if position is None:
             return None
@@ -650,7 +674,7 @@ class TradingRuntime:
             exit_reason = "take_profit"
             raw_exit_price = position.take_profit
         elif allow_strategy_exit:
-            signal = self.strategy.evaluate(history, position)
+            signal = signal or self.strategy.evaluate(history, position)
             self.state.last_signal = self._serialize_signal(signal, candle.timestamp)
             if signal.action == Action.SELL and not self._is_duplicate_order("SELL", candle.timestamp):
                 exit_reason = "strategy_exit"
@@ -776,6 +800,48 @@ class TradingRuntime:
         fallback_gap = close * self.config.risk.minimum_stop_fraction
         trailing_gap = max(fallback_gap, atr_value * self.config.risk.trailing_atr_multiple)
         position.trailing_stop = max(position.trailing_stop, close - trailing_gap)
+
+    def _maybe_extend_take_profit(
+        self,
+        position: Position,
+        candle: Candle,
+        atr_value: float,
+        signal: Signal,
+    ) -> Optional[str]:
+        if signal.action == Action.SELL:
+            return None
+
+        previous_take_profit = float(position.take_profit)
+        next_take_profit = self.risk.extend_take_profit(
+            current_price=candle.close,
+            current_take_profit=previous_take_profit,
+            atr_value=atr_value,
+            signal_reasons=signal.reasons,
+        )
+        if next_take_profit <= previous_take_profit + 1e-12:
+            return None
+
+        position.take_profit = next_take_profit
+        event = (
+            "{0} TAKE_PROFIT_EXTENDED {1} from={2:.2f} to={3:.2f} reasons={4}".format(
+                candle.timestamp,
+                position.market,
+                previous_take_profit,
+                next_take_profit,
+                ",".join(signal.reasons),
+            )
+        )
+        self._append_journal(
+            {
+                "event_type": "take_profit_extended",
+                "timestamp": candle.timestamp,
+                "market": position.market,
+                "from_take_profit": round(previous_take_profit, 8),
+                "to_take_profit": round(next_take_profit, 8),
+                "reasons": signal.reasons,
+            }
+        )
+        return event
 
     def _position_market_value(self, position: Optional[Position], price: float) -> float:
         if position is None:

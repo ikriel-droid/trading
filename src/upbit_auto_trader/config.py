@@ -36,6 +36,8 @@ class RiskConfig:
     max_position_fraction: float = 0.35
     stop_atr_multiple: float = 2.2
     take_profit_atr_multiple: float = 3.5
+    trend_take_profit_atr_multiple: float = 6.0
+    trend_take_profit_stop_multiple: float = 1.8
     trailing_atr_multiple: float = 1.8
     atr_period: int = 14
     minimum_stop_fraction: float = 0.015

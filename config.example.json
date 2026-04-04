@@ -26,6 +26,8 @@
     "max_position_fraction": 0.35,
     "stop_atr_multiple": 2.2,
     "take_profit_atr_multiple": 3.5,
+    "trend_take_profit_atr_multiple": 6.0,
+    "trend_take_profit_stop_multiple": 1.8,
     "trailing_atr_multiple": 1.8,
     "atr_period": 14,
     "minimum_stop_fraction": 0.015,

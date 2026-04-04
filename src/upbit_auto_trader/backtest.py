@@ -47,7 +47,12 @@ class Backtester:
                 signal = self.strategy.evaluate(history, None)
                 if signal.action.value == "BUY":
                     atr_value = atr_values[index] or (candle.close * self.config.risk.minimum_stop_fraction)
-                    trade_plan = self.risk.build_trade_plan(candle.close, atr_value, drawdown_fraction)
+                    trade_plan = self.risk.build_trade_plan(
+                        candle.close,
+                        atr_value,
+                        drawdown_fraction,
+                        signal.reasons,
+                    )
                     if trade_plan.blocked:
                         events.append(
                             "{0} BLOCKED {1} reason={2}".format(
@@ -125,6 +130,16 @@ class Backtester:
         candle: Candle,
         history: List[Candle],
     ) -> Optional[Tuple[float, ClosedTrade, str]]:
+        atr_values = atr(history, self.config.risk.atr_period)
+        atr_value = atr_values[-1] or (candle.close * self.config.risk.minimum_stop_fraction)
+        signal = self.strategy.evaluate(history, position)
+        position.take_profit = self.risk.extend_take_profit(
+            current_price=candle.close,
+            current_take_profit=position.take_profit,
+            atr_value=atr_value,
+            signal_reasons=signal.reasons,
+        )
+
         exit_reason = None
         raw_exit_price = candle.close
 
@@ -138,7 +153,6 @@ class Backtester:
             exit_reason = "take_profit"
             raw_exit_price = position.take_profit
         else:
-            signal = self.strategy.evaluate(history, position)
             if signal.action.value == "SELL":
                 exit_reason = "strategy_exit"
                 raw_exit_price = candle.close

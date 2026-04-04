@@ -29,7 +29,7 @@ class FakeRiskManager:
     def __init__(self, size_fraction=0.1):
         self.size_fraction = size_fraction
 
-    def build_trade_plan(self, price, atr_value, drawdown_fraction):
+    def build_trade_plan(self, price, atr_value, drawdown_fraction, signal_reasons=None):
         return TradePlan(
             size_fraction=self.size_fraction,
             stop_loss=price * 0.95,
